@@ -29,6 +29,8 @@ from pathlib import Path
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from path_safety import has_path_link
+
 
 class Blocked(RuntimeError):
     pass
@@ -296,7 +298,7 @@ def workspace_title(name: str) -> str:
 def prepare_control_directories(root: Path) -> None:
     for name in (".batches", ".runtime"):
         path = root / name
-        if path.resolve() != path.absolute():
+        if has_path_link(path):
             raise Blocked("Control directory link refused")
         path.mkdir(parents=True, exist_ok=True)
         if os.name == "nt":
@@ -476,10 +478,10 @@ def batch_identity(m: dict) -> dict:
 
 
 def validate_output_root(m: dict) -> None:
-    source = Path(m["source_root"])
+    source = Path(m["source_root"]).resolve()
     output = Path(m["output_root"])
     allowed = {source.parent / (source.name + "1"), source / "_成品"}
-    if output not in allowed:
+    if has_path_link(output) or output.resolve() not in allowed:
         raise Blocked("Output root must be the default sibling or the source _成品 directory")
 
 
@@ -703,7 +705,7 @@ def snapshot(case: Path, *, video: bool) -> dict[str, str]:
         dirs[:] = sorted(d for d in dirs if d not in excluded)
         for d in dirs:
             linked = parent / d
-            if linked.is_symlink() or linked.resolve() != linked.absolute():
+            if has_path_link(linked):
                 raise Blocked(f"Snapshot directory link refused: {linked}")
         if parent == case:
             dirs[:] = [d for d in dirs if d != "logs" and (video or d != "recording")]
@@ -1440,20 +1442,20 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
     parent = case.parent
     if not parent.exists():
         ancestor = parent.parent
-        if ancestor.resolve(strict=True) != ancestor.absolute():
+        if has_path_link(ancestor):
             raise Blocked("Case workspace ancestor link refused")
         parent.mkdir(exist_ok=True)
-    if parent.is_symlink() or parent.resolve(strict=True) != parent.absolute():
+    if has_path_link(parent):
         raise Blocked("Case workspace parent link refused")
     case.mkdir(exist_ok=True)
-    if case.is_symlink() or case.resolve() != case.absolute():
+    if has_path_link(case):
         raise Blocked("Case workspace link refused")
     original = Path(entry["source_path"])
     if sha256(original) != entry["source_sha256"]:
         raise Blocked("Source changed since plan")
     source_dir = case / "source"
     source_dir.mkdir(exist_ok=True)
-    if source_dir.is_symlink() or source_dir.resolve() != source_dir.absolute():
+    if has_path_link(source_dir):
         raise Blocked("Source copy directory link refused")
     copy = source_dir / original.name
     if copy.exists():
@@ -1471,7 +1473,7 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
             raise Blocked("Recorded delivery path identity differs")
         expected = state.get("delivery_sha256") or {}
         actual = {p.relative_to(delivered).as_posix(): sha256(p) for p in delivered.rglob("*") if p.is_file()} if delivered.is_dir() and not delivered.is_symlink() else {}
-        if not delivered.is_dir() or delivered.is_symlink() or delivered.resolve() != delivered.absolute() or not expected or actual != expected:
+        if not delivered.is_dir() or has_path_link(delivered) or not expected or actual != expected:
             raise Blocked("Recorded delivery is missing or changed")
         if not reviews_current():
             raise Blocked("Artifacts changed after recorded delivery")
@@ -1489,7 +1491,7 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
            "case_concurrency": cfg.get("execution", {}).get("case_concurrency", 1)}
     reviews = folder / "reviews" / cid
     reviews.mkdir(parents=True, exist_ok=True)
-    if reviews.is_symlink() or reviews.resolve() != reviews.absolute():
+    if has_path_link(reviews):
         raise Blocked("Review directory link refused")
     def review_data(kind: str) -> dict | None:
         record = state.get(kind + "_review")
@@ -1913,7 +1915,7 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
     checkpoint()
     with cfg.get("_publication_lock", threading.RLock()):
         output_root = Path(m["output_root"])
-        if output_root.is_symlink() or (output_root.exists() and output_root.resolve() != output_root.absolute()):
+        if has_path_link(output_root):
             raise Blocked("Output root link refused")
         if output_root.exists() and not output_root.is_dir():
             raise Blocked("Output root is not a directory")
@@ -2040,7 +2042,7 @@ def run_batch(cfg: dict, ref: str, *, dry_run: bool = False, executor=invoke, ca
                     raise Blocked('Environment preflight failed before model dispatch: ' + '; '.join(preflight['errors']))
         output = Path(m["output_root"])
         owner = folder / "output-owner.json"
-        if output.is_symlink() or (output.exists() and (not output.is_dir() or output.resolve() != output.absolute())):
+        if has_path_link(output) or (output.exists() and not output.is_dir()):
             raise Blocked("Output root is not a plain directory")
         if output.exists() and any(output.iterdir()) and not owner.exists():
             raise Blocked("Existing nonempty output root is not owned by batch")

@@ -21,7 +21,7 @@ class SetupDoctorTests(unittest.TestCase):
             root = Path(tmp) / 'repo'; (root / 'skill').mkdir(parents=True)
             (root / 'skill/SKILL.md').write_text('---\nname: software-case-batch\ndescription: test\n---\n[Rules](../rules/requirements.md)\n', encoding='utf-8')
             dest = install_skill(root, Path(tmp) / 'codex')
-            self.assertIn((root / 'rules/requirements.md').as_posix(), dest.read_text(encoding='utf-8'))
+            self.assertIn((root.resolve() / 'rules/requirements.md').as_posix(), dest.read_text(encoding='utf-8'))
             self.assertNotIn('../rules/', dest.read_text(encoding='utf-8'))
 
     def test_missing_runtime_blocks_before_any_subprocess(self):

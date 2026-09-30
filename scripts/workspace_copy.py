@@ -11,6 +11,7 @@ import subprocess
 import time
 from collections import Counter
 from pathlib import Path
+from path_safety import has_path_link
 
 
 def inaccessible_runtime_temps(path, flow, *, omitted_dirs=()):
@@ -70,7 +71,7 @@ ConvertTo-Json -InputObject $special -Compress'''
 
 
 def tree_hashes(path, flow, *, ignored_dirs=()):
-    if path.resolve() != path.absolute():
+    if has_path_link(path):
         raise flow.Blocked('Workspace copy refuses linked root')
     result = {}
     def onerror(exc):
@@ -79,7 +80,7 @@ def tree_hashes(path, flow, *, ignored_dirs=()):
         dirs[:] = [d for d in dirs if (Path(directory) / d).relative_to(path).as_posix() not in ignored_dirs]
         for name in dirs + files:
             child = Path(directory) / name
-            if child.is_symlink() or child.resolve() != child.absolute() or (hasattr(child, 'is_junction') and child.is_junction()):
+            if has_path_link(child):
                 raise flow.Blocked(f'Workspace copy refuses linked path: {child}')
         for name in files:
             child = Path(directory) / name
@@ -99,7 +100,7 @@ def materialize(flow, root, source, target, journal_path, *, process_guard,
     """Resumable content copy and two renames. Source survives in backup."""
     def plain_child(path, root, flow):
         path = Path(path)
-        if path == root or path.resolve() != path.absolute() or not path.resolve().is_relative_to(root):
+        if path.resolve() == root or has_path_link(path) or not path.resolve().is_relative_to(root):
             raise flow.Blocked(f'Workspace copy path outside root or linked: {path}')
         return path
     root = root.resolve(strict=True)

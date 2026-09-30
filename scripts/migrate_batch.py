@@ -5,6 +5,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
+from path_safety import has_path_link
 
 
 def owned_processes(paths):
@@ -53,7 +54,7 @@ ConvertTo-Json -InputObject $hits -Compress'''
 def plain_child(path, root, flow):
     path = Path(path)
     root = root.resolve(strict=True)
-    if path.resolve() != path.absolute() or path == root or not path.resolve().is_relative_to(root):
+    if has_path_link(path) or path.resolve() == root or not path.resolve().is_relative_to(root):
         raise flow.Blocked(f'Migration path leaves workspace or traverses a link: {path}')
     return path
 

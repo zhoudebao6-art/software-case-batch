@@ -12,6 +12,7 @@ import time
 from urllib.error import URLError
 from urllib.parse import urlsplit
 from urllib.request import urlopen
+from path_safety import has_path_link
 
 
 class CaptureError(ValueError):
@@ -30,7 +31,7 @@ def local_file(case, relative):
     if not isinstance(relative, str) or not relative or Path(relative).is_absolute() or '..' in Path(relative).parts:
         raise CaptureError('Unsafe case artifact path')
     target=case/relative
-    if target.is_symlink() or target.resolve() != target.absolute() or not target.is_file():
+    if has_path_link(target) or not target.is_file():
         raise CaptureError(f'Artifact missing or linked: {relative}')
     return target
 
