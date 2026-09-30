@@ -74,17 +74,24 @@ class ExpeditedReviewTests(unittest.TestCase):
             except Exception as exc:errors.append(exc)
             finally:done.set()
         root=self.cfg['_root']/'.runtime/slots/review/0';root.mkdir(parents=True)
-        with flow.BatchLock(root):
-            worker=threading.Thread(target=run);worker.start()
-            deadline=time.monotonic()+10
-            path=flow.state_at(self.folder,self.cid)
-            while time.monotonic()<deadline:
-                if path.exists() and flow.read_json(path).get('waiting_stage')=='review_final':break
-                time.sleep(.02)
-            self.assertTrue(path.exists())
-            self.expedite()
-            completed_while_sol_locked=done.wait(10)
-        worker.join(15)
+        worker=None
+        try:
+            with flow.BatchLock(root):
+                worker=threading.Thread(target=run);worker.start()
+                deadline=time.monotonic()+10
+                path=flow.state_at(self.folder,self.cid)
+                while time.monotonic()<deadline:
+                    if path.exists() and flow.read_json(path).get('waiting_stage')=='review_final':break
+                    time.sleep(.02)
+                self.assertTrue(path.exists())
+                self.expedite()
+                completed_while_sol_locked=done.wait(10)
+        finally:
+            # Release the ordinary slot, then finish the worker and its global
+            # subprocess patch even when a main-thread assertion/read failed.
+            if worker is not None:
+                worker.join(30)
+                self.assertFalse(worker.is_alive(), 'Fixture worker did not finish')
         self.assertFalse(errors,errors)
         self.assertTrue(completed_while_sol_locked,'Expedited review waited for the ordinary Sol slot')
         state=result[0]['cases'][0]
@@ -103,6 +110,19 @@ class ExpeditedReviewTests(unittest.TestCase):
         self.assertEqual(state['stage'],'blocked')
         self.assertIn('explicitly selected route',state['reason'])
         self.assertFalse(Path(self.m['output_root']).exists())
+
+    def test_failed_main_thread_poll_still_releases_worker_patch(self):
+        read = flow.read_json
+        command = flow.subprocess.run
+        main = threading.current_thread()
+        def fail_poll(path):
+            if threading.current_thread() is main and path == flow.state_at(self.folder, self.cid):
+                raise RuntimeError('fixture main-thread poll failed')
+            return read(path)
+        with patch.object(flow, 'read_json', side_effect=fail_poll):
+            with self.assertRaisesRegex(RuntimeError, 'fixture main-thread poll failed'):
+                self.test_live_waiting_review_moves_to_astra_without_waiting_for_sol_slot()
+        self.assertIs(flow.subprocess.run, command, 'Worker leaked its process mock into subsequent tests')
 
     def test_configuration_rejects_expedited_model_substitution(self):
         config=flow.read_json(self.config_path)

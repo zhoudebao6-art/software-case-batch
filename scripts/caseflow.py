@@ -131,8 +131,17 @@ def atomic_json(path: Path, value: dict) -> None:
 
 
 def read_json(path: Path) -> dict:
-    with path.open("r", encoding="utf-8") as f:
-        return json.load(f)
+    # Windows can briefly deny opening a file while atomic_json replaces it.
+    # Match the bounded writer retry; never return an empty/default state or
+    # alter ACLs. Persistent denial and invalid JSON still propagate unchanged.
+    for attempt in range(10):
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                return json.load(f)
+        except PermissionError:
+            if os.name != 'nt' or attempt == 9:
+                raise
+            time.sleep(.01 * (attempt + 1))
 
 
 def compact_case_state(state: dict, path: Path) -> dict:
