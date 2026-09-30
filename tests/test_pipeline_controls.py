@@ -121,6 +121,30 @@ class PipelineControls(unittest.TestCase):
         other=self.root/'new-source';other.mkdir();fixtures.docx(other/'new.docx')
         self.assertEqual(flow.plan(self.cfg,other)['pipeline_profile'],'efficient-v1')
 
+    def test_recording_capacity_is_frozen_per_batch(self):
+        self.cfg.setdefault('execution', {}).update(recording_concurrency=2,
+                                     recording_min_available_mb=4096,
+                                     recording_reserve_mb=2048)
+        self.make_source(); planned=flow.plan(self.cfg,self.source)
+        self.assertEqual(planned['execution_profile']['recording_concurrency'],2)
+        # A later machine-wide change cannot slow or expand this registered
+        # batch; the dry-run must replay its own profile.
+        self.cfg['execution'].update(recording_concurrency=1,
+                                     recording_min_available_mb=0,
+                                     recording_reserve_mb=0)
+        dry=flow.run_batch(self.cfg,planned['batch_id'],dry_run=True)
+        self.assertEqual(dry['execution']['recording_concurrency'],2)
+        self.assertEqual(dry['execution']['recording_min_available_mb'],4096)
+
+    def test_legacy_batch_keeps_single_recording_slot(self):
+        self.make_source();planned=flow.plan(self.cfg,self.source)
+        manifest_path=flow.batch_folder(self.cfg,planned)/'manifest.json'
+        manifest=flow.read_json(manifest_path);manifest.pop('execution_profile',None)
+        flow.atomic_json(manifest_path,manifest)
+        self.cfg.setdefault('execution', {})['recording_concurrency']=2
+        dry=flow.run_batch(self.cfg,planned['batch_id'],dry_run=True)
+        self.assertEqual(dry['execution']['recording_concurrency'],1)
+
     def test_new_delivery_only_word_and_video_preserves_working_evidence(self):
         self.cfg['runner']['delivery_profile']='word-video'
         source=self.make_source();before=flow.sha256(source)

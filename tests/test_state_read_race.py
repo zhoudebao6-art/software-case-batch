@@ -8,6 +8,18 @@ from test_caseflow import flow
 
 
 class StateReadRaceTests(unittest.TestCase):
+    def test_unreadable_registered_manifest_fails_closed(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as temp:
+            cfg = {'_root': Path(temp).resolve()}
+            manifest = cfg['_root'] / '.batches' / 'existing' / 'manifest.json'
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text('{"batch_id":"existing"}', encoding='utf-8')
+            with patch.object(flow, 'read_json', side_effect=PermissionError(13, 'sharing denial')):
+                with self.assertRaises(flow.Blocked):
+                    flow.batch_folder(cfg, 'other')
+
     def test_windows_transient_open_denial_recovers_without_default_state(self):
         path = SimpleNamespace(open=Mock(side_effect=[PermissionError(13, 'sharing race'), io.StringIO('{"stage":"running"}')]))
         with patch.object(flow.os, 'name', 'nt'), patch.object(flow.time, 'sleep') as sleep:

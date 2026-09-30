@@ -8,6 +8,24 @@ import time
 import uuid
 
 
+def read_published_ticket(path):
+    """Read a published ticket with the same bounded Windows sharing-race policy.
+
+    A queue ticket is published with an atomic replace. Windows can briefly
+    refuse the open while the replace completes; that transient is retried.
+    Malformed JSON, a persistent ACL denial, and all non-Windows denials remain
+    hard failures so a queue can never silently admit work on an unknown state.
+    """
+    for attempt in range(10):
+        try:
+            with Path(path).open('r', encoding='utf-8') as stream:
+                return json.load(stream)
+        except PermissionError:
+            if os.name != 'nt' or attempt == 9:
+                raise
+            time.sleep(.01 * (attempt + 1))
+
+
 def process_token(pid):
     if os.name == 'nt':
         from ctypes import wintypes
@@ -81,7 +99,7 @@ def fair_slot(root, limit, lock_factory, busy_type, write_json, *, owner=None, c
                     if path.is_symlink():
                         raise ValueError('Linked queue ticket refused')
                     try:
-                        item=json.loads(path.read_text(encoding='utf-8'))
+                        item=read_published_ticket(path)
                     except FileNotFoundError:
                         # A waiting owner may withdraw its ticket at a drain checkpoint.
                         continue

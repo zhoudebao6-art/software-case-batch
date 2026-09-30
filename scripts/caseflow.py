@@ -280,6 +280,10 @@ def config_at(path: Path) -> dict:
         value = cfg.get("execution", {}).get(key, default)
         if type(value) is not int or not 1 <= value <= 8:
             raise Blocked(f"{key} must be an integer from 1 to 8")
+    for key, default in (("recording_min_available_mb", 0), ("recording_reserve_mb", 0)):
+        value = cfg.get("execution", {}).get(key, default)
+        if type(value) is not int or value < 0:
+            raise Blocked(f"{key} must be a non-negative integer")
     return cfg
 
 
@@ -352,8 +356,15 @@ def batch_folder(cfg: dict, batch: dict | str) -> Path:
             try:
                 if read_json(p).get("batch_id") == bid:
                     found.append(p.parent)
-            except (OSError, ValueError):
+            except FileNotFoundError:
+                # A manifest can disappear after the glob snapshot while a
+                # concurrent atomic publish completes; re-scan on the next
+                # command instead of treating it as an existing batch.
                 continue
+            except (PermissionError, OSError, ValueError) as exc:
+                # Never hide an unreadable/corrupt manifest and accidentally
+                # create a second batch folder with the same identity.
+                raise Blocked(f"Cannot safely read registered batch manifest: {p}") from exc
     if len(found) > 1:
         raise Blocked("Duplicate batch identity on disk")
     return found[0] if found else root / ".batches" / bid
@@ -466,6 +477,24 @@ def plan(cfg: dict, source: Path) -> dict:
                 m["schema_version"] = 2
                 m['pipeline_profile'] = cfg.get('runner', {}).get('pipeline_profile', 'legacy')
                 m['delivery_profile'] = cfg.get('runner', {}).get('delivery_profile', 'full')
+                # Freeze scheduler capacity at plan time.  A later machine
+                # config change must not silently alter an already registered
+                # batch (especially recording concurrency and its memory
+                # admission policy).
+                execution = cfg.get('execution', {})
+                m['execution_profile'] = {
+                    key: execution.get(key, default)
+                    for key, default in (
+                        ('case_concurrency', 1),
+                        ('review_concurrency', 1),
+                        ('expedited_review_concurrency', 1),
+                        ('recording_concurrency', 1),
+                        ('recording_min_available_mb', 0),
+                        ('recording_reserve_mb', 0),
+                        ('evidence_concurrency', 1),
+                        ('fair_queue', False),
+                    )
+                }
                 atomic_json(mp, m)
     return {**m, "batch_workspace": str(folder)}
 
@@ -477,6 +506,7 @@ def batch_identity(m: dict) -> dict:
     copy.pop("workspace_month", None)
     copy.pop("pipeline_profile", None)
     copy.pop("delivery_profile", None)
+    copy.pop("execution_profile", None)
     copy.pop("output_root", None)
     for entry in copy.get("cases", []):
         entry.pop("captured_at", None)
@@ -514,6 +544,26 @@ def load_batch(cfg: dict, ref: str) -> tuple[dict, Path]:
     return m, folder
 
 
+def apply_frozen_execution_profile(cfg: dict, manifest: dict) -> dict:
+    """Return an execution copy whose scheduler settings are batch-scoped.
+
+    Pre-profile manifests are legacy batches.  They retain the historical
+    single recording slot and no memory guard; new plans carry an explicit
+    profile and are replayed exactly as planned.
+    """
+    result = dict(cfg)
+    execution = dict(cfg.get('execution', {}))
+    profile = manifest.get('execution_profile')
+    if profile is None:
+        execution['recording_concurrency'] = 1
+        execution['recording_min_available_mb'] = 0
+        execution['recording_reserve_mb'] = 0
+    else:
+        execution.update(profile)
+    result['execution'] = execution
+    return result
+
+
 class BatchLock:
     def __init__(self, folder: Path):
         self.path = folder / "run.lock"
@@ -532,7 +582,10 @@ class BatchLock:
         except OSError as exc:
             self.file.close()
             self.file = None
-            raise Busy(f"Batch already locked: {self.path}") from exc
+            winerror = getattr(exc, 'winerror', None)
+            if winerror == 5 or (os.name != 'nt' and getattr(exc, 'errno', None) == 13):
+                raise Blocked(f"Batch lock permission/ACL failure (winerror={winerror}, errno={getattr(exc, 'errno', None)}): {self.path}") from exc
+            raise Busy(f"Batch lock contended (winerror={winerror}, errno={getattr(exc, 'errno', None)}): {self.path}") from exc
         self.file.seek(0)
         self.file.truncate()
         self.file.write(f"pid={os.getpid()} time={time.time()}\n".encode("ascii"))
@@ -585,14 +638,16 @@ def stage_slot(cfg: dict, kind: str, *, owner=None, checkpoint=None):
         acquired.__exit__(None, None, None)
 
 
-def allocate_resources(cfg: dict, m: dict, folder: Path) -> dict:
+def allocate_resources(cfg: dict, m: dict, folder: Path, *, entries=None) -> dict:
+    """Allocate only the selected cases and preserve existing resource rows."""
+    entries = list(m['cases'] if entries is None else entries)
     directory = cfg["_root"] / ".runtime" / "ports"
     directory.mkdir(parents=True, exist_ok=True)
     registry = directory / "leases.json"
     with BatchLock(directory):
         leases = read_json(registry) if registry.exists() else {}
         used = {p for ports in leases.values() for p in ports}
-        for entry in m["cases"]:
+        for entry in entries:
             key = m["batch_id"] + ":" + entry["case_id"]
             if key in leases:
                 continue
@@ -615,13 +670,15 @@ def allocate_resources(cfg: dict, m: dict, folder: Path) -> dict:
                 raise Blocked("No free local ports for case resources")
             leases[key] = ports
         atomic_json(registry, leases)
-    result = {}
-    for entry in m["cases"]:
+    resources_path = folder / "resources.json"
+    result = read_json(resources_path) if resources_path.is_file() else {}
+    result = dict(result)
+    for entry in entries:
         case = case_workspace(folder, entry)
         result[entry["case_id"]] = {"ports": leases[m["batch_id"] + ":" + entry["case_id"]],
                                   "browser_profile": str(case / ".runtime" / "browser"),
                                   "temp_dir": str(case / ".runtime" / "tmp")}
-    atomic_json(folder / "resources.json", result)
+    atomic_json(resources_path, result)
     return result
 
 
@@ -1038,6 +1095,10 @@ def validate_build_contract(case: Path, source_hash: str) -> tuple[dict, set[str
     design = read_json(add(a['chart_design']))
     if not isinstance(design, dict) or design.get('rules_version') != CHART_RULES_VERSION or not isinstance(design.get('figures'), list):
         raise Blocked("chart_design missing current rules version or figures")
+    quality_addenda = design.get('quality_addenda', [])
+    professional = isinstance(quality_addenda, list) and '2026-09-28-professional-charts' in quality_addenda
+    if professional and len(charts) > 6:
+        raise Blocked("Professional chart set cannot exceed six independent result figures")
     plans = design['figures']
     if any(not isinstance(p, dict) or not isinstance(p.get('figure_id'), str) for p in plans) or len(plans) != len(charts) or {p['figure_id'] for p in plans} != ids:
         raise Blocked("chart_design must cover every chart exactly once")
@@ -1055,6 +1116,12 @@ def validate_build_contract(case: Path, source_hash: str) -> tuple[dict, set[str
                 errors.append(f'{prefix}.explanation_outline.{key}: expected nonempty string')
         if any(item.get(k + '_sha256') != sha256(artifact(case, chart[k])) for k in ('png', 'csv', 'explanation')):
             errors.append(f'{prefix}: stale PNG/CSV/explanation hashes')
+        if professional:
+            chart_type = item.get('chart_type', '').casefold()
+            forbidden = ('示意', '流程图', '架构图', '概念图', '关系图', '真值表', '卡片', '色块',
+                         'flowchart', 'architecture diagram', 'concept diagram', 'truth table')
+            if any(term in chart_type for term in forbidden):
+                errors.append(f'{prefix}.chart_type: professional result charts cannot be diagrammatic or placeholder types')
     if errors:
         raise Blocked('; '.join(errors))
     for key in ("formula_registry", "source_trace"):
@@ -1600,11 +1667,12 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
         if stage == 'video' and state.get('video_service_mismatch'):
             full['video_service_mismatch'] = state['video_service_mismatch']
             full['required_action'] = (
-                '上次新视频访问了旧服务18052，独立核验显示其模型验证响应与本轮业务修复使用的18053不同。'
-                '先只读确认18053健康身份、工作区及修复版API，再由Sol high把capture_plan、录制脚本与相关文案统一指向已核实的18053；'
-                '保全上次原视频和日志，重新排练、真实浏览器录制约10秒，逐帧解码、抽帧核对交互与可见文案，重建ui_text_audit、时间线及视频清单哈希。'
-                '不得把18052的静态页变化视为后台版本更新，也不得启动、重启或切换任何被策略拒绝的服务。'
-                '完成前不能送独立验收；详见video_service_mismatch.evidence。'
+                '上次录制使用的服务身份与本案当前修复身份不一致。'
+                '先只读核对本案 capture-plan.json、resources.json（若有）、健康接口返回的案件ID、工作区、端口、创建时间、PID、命令行和版本，'
+                '再由 Sol high 让页面、录制计划、应用输入和当前健康身份指向同一个已核实服务；'
+                '保全旧视频和日志，重新排练并录制，逐帧解码、抽帧核对交互与可见文案，重建 ui_text_audit、时间线及视频清单哈希。'
+                '不得把旧服务的静态页面变化视为当前版本，也不得启动、重启、切换或用其他命令绕过被策略拒绝的服务。'
+                '完成前不能送独立验收；详见 video_service_mismatch.evidence。'
             )
         track_inputs = stage == 'repair_final' or (efficient and stage in {'repair_video','repair_visual','prepare_video'})
         before_recording = None
@@ -1699,7 +1767,9 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
                 state['recording_pending']=True
                 state.setdefault('capture_failures',[]).append({'time':time.time(),'error':str(exc)})
                 atomic_json(state_file,state)
-                if any(term in str(exc).lower() for term in ('blocked by policy','access is denied','eacces','eperm')):
+                if any(term in str(exc).lower() for term in (
+                        'blocked by policy', 'access is denied', 'eacces', 'eperm',
+                        'memoryerror', 'memory allocation', 'out of memory')):
                     raise Blocked('Capture environment rejected the operation; no alternate execution attempted: '+str(exc)) from exc
                 call('prepare_video',{'capture_error':str(exc),'required_action':'只修复本次明确的录制计划、当前服务或页面就绪问题，复用已完成成果。缺计划时按efficient-pipeline规则准备，实际probe并看图。禁止重建无关模块或改变审查模型。'})
     def accepted(kind: str, required: set[str], files: dict[str, str]) -> bool:
@@ -1788,6 +1858,18 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
                     controlled("video")
                 return validate_manifest(case, entry["source_sha256"], video=video, cfg=cfg)
             except (Blocked, OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+                # Environment failures cannot be fixed by paying for another
+                # model call. Preserve the exact classification and stop this
+                # case so the owner can repair the runtime or policy boundary.
+                from runtime_doctor import failure_kind
+                environment_kind = failure_kind(f"{type(exc).__name__}: {exc}")
+                if environment_kind in {'policy_denied', 'memory_exhausted', 'permission_or_lock'}:
+                    blocker = {'category': environment_kind, 'message': str(exc),
+                               'stage': 'controlled_' + kind}
+                    state['worker_blocker'] = blocker
+                    state['resume_deferred'] = 'Environment blocker retained; no paid retry dispatched'
+                    atomic_json(state_file, state)
+                    raise Blocked(f"{environment_kind}: {exc}") from exc
                 if max_repairs is not None and state["repairs_" + kind] >= max_repairs:
                     raise Blocked(f"{kind} mechanical validation exhausted repairs: {exc}") from exc
                 state["repairs_" + kind] += 1
@@ -1848,7 +1930,7 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
                 "本案必要写入拒绝已由保全式复制修复，但本案服务启动命令被执行策略在运行前拒绝，详见service_start_policy.evidence。"
                 "本轮绝不启动任何服务，不换命令形式、端口、进程、父任务或权限路径重试。"
                 "先按最近一次Ultra审查逐项修正算法和输入锚点，离线实际重算、有效性回归，更新CSV、PNG、来源追踪、README和结合上下文的红字Word；保留原件及历史。"
-                "记录最终代码哈希、运行时、工作区、18028端口及将来仅需一次的精确启动命令。"
+                "记录最终代码哈希、准确运行时、工作区、已分配端口及将来仅需一次的精确启动命令。"
                 "因真实API、浏览器、重启读回和新视频仍需服务，repair-status.json须明确status=blocked、requires_user_input=true、具体策略阻断与未验证范围；"
                 "保留recording_pending，不得声称业务闭环或视觉验收通过。本阶段不录屏。"
                 if service_policy else
@@ -1892,21 +1974,13 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
                 call("repair_final", {"review": review_data("final"), "external_blocker": pending,
                                       "service_start_policy": service_policy,
                                       "required_action": (
-                                          "用户已在本案18028端口启动最终v9服务，身份、当前工作区、phm-source-v9及server.py哈希已只读核实。"
-                                          "复用现有服务，严禁停止或重启；不重复已经完成的v9离线算法、输入、图和Word建设。"
-                                          "当前/api/phm-runs仍为空，先运行verify_phm_v9.py在真实API创建、重算、读回并冻结本版结果，"
-                                          "再做浏览器交互与可见文案核验；独立SQLite持久化检查要有实际记录。"
-                                          "freeze_phm_current.py只有当前进程GET，不得称为重启读回；未实际重启就诚实保留此范围。"
-                                          "定点修正scripts/video_probe.cjs中硬编码v8的健康断言，并核对record_video.cjs、"
-                                          "recapture_video_routes_v9.cjs、finalize_video_v9.py、manifest的版本及冻结run一致性。"
-                                          "本阶段不录屏；在线自检成功后更新repair-status，保留recording_pending，由父执行器随后排队video。"
-                                          "若确需停启服务才能补某项，先在repair-status记录具体原因并停止，不自行停启。"
-                                          if service_policy and service_policy.get("status") == "resolved_by_user" else
-                                          "只读核对18028是否已有本案修复版服务及健康身份；若仍无监听或版本不符，绝不重试被策略拒绝的启动命令，"
-                                          "保持repair-status为blocked并保存现有离线成果和recording_pending。仅在外部策略问题已解决且服务真实可用时，"
-                                          "继续API、浏览器、导出与受控视频/Word验收前检查。"
-                                          if service_policy else
-                                          "核对外部条件是否已补齐；解决后重新自检并更新repair-status.json，未解决保留具体阻塞。"
+                                          "外部条件已由负责人解除时，先只读核对本案 capture-plan.json、resources.json（若有）、"
+                                          "健康接口及服务启动证据中的案件ID、工作区、端口、PID、创建时间、命令行和版本是否完全一致；"
+                                          "复用已核实的现有服务，严禁停止、重启、切换进程或用其他命令绕过策略拒绝。"
+                                          "按本案自己的 API、数据输入和脚本完成真实计算、读回、浏览器交互与导出检查，"
+                                          "仅保留本案相关的已有成果；本阶段不录屏，页面或输入变化由父执行器随后排队 video。"
+                                          "若服务仍未监听、身份不符或缺少合法解除证据，保持 repair-status=blocked、recording_pending=true，"
+                                          "保全离线成果和旧阻塞记录，禁止重复被拒绝启动。"
                                       )})
         checked(False)
         current = read_json(case / "evidence" / "artifact-manifest.json")
@@ -2037,6 +2111,10 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
 
 def run_batch(cfg: dict, ref: str, *, dry_run: bool = False, executor=invoke, case_ids=None) -> dict:
     m, folder = load_batch(cfg, ref)
+    # Keep scheduler capacity immutable for this batch.  This makes changing
+    # the machine-wide defaults safe: only newly planned batches receive the
+    # faster recording profile.
+    cfg = apply_frozen_execution_profile(cfg, m)
     selected_entries = m['cases']
     scope = {}
     if case_ids is not None:
@@ -2093,8 +2171,9 @@ def run_batch(cfg: dict, ref: str, *, dry_run: bool = False, executor=invoke, ca
         paths = [str(case_workspace(folder, e)).casefold() for e in m["cases"]]
         if len(paths) != len(set(paths)):
             raise Blocked("Case workspaces collide")
-        cfg = dict(cfg)
-        cfg["_case_resources"] = allocate_resources(cfg, m, folder)
+        # A scoped recovery must not allocate ports or rewrite resources for
+        # unselected cases. Existing rows remain intact for a later full run.
+        cfg["_case_resources"] = allocate_resources(cfg, m, folder, entries=selected_entries)
         cfg["_publication_lock"] = threading.RLock()
         index = "# 案件工作区\n\n" + "\n".join(
             f"- [{workspace_title(e['case_name'])}](<{case_workspace(folder, e).as_posix()}>)" for e in m["cases"]) + "\n"

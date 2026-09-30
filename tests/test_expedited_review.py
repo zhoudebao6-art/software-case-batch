@@ -147,5 +147,7 @@ class ExpeditedReviewTests(unittest.TestCase):
         self.assertEqual(state_path.read_bytes(),before)
         self.assertFalse(flow.case_workspace(folder,entries['untouched']).exists())
         self.assertEqual({name for name,_ in fake.stages},{'selected'})
+        resources = flow.read_json(folder / 'resources.json')
+        self.assertEqual(set(resources), {selected}, 'Scoped recovery must not allocate resources for unselected cases')
         for invalid in [[],[selected,selected],['unknown']]:
             with self.assertRaises(flow.Blocked):flow.run_batch(self.cfg,m['batch_id'],dry_run=True,case_ids=invalid)

@@ -140,12 +140,14 @@ class ParallelTests(unittest.TestCase):
         other = self.root / 'next-month'; other.mkdir()
         fixtures.docx(other / '控制方法.docx')
         actual_strftime = flow.time.strftime
+        current_month = actual_strftime('%Y-%m')
+        future_month = '2099-12' if current_month != '2099-12' else '2099-11'
         def next_month(fmt, *args):
-            return '2026-10' if fmt == '%Y-%m' else actual_strftime(fmt, *args)
+            return future_month if fmt == '%Y-%m' else actual_strftime(fmt, *args)
         with patch.object(flow.time, 'strftime', side_effect=next_month):
             new = flow.plan(self.cfg, other)
             resumed = flow.plan(self.cfg, self.source)
-        self.assertEqual(new['cases'][0]['workspace_relative'], '2026-10/控制方法')
+        self.assertEqual(new['cases'][0]['workspace_relative'], future_month + '/控制方法')
         self.assertEqual(resumed['cases'][0]['workspace_relative'], original['cases'][0]['workspace_relative'])
 
     def test_recording_slot_contention_does_not_fail_waiters(self):

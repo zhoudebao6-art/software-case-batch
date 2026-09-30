@@ -86,7 +86,11 @@ async function session(record) {
 (async()=>{
   fs.mkdirSync(output,{recursive:true});
   if(mode==='record') assertNoOwnerRepair(caseDir);
-  if(mode==='record') { await session(false); pages.length=0; events.length=0; assertNoOwnerRepair(caseDir); }
+  // The deliverable-first/efficient pipeline already runs the real browser
+  // probe during preparation. Reopening a second browser here only repeats
+  // navigation, fonts and image decoding, consumes extra memory, and adds no
+  // new evidence. The recorded session below performs the same ready/error
+  // checks and emits the bound screenshots and video in one pass.
   const raw=await session(mode==='record');
   if(mode==='record') assertNoOwnerRepair(caseDir);
   const result={schema_version:1,mode,pages,events,errors,raw_video:raw,case_id:request.case_id,version:plan.version};

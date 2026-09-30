@@ -6,6 +6,40 @@ import subprocess
 import tempfile
 
 
+def available_memory_mb():
+    """Return currently available physical memory without third-party packages."""
+    if os.name == 'nt':
+        import ctypes
+        class MemoryStatus(ctypes.Structure):
+            _fields_ = [('length', ctypes.c_ulong), ('memory_load', ctypes.c_ulong),
+                        ('total_phys', ctypes.c_ulonglong), ('avail_phys', ctypes.c_ulonglong),
+                        ('total_page', ctypes.c_ulonglong), ('avail_page', ctypes.c_ulonglong),
+                        ('total_virtual', ctypes.c_ulonglong), ('avail_virtual', ctypes.c_ulonglong),
+                        ('avail_extended_virtual', ctypes.c_ulonglong)]
+        status = MemoryStatus()
+        status.length = ctypes.sizeof(MemoryStatus)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+            return int(status.avail_phys / (1024 * 1024))
+        return None
+    try:
+        for line in Path('/proc/meminfo').read_text(encoding='ascii').splitlines():
+            if line.startswith('MemAvailable:'):
+                return int(line.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+def recording_memory_requirement_mb(cfg):
+    execution = cfg.get('execution', {})
+    slots = execution.get('recording_concurrency', 1)
+    floor = execution.get('recording_min_available_mb', 0)
+    reserve = execution.get('recording_reserve_mb', 0)
+    if not all(isinstance(x, int) and x >= 0 for x in (slots, floor, reserve)):
+        return 0
+    return floor + max(0, slots - 1) * reserve
+
+
 def failure_kind(message):
     text = message.lower()
     if 'blocked by policy' in text or 'rejected by policy' in text:
@@ -20,6 +54,15 @@ def failure_kind(message):
 def check_environment(cfg, *, smoke=False, check_cli=True):
     runtime = cfg.get('runtime', {})
     errors, checks = [], []
+    execution = cfg.get('execution', {})
+    required_memory = recording_memory_requirement_mb(cfg)
+    if required_memory:
+        available = available_memory_mb()
+        if available is not None:
+            checks.append({'name': 'recording_memory', 'ok': available >= required_memory,
+                           'available_mb': available, 'required_mb': required_memory})
+            if available < required_memory:
+                errors.append(f'Recording memory guard: {available}MB available, at least {required_memory}MB required for {execution.get("recording_concurrency", 1)} recording slot(s); close unrelated programs or lower only this machine\'s recording concurrency before run')
     for key in ('python', 'node', 'ffmpeg', 'ffprobe', 'soffice', 'pdftoppm', 'docx_renderer'):
         if not runtime.get(key) or not Path(runtime[key]).is_file():
             errors.append('Missing runtime.' + key + '; configure this machine in config.json')
