@@ -1,0 +1,11 @@
+{
+  "version": "2026-09-28-legend-series-matching",
+  "effective_scope": "Only batches first registered after this update. Already registered batches and their unfinished cases are excluded from this addendum.",
+  "existing_batch_ids": [
+    "26db2bdcb74b4bb4bf1d",
+    "3643e1ce692917b4ba13",
+    "4909d1a853ec4cdaeaa8",
+    "4cce434714d4006433e4"
+  ],
+  "scope_evidence": "evidence/legend-policy-20260928/validation.json"
+}

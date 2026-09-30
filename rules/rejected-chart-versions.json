@@ -1,0 +1,100 @@
+{
+  "version": "2026-09-24",
+  "versions": [
+    {
+      "sha256": "61752b984ec5947f178de7b84b8cbe1f11c043b57de06e937bfe0c6b004a6e8a",
+      "reason": "用户2026-09-24明确否定此版本：图形难懂、效果差，需要重新选题制作，不沿用旧验收。",
+      "evidence": "evidence/quality-audit-20260924/user-rejected-1.png"
+    },
+    {
+      "sha256": "37833c42744a1b43b00c5f10dbf604718211a218e0ebfe781406e5ef67e730e4",
+      "reason": "用户2026-09-24明确否定此版本：图形难懂、效果差，需要重新选题制作，不沿用旧验收。",
+      "evidence": "evidence/quality-audit-20260924/user-rejected-2.png"
+    },
+    {
+      "sha256": "bd058562ae5bb464e1e865f7229bea957901b7da15a559425c5aac2d72645055",
+      "reason": "用户2026-09-24明确否定此版本：图形难懂、效果差，需要重新选题制作，不沿用旧验收。",
+      "evidence": "evidence/quality-audit-20260924/user-rejected-3.png"
+    },
+    {
+      "sha256": "57308f4d8fc535e03b5273c36473d21c6a441745e086d6d69c4199ad3e932370",
+      "reason": "用户2026-09-24明确否定此版本：图形难懂、效果差，需要重新选题制作，不沿用旧验收。",
+      "evidence": "evidence/quality-audit-20260924/user-rejected-4.png"
+    },
+    {
+      "sha256": "fa64f766ecf630ec8f39f9cbfc1f34f109bcf7cd13dbc9cd814eaf5fa4edf6da",
+      "reason": "用户2026-09-24明确否定此版本：图形难懂、效果差，需要重新选题制作，不沿用旧验收。",
+      "evidence": "evidence/quality-audit-20260924/old-figures/基于实时渲染的流式数字人推理方法/fig-4.png"
+    },
+    {
+      "sha256": "9684421fa53e4d57cb98bec89a3c05657ac3d9a6a130360a68dcd438948123a9",
+      "reason": "用户2026-09-24明确否定此版本：图形难懂、效果差，需要重新选题制作，不沿用旧验收。",
+      "evidence": "evidence/quality-audit-20260924/old-figures/基于实时渲染的流式数字人推理方法/fig-5.png"
+    },
+    {
+      "sha256": "66745ed2d1ec29fc65d705af1baee64fb1b1ae9a4c04181b65e8fc5c90bab747",
+      "reason": "用户2026-09-24明确否定此版本：图形难懂、效果差，需要重新选题制作，不沿用旧验收。",
+      "evidence": "evidence/quality-audit-20260924/old-figures/基于实时渲染的流式数字人推理方法/fig-6.png"
+    },
+    {
+      "sha256": "98d50c783c5fb141a5ec15fb006e5e846f78b1768cc893cc34e797862dbca963",
+      "reason": "用户2026-09-24明确否定此版本：图形难懂、效果差，需要重新选题制作，不沿用旧验收。",
+      "evidence": "evidence/quality-audit-20260924/old-figures/基于语义融合的多源健康数据整合方法/fig-3.png"
+    },
+    {
+      "sha256": "29bd9f2fe2125129fbc5e8ffc4fca1717a50c24de777dee2a29a618260259fbc",
+      "reason": "用户2026-09-24明确否定此版本：图形难懂、效果差，需要重新选题制作，不沿用旧验收。",
+      "evidence": "evidence/quality-audit-20260924/old-figures/基于语义融合的多源健康数据整合方法/fig-4.png"
+    },
+    {
+      "sha256": "e32bd5df31248ffd6a4c1946e45b39d293779b9f7a2c6f442e8afabf1209ae35",
+      "reason": "用户2026-09-24明确否定此版本：图形难懂、效果差，需要重新选题制作，不沿用旧验收。",
+      "evidence": "evidence/quality-audit-20260924/old-figures/基于语义融合的多源健康数据整合方法/fig-5.png"
+    },
+    {
+      "sha256": "915d696e57663106fd780c63b818d15ea1445eb9ab61c1fba9ebaed31355df4a",
+      "reason": "用户2026-09-24明确否定此版本：图形难懂、效果差，需要重新选题制作，不沿用旧验收。",
+      "evidence": "evidence/quality-audit-20260924/old-figures/慢病平台端云协同推理任务动态分配方法/fig-3.png"
+    },
+    {
+      "sha256": "9af225651a228ffeffe26238fe3f11539398db322b7db8da3c8a72f8eb9afec6",
+      "reason": "用户2026-09-24明确否定此版本：图形难懂、效果差，需要重新选题制作，不沿用旧验收。",
+      "evidence": "evidence/quality-audit-20260924/old-figures/慢病平台端云协同推理任务动态分配方法/fig-4.png"
+    },
+    {
+      "sha256": "df38559e03458ffd9fc6d38303e349511d704c76834e56779b9c1edb926967b1",
+      "reason": "用户2026-09-24明确否定此版本：图形难懂、效果差，需要重新选题制作，不沿用旧验收。",
+      "evidence": "evidence/quality-audit-20260924/old-figures/慢病平台端云协同推理任务动态分配方法/fig-5.png"
+    },
+    {
+      "sha256": "95e0ebe5b6dc6c463af52aed480daa328c26b8d850b22acd6dbb4ca635a34e14",
+      "reason": "用户2026-09-24明确否定此版本：图形难懂、效果差，需要重新选题制作，不沿用旧验收。",
+      "evidence": "evidence/quality-audit-20260924/old-figures/碳化硅固晶框架进料的双信号联锁控制方法/fig-3.png"
+    },
+    {
+      "sha256": "ac302d519aeac9acdff39c6c4a2e284ff415a79ec047cf65012557e6bf5951d6",
+      "reason": "用户2026-09-24明确否定此版本：图形难懂、效果差，需要重新选题制作，不沿用旧验收。",
+      "evidence": "evidence/quality-audit-20260924/old-figures/碳化硅固晶框架进料的双信号联锁控制方法/fig-4.png"
+    },
+    {
+      "sha256": "b4bc3a528219a37cabeb85467d829fa992c499ef7b59040d38e6d652718452ea",
+      "reason": "用户2026-09-24明确否定此版本：图形难懂、效果差，需要重新选题制作，不沿用旧验收。",
+      "evidence": "evidence/quality-audit-20260924/old-figures/碳化硅固晶框架进料的双信号联锁控制方法/fig-5.png"
+    },
+    {
+      "sha256": "5479ebc59c41cd761ba03529fb6f2ba5fbb6845f8c49d706fae17a4af3533ca8",
+      "reason": "用户2026-09-24明确否定此版本：图形难懂、效果差，需要重新选题制作，不沿用旧验收。",
+      "evidence": "evidence/quality-audit-20260924/old-figures/面向轮架自动线的机械手放置激光测距控制与姿态校正方法/fig-3.png"
+    },
+    {
+      "sha256": "59846e45f2cbca2f3d6992fcbf2ddc7af096577d62c4740cd45434080d3ec7ca",
+      "reason": "用户2026-09-24明确否定此版本：图形难懂、效果差，需要重新选题制作，不沿用旧验收。",
+      "evidence": "evidence/quality-audit-20260924/old-figures/面向轮架自动线的机械手放置激光测距控制与姿态校正方法/fig-4.png"
+    },
+    {
+      "sha256": "a64867e3c52a3a6402f50023525cb6032bd70f6379905c8d1d147b238ca02295",
+      "reason": "用户2026-09-24明确否定此版本：图形难懂、效果差，需要重新选题制作，不沿用旧验收。",
+      "evidence": "evidence/quality-audit-20260924/old-figures/面向轮架自动线的机械手放置激光测距控制与姿态校正方法/fig-5.png"
+    }
+  ]
+}

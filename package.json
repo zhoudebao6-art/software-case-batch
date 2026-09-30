@@ -1,0 +1,12 @@
+{
+  "name": "software-case-batch",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local Windows Word and video batch pipeline",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "playwright": "1.62.1"
+  }
+}

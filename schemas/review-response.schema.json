@@ -1,0 +1,149 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "review_id",
+    "verdict",
+    "issues",
+    "chart_reviews",
+    "reviewed_evidence",
+    "coverage",
+    "limitations"
+  ],
+  "properties": {
+    "protocol": {
+      "type": "string",
+      "enum": [
+        "evidence-ids-v1"
+      ]
+    },
+    "review_id": {
+      "type": "string"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "revise",
+        "blocked"
+      ]
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "severity",
+          "artifact",
+          "evidence",
+          "fix"
+        ],
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": [
+              "blocker",
+              "major",
+              "minor"
+            ]
+          },
+          "artifact": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "fix": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "chart_reviews": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "figure_id",
+          "checks",
+          "evidence_ids"
+        ],
+        "properties": {
+          "figure_id": {
+            "type": "string"
+          },
+          "checks": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "meaning",
+              "data",
+              "legibility",
+              "layout",
+              "explanation"
+            ],
+            "properties": {
+              "meaning": {
+                "$ref": "#/$defs/criterion"
+              },
+              "data": {
+                "$ref": "#/$defs/criterion"
+              },
+              "legibility": {
+                "$ref": "#/$defs/criterion"
+              },
+              "layout": {
+                "$ref": "#/$defs/criterion"
+              },
+              "explanation": {
+                "$ref": "#/$defs/criterion"
+              }
+            }
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "reviewed_evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "coverage": {
+      "type": "string"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "criterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "passed",
+        "evidence"
+      ],
+      "properties": {
+        "passed": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "issues", "reviewed_files", "snapshot_sha256", "coverage", "limitations", "rules_version", "chart_reviews"],
+  "properties": {
+    "rules_version": {"type": "string", "enum": ["2026-09-24"]},
+    "chart_reviews": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["figure_id", "png", "png_sha256", "checks", "evidence_files"],
+      "properties": {
+        "figure_id": {"type": "string"}, "png": {"type": "string"}, "png_sha256": {"type": "string"},
+        "evidence_files": {"type": "array", "items": {"type": "string"}},
+        "checks": {"type": "object", "additionalProperties": false,
+          "required": ["meaning", "data", "legibility", "layout", "explanation"],
+          "properties": {
+            "meaning": {"$ref": "#/$defs/criterion"}, "data": {"$ref": "#/$defs/criterion"},
+            "legibility": {"$ref": "#/$defs/criterion"}, "layout": {"$ref": "#/$defs/criterion"},
+            "explanation": {"$ref": "#/$defs/criterion"}
+          }
+        }
+      }
+    }},
+    "verdict": {"type": "string", "enum": ["pass", "revise", "blocked"]},
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "artifact", "evidence", "fix"],
+        "properties": {
+          "severity": {"type": "string", "enum": ["blocker", "major", "minor"]},
+          "artifact": {"type": "string"},
+          "evidence": {"type": "string"},
+          "fix": {"type": "string"}
+        }
+      }
+    },
+    "reviewed_files": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": {"path": {"type": "string"}, "sha256": {"type": "string"}}}},
+    "snapshot_sha256": {"type": "string"},
+    "coverage": {"type": "string"},
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {"criterion": {"type": "object", "additionalProperties": false,
+    "required": ["passed", "evidence"], "properties": {"passed": {"type": "boolean"}, "evidence": {"type": "string"}}
+  }}
+}

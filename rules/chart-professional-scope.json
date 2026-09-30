@@ -1,0 +1,9 @@
+{
+  "version": "2026-09-28-professional-charts",
+  "effective_scope": "Only batches first registered after this update; existing batches remain on their prior chart policy.",
+  "existing_batch_ids": [
+    "3643e1ce692917b4ba13",
+    "26db2bdcb74b4bb4bf1d"
+  ],
+  "scope_evidence": "evidence/chart-policy-20260928/scope-snapshot.json"
+}

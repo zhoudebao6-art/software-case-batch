@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "runner": {
+    "worker_approval_mode": "auto_review",
+    "workspace_root": "cases",
+    "output_policy": "sibling_suffix_1",
+    "model_timeout_seconds": 7200,
+    "review_timeout_seconds": 3600,
+    "max_repairs_per_review": null,
+    "review_mode": "combined_final",
+    "require_ui_text_audit": true,
+    "max_final_review_repairs": null,
+    "codex_executable": null,
+    "prompts_dir": "prompts",
+    "protected_source_roots": [],
+    "max_review_calls_per_case": null,
+    "pipeline_profile": "deliverable-first-v1",
+    "delivery_profile": "word-video",
+    "environment_preflight": true
+  },
+  "models": {
+    "builder": {
+      "model": "gpt-6.1-sol",
+      "reasoning_effort": "high"
+    },
+    "repairer": {
+      "model": "gpt-6.1-sol",
+      "reasoning_effort": "ultra"
+    },
+    "reviewer": {
+      "model": "gpt-6-sol",
+      "reasoning_effort": "ultra"
+    },
+    "allow_fallback": false,
+    "expedited_reviewer": {
+      "model": "gpt-6-astra",
+      "reasoning_effort": "low"
+    }
+  },
+  "video": {
+    "target_seconds": 10,
+    "min_seconds": 8,
+    "max_seconds": 12,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "modules_min": 1,
+    "modules_max": 2,
+    "sample_fps": 5
+  },
+  "execution": {
+    "trigger": "confirmed_batch",
+    "case_concurrency": 8,
+    "review_concurrency": 3,
+    "recording_concurrency": 1,
+    "evidence_concurrency": 1,
+    "keep_original": true,
+    "overwrite_existing": false,
+    "fair_queue": true,
+    "expedited_review_concurrency": 1
+  },
+  "standards": "rules/requirements.md",
+  "runtime": {
+    "python": null,
+    "ffmpeg": null,
+    "ffprobe": null,
+    "soffice": null,
+    "pdftoppm": null,
+    "docx_renderer": "scripts/render_word.py",
+    "node": null,
+    "node_modules": null
+  }
+}
