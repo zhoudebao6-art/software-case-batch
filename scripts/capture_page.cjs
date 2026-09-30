@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const {reuseAudit,assertNoOwnerRepair} = require('./capture_audit_reuse.cjs');
+const {watchTransition} = require('./capture_transition.cjs');
 const {createRequire} = require('module');
 const request = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const {chromium} = createRequire(path.join(request.node_modules, 'package.json'))('playwright');
@@ -60,8 +61,14 @@ async function session(record) {
       const module=plan.modules[index];
       if(index) {
         events.push({type:'interaction_start',elapsed_ms:Date.now()-started});
+        const finish=plan.schema_version===2 ? await watchTransition(page,plan.modules) : null;
         await page.locator(module.enter_selector).click();
         await ready(page,module);
+        if(finish) {
+          const continuity=await finish();
+          events.push({type:'transition_continuity',...continuity});
+          if(!continuity.ok) throw Error('Transition lost both ready business pages; keep the previous page and navigation visible until the next page is ready');
+        }
         events.push({type:'module_ready',elapsed_ms:Date.now()-started});
       }
       if(record || mode==='probe') await evidence(page,module,index);
@@ -86,4 +93,7 @@ async function session(record) {
   fs.writeFileSync(path.join(output,'browser.json'),JSON.stringify(result,null,2));
   console.log(JSON.stringify({mode,raw_video:raw,errors,states:pages.length}));
   if(errors.length) process.exitCode=1;
-})().catch(error=>{console.error(error.stack);process.exitCode=1;});
+})().catch(error=>{
+  fs.writeFileSync(path.join(output,'browser-failure.json'),JSON.stringify({mode,pages,events,errors:[...errors,error.message]},null,2));
+  console.error(error.stack);process.exitCode=1;
+});

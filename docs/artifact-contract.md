@@ -93,6 +93,12 @@ verification.json 至少说明：
 
 chart_design指定JSON必须含rules_version="2026-09-24"和figures数组。每图条目为：figure_id、business_question、reader_takeaway、chart_type、selection_reason、scenario_coverage、calculation_basis；explanation_outline含purpose、reading、calculation、findings、decision五个本图具体摘要，并含word_context记录源段落/实施例锚点及承前启后的具体安排；最终png_sha256、csv_sha256、explanation_sha256与清单文件一致。例：business_question应是“撤离后信号未释放会在哪一阶段禁止交接”，不能填“展示F01”。来源可以是实施例、业务过程、实际运行或公式，不强迫公式成图，不设说明字数限制。图或说明更新后同时刷新此证据，空字段不算准备完成。
 
+上述 `business_question/reader_takeaway/chart_type/selection_reason/scenario_coverage/calculation_basis` 和 `explanation_outline` 五个摘要均为**非空字符串**；结构化计算对象可另存 `calculation_trace`，不能用对象或数组替代 `calculation_basis`。例如：`"calculation_basis":"依实施例2的F03，以input.csv中的电流及阈值实际计算越限持续时间，结果见run-001.csv；输入构造和范围见README。"`。每图应有本图特定工况、数值读法、计算依据，不复制泛化摘要。
+
+建设结束前，以 `context.runtime.python` 运行项目 `scripts/build_preflight.py "本案工作区" "context.source_docx" --source-sha256 "context.source_sha256"`（参数替换为context真实值）。该命令只读当前合同、原件及修订Word，不调用模型、服务、渲染器或录制器，可在全页渲染前执行；一次列出各图字段错误以及Word保留/末尾插图/正文引用错误。父执行器使用同一合同校验函数，避免建设自检与发布校验两套格式。修正明确问题后再渲染最后版本，仍实际检查全部渲染页；自检通过不代表独立验收通过。
+
+独立验收提交前可用 `scripts/review_check.py "context.review_request_path" --ids E001 E002 ...` 核对实际已核验或合法沿用的清单。它只报缺项、重复和未知ID，不写报告、不补已阅项、不修改结论。PDF本体也在必需清单时，核对其页数、文档完整性与render绑定；逐页视觉可通过当前PNG完成，复验按未变哈希沿用真实已有检查，勿再次渲染。未核验的证据必须实际核验后再登记。
+
 允许 verdict 仅为 pass/revise/blocked，severity 仅为 blocker/major/minor。pass 不能带有 blocker 或 major 问题。issues 中给出可定位的图像、页、时间段和修复方式。reviewed_files 必须有真实读取/审查依据，不可抄哈希列表而不检查；path 不重复，覆盖 required_review_files。复验仅可对同规则版本且未被用户否定的未变化文件沿用此前实际审查与哈希绑定的证据，但coverage必须区分本次打开和沿用；变更文件及关联产物必须重查。每个对象使用固定字段，以满足严格结构化输出协议。编排器保存模型调用记录、审查输出和文件指纹；任何相关成果变化，旧 pass 失效。review 的输出由编排器保存，建设者不能替代 独立验收者 自签报告。文件哈希只保证版本对应，视觉合格仍依靠实际看图和证据判断。
 
 默认combined_final只需一份final_review，覆盖视觉与视频所有证据；此前分开visual_review/video_review模式保留兼容。可修复问题循环Sol返修和独立验收者复验至通过。返修者在evidence/repair-status.json报告ready_for_review，或在确实需要外部输入时报告blocked、requires_user_input:true及具体reason；一般图表、排版、代码错误应继续修复。

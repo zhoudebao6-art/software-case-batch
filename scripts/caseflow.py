@@ -762,7 +762,8 @@ def bind_review_response(raw: dict, request: dict, files: dict[str, str], requir
         return [index[i] for i in ids]
     reviewed = paths(raw['reviewed_evidence'])
     if raw['verdict'] != 'revise' and not required.issubset(reviewed):
-        raise Blocked('Review omits required evidence')
+        missing = [f'{key}={path}' for key, path in index.items() if path in required and path not in reviewed]
+        raise Blocked('Review omits required evidence: ' + '; '.join(missing))
     if not isinstance(raw['chart_reviews'], list):
         raise Blocked('Invalid per-chart response')
     by_id = {c['figure_id']: c for c in manifest['charts']}
@@ -986,7 +987,8 @@ def contact_sample_coverage(frames: list, sheets: list) -> set[str]:
     return {frame['file'] for frame in frames if frame.get('type') == 'uniform_sample'}
 
 
-def validate_manifest(case: Path, source_hash: str, *, video: bool, cfg: dict) -> tuple[dict, set[str]]:
+def validate_build_contract(case: Path, source_hash: str) -> tuple[dict, set[str]]:
+    """Shared cheap contract: usable before parent-owned rendering or recording."""
     ap = artifact(case, "evidence/artifact-manifest.json")
     a = read_json(ap)
     if a.get("source_sha256") != source_hash:
@@ -1031,18 +1033,35 @@ def validate_manifest(case: Path, source_hash: str, *, video: bool, cfg: dict) -
     if any(not isinstance(p, dict) or not isinstance(p.get('figure_id'), str) for p in plans) or len(plans) != len(charts) or {p['figure_id'] for p in plans} != ids:
         raise Blocked("chart_design must cover every chart exactly once")
     by_id = {p['figure_id']: p for p in plans}
+    errors = []
     for chart in charts:
         item = by_id[chart['figure_id']]
-        if any(not isinstance(item.get(k), str) or not item[k].strip() for k in ('business_question', 'reader_takeaway', 'chart_type', 'selection_reason', 'scenario_coverage', 'calculation_basis')):
-            raise Blocked("chart_design requires concrete purpose, selection, coverage and calculation basis")
+        prefix = f"chart_design[{chart['figure_id']}]"
+        for key in ('business_question', 'reader_takeaway', 'chart_type', 'selection_reason', 'scenario_coverage', 'calculation_basis'):
+            if not isinstance(item.get(key), str) or not item[key].strip():
+                errors.append(f'{prefix}.{key}: expected nonempty string, got {type(item.get(key)).__name__}')
         sections = item.get('explanation_outline')
-        if not isinstance(sections, dict) or any(not isinstance(sections.get(k), str) or not sections[k].strip() for k in ('purpose', 'reading', 'calculation', 'findings', 'decision')):
-            raise Blocked("chart_design requires a detailed explanation outline")
+        for key in ('purpose', 'reading', 'calculation', 'findings', 'decision'):
+            if not isinstance(sections, dict) or not isinstance(sections.get(key), str) or not sections[key].strip():
+                errors.append(f'{prefix}.explanation_outline.{key}: expected nonempty string')
         if any(item.get(k + '_sha256') != sha256(artifact(case, chart[k])) for k in ('png', 'csv', 'explanation')):
-            raise Blocked("chart_design contains stale PNG/CSV/explanation hashes")
+            errors.append(f'{prefix}: stale PNG/CSV/explanation hashes')
+    if errors:
+        raise Blocked('; '.join(errors))
     for key in ("formula_registry", "source_trace"):
         if not read_json(add(a[key])):
             raise Blocked(f"Empty source audit: {key}")
+    return a, required
+
+
+def validate_manifest(case: Path, source_hash: str, *, video: bool, cfg: dict) -> tuple[dict, set[str]]:
+    a, required = validate_build_contract(case, source_hash)
+    def add(value: str, kind: str | None = None) -> Path:
+        p = artifact(case, value)
+        if kind == 'image' and not good_image(p):
+            raise Blocked(f'Invalid image: {value}')
+        required.add(value)
+        return p
     for key in ("ui_screenshots", "rendered_pages"):
         arr = a.get(key)
         if not isinstance(arr, list) or not arr:
@@ -1192,6 +1211,7 @@ def prompt(cfg: dict, stage: str, context: dict) -> str:
         body = '\n'.join(line for line in body.splitlines() if not line.startswith(('只返回', '提交前逐字符', '返回字段必须', '2026-09-24协议更新')))
         body += '\n\n输出必须使用review-response.schema.json的evidence-ids-v1协议。只返回review_id、protocol、verdict、issues、chart_reviews、reviewed_evidence、coverage、limitations八字段。reviewed_evidence和每图evidence_ids填写review_request.evidence中的短ID，不抄写SHA256或长路径列表，不输出旧版reviewed_files/snapshot_sha256/png_sha256。父执行器核对审查前后文件未变，再绑定哈希，保留原始答复。必须实际审查当前全部必要证据，覆盖方式在coverage中明确；不得把声明IDs当成看过。'
         body += '\n受控timeline若含完整frame_files映射，均匀采样画面通过全部接触页审查，reviewed_evidence只登记实际看的接触页ID，不声称逐个打开原帧。全部原帧仍由父执行器逐个验证哈希；真实首尾帧、交互前后关键原帧和疑点原帧仍须打开。coverage明确本次查看方式。旧timeline无映射时不推定覆盖。revise证据清单不全可作为返修意见，但不能签通过；pass必须覆盖全部当前必要ID。'
+        body += '\n提交pass前，用context.runtime.python运行共享scripts/review_check.py "context.review_request_path" --ids 后跟本次实际检查或合法沿用的全部短ID，先核对遗漏/重复/未知ID。程序只检查清单，不证明已阅，也不补齐ID。PDF与其PNG页是不同证据：PDF需读取页数/文档完整性并核对受控render绑定；全页视觉可由当前PNG完成。复验可沿用此前真正核验且哈希未变的PDF，不重复渲染或逐页重读，但须在coverage如实说明。未核验的缺项先实际核验，不能直接抄齐清单。'
     body += '\n\n用户已授权加急案件独立验收使用gpt-6-astra/low，普通案件仍为gpt-6-sol/ultra；实际角色以context.review_route和真实CLI参数为准。加急只改变审查模型与排队槽，图表/Word/界面/视频的证据覆盖、哈希绑定和通过条件不变，返修使用显式repairer配置。旧规则中固定ultra的表述仅适用普通审查，不能要求加急案再排一次Sol Ultra，也不能自行切模型或自签通过。'
     builder = cfg.get('models', {}).get('builder', {}).get('model')
     if builder:
@@ -1691,6 +1711,7 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
         atomic_json(request_file, {**request, 'snapshot_files': files, 'required_files': sorted(required)})
         rec = call("review_" + kind, {"snapshot_sha256": snapshot_id(files),
                                 "review_request": request,
+                                "review_request_path": str(request_file),
                                 "snapshot_files": {p: files[p] for p in sorted(required)},
                                 "changed_files": sorted(p for p in set(files) | set(previous_files) if files.get(p) != previous_files.get(p)) if previous_files else sorted(required),
                                 "required_review_files": sorted(required), "review_output": str(output)}, output)
@@ -1748,6 +1769,9 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
         kind = "video" if video else "visual"
         while True:
             try:
+                # Find cheap metadata errors before rendering/recording. The same
+                # validator is available to the builder inside its initial call.
+                validate_build_contract(case, entry['source_sha256'])
                 if video and efficient and state.get('recording_pending'):
                     call('video')
                 controlled("word")
