@@ -15,3 +15,6 @@
 提交前逐字符核对 reviewed_files 中每条摘要。context.snapshot_files 已给出 required_review_files 的当前哈希，直接照录，不凭记忆手敲或截短；额外检查文件须在只读环境中计算 SHA-256 后再填。尤其 pass 结论若有任何摘要笔误，父执行器会拒绝放行并重新验收。
 
 Word图说明要结合插入处前后文及所属实施例重新组织，不能硬贴独立图表说明；无字数限制。实际读前文—新增说明—后文，检查对象、术语、工况、因果与衔接，原文保留、增补标红。chart_design.explanation_outline.word_context记录具体插入锚点及衔接依据，审查explanation项必须覆盖这项。
+
+
+Word排版固定规则：红字说明应合理插入正文对应实施例的合适部分，衔接前后文，每图自然写入“请参考图N”等独立引用，不能只写图下图题；仅新增图片及其图题按图号统一追加在全部原文内容之后，图题在对应图片下方。原文、原图、原式及其位置保留。禁止图片夹入实施例，禁止说明随图片一起移到文末。 最终渲染同时检查正文说明和文末图页；verify_docx 的 all_requested_figures_at_document_end 与 all_requested_figures_referenced_in_body 必须为 true，图片仅存在于 ZIP 媒体中不等于插入正确。

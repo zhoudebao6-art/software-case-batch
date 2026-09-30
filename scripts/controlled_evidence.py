@@ -74,6 +74,10 @@ def produce(case, original, mode, config):
         proof = verify(original, document, [artifact(case, c['png']) for c in a['charts']])
         if not proof['structural_preservation_ok'] or not proof['all_requested_figures_embedded']:
             raise ValueError('Original text/formula/media changed or final figure not embedded: ' + json.dumps(proof, ensure_ascii=False))
+        if not proof['all_requested_figures_at_document_end']:
+            raise ValueError('New Word figures/captions must be at document end; explanations stay in body: ' + json.dumps(proof['figure_placement'], ensure_ascii=False))
+        if not proof['all_requested_figures_referenced_in_body']:
+            raise ValueError('Each new Word figure needs its own reference in the body explanation: ' + json.dumps(proof['figure_placement'], ensure_ascii=False))
         if proof['original_sha256'] != a['source_sha256']:
             raise ValueError('Original hash does not match manifest')
         output = case / 'evidence/controlled-word' / f'{before[:12]}-{time.time_ns()}'

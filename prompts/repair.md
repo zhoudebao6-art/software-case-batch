@@ -13,3 +13,6 @@
 
 Word图说明要结合插入处前后文及所属实施例重新组织，不能硬贴独立图表说明；无字数限制。实际读前文—新增说明—后文，检查对象、术语、工况、因果与衔接，原文保留、增补标红。chart_design.explanation_outline.word_context记录具体插入锚点及衔接依据，审查explanation项必须覆盖这项。
 服务维护前置规则：先阅读worker-environment.md末尾“运行环境与停服前置检查”。如果本案已有启动blocked by policy且未解除，禁止停止任何仍健康的本案服务；先完成可做的算法/文案/离线测试，准确记录在线版本与磁盘版本差异及待完成的真实UI/视频/重启读回。不得为了满足重启验收先停服务再等待外部救援。Python依赖用真实venv启动器预检，不把基础解释器的ModuleNotFoundError记为权限故障。
+
+
+Word排版固定规则：红字说明应合理插入正文对应实施例的合适部分，衔接前后文，每图自然写入“请参考图N”等独立引用，不能只写图下图题；仅新增图片及其图题按图号统一追加在全部原文内容之后，图题在对应图片下方。原文、原图、原式及其位置保留。禁止图片夹入实施例，禁止说明随图片一起移到文末。 最终渲染同时检查正文说明和文末图页；verify_docx 的 all_requested_figures_at_document_end 与 all_requested_figures_referenced_in_body 必须为 true，图片仅存在于 ZIP 媒体中不等于插入正确。

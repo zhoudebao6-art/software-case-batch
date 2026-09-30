@@ -1069,6 +1069,12 @@ def validate_manifest(case: Path, source_hash: str, *, video: bool, cfg: dict) -
     if report.get("rendered_page_count") != len(a["rendered_pages"]):
         raise Blocked("Rendered page count mismatch")
     preservation = read_json(add(a["preservation_report"]))
+    # Historical reports keep their frozen protocol. Newly generated reports
+    # explicitly check placement; a failed check cannot be accepted or exported.
+    if preservation.get("all_requested_figures_at_document_end") is False:
+        raise Blocked("New Word figures/captions are not at document end")
+    if preservation.get("all_requested_figures_referenced_in_body") is False:
+        raise Blocked("New Word figure reference missing from body explanation")
     if preservation.get("original_sha256") != source_hash or preservation.get("revised_sha256") != report["rendered_docx_sha256"] or not preservation.get("structural_preservation_ok") or not preservation.get("all_requested_figures_embedded"):
         raise Blocked("Word preservation evidence failed or stale")
     render = read_json(add(a["render_report"]))

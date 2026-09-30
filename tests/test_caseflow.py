@@ -205,6 +205,23 @@ class CaseflowTests(unittest.TestCase):
         self.assertFalse((flow.case_workspace(flow.batch_folder(self.cfg, m), m["cases"][0])).exists())
         self.assertEqual(flow.sha256(p), m["cases"][0]["source_sha256"])
 
+    def test_failed_word_placement_blocks_artifact_acceptance(self):
+        self.make_source()
+        manifest = flow.plan(self.cfg, self.source)
+        self.run_fake(FakeExecutor())
+        entry = manifest['cases'][0]
+        case = flow.case_workspace(flow.batch_folder(self.cfg, manifest), entry)
+        path = case / 'evidence/preservation.json'
+        proof = flow.read_json(path)
+        for key, message in [('all_requested_figures_at_document_end', 'not at document end'),
+                             ('all_requested_figures_referenced_in_body', 'reference missing')]:
+            with self.subTest(check=key):
+                proof[key] = False
+                flow.atomic_json(path, proof)
+                with self.assertRaisesRegex(flow.Blocked, message):
+                    flow.validate_manifest(case, entry['source_sha256'], video=False, cfg=self.cfg)
+                proof.pop(key)
+
     def test_batch_specific_inner_delivery_survives_replan(self):
         self.make_source()
         planned = flow.plan(self.cfg, self.source)
