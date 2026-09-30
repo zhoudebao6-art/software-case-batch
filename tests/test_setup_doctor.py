@@ -10,7 +10,9 @@ class SetupDoctorTests(unittest.TestCase):
     def test_recording_default_is_two_slots_with_memory_guard(self):
         from caseflow import config_at
         root = Path(__file__).resolve().parents[1]
-        cfg = config_at(root / 'config.json')
+        # config.json is intentionally local/ignored; the checked-in example
+        # is the portable default contract used by CI and new machines.
+        cfg = config_at(root / 'config.example.json')
         self.assertEqual(cfg['execution']['recording_concurrency'], 2)
         self.assertGreaterEqual(cfg['execution']['recording_min_available_mb'], 1024)
         self.assertGreaterEqual(cfg['execution']['recording_reserve_mb'], 512)
