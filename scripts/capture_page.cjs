@@ -51,7 +51,10 @@ async function session(record) {
   page.on('console', message=>{if(message.type()==='error')errors.push(message.text());});
   let video;
   try {
-    const identity = await (await page.request.get(base+plan.health_path)).json();
+    const healthResponse = await page.request.get(base+plan.health_path,{maxRedirects:0});
+    if (healthResponse.status() >= 300 && healthResponse.status() < 400) throw Error('Health endpoint redirect refused');
+    if (healthResponse.url() !== base+plan.health_path) throw Error('Health endpoint redirected away from the assigned local case URL');
+    const identity = await healthResponse.json();
     if(identity.case_id !== request.case_id || path.resolve(identity.workspace).toLowerCase() !== path.resolve(caseDir).toLowerCase() || identity.version !== plan.version) throw Error('Service identity/version mismatch');
     await page.goto(base+plan.modules[0].route,{waitUntil:'domcontentloaded'});
     await ready(page,plan.modules[0]);

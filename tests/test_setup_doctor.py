@@ -62,5 +62,15 @@ class SetupDoctorTests(unittest.TestCase):
         self.assertFalse(report['ok'])
         self.assertTrue(any('recording' in e.lower() and 'memory' in e.lower() for e in report['errors']))
 
+    def test_commit_exhaustion_is_detected_despite_free_physical_memory(self):
+        from runtime_doctor import recording_memory_status, failure_kind
+        with patch('runtime_doctor.available_memory_mb', return_value=16000), \
+             patch('runtime_doctor.available_commit_memory_mb', return_value=1200):
+            memory = recording_memory_status({'execution': {'recording_concurrency': 2,
+                'recording_min_available_mb': 4096, 'recording_reserve_mb': 2048}})
+        self.assertFalse(memory['ok'])
+        self.assertEqual(memory['available_mb'], 1200)
+        self.assertEqual(failure_kind('Recording memory guard at slot admission'), 'memory_exhausted')
+
 
 if __name__ == '__main__': unittest.main()

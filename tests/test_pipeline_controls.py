@@ -145,6 +145,77 @@ class PipelineControls(unittest.TestCase):
         dry=flow.run_batch(self.cfg,planned['batch_id'],dry_run=True)
         self.assertEqual(dry['execution']['recording_concurrency'],1)
 
+    def test_invalid_frozen_execution_profile_fails_closed(self):
+        self.make_source(); planned=flow.plan(self.cfg,self.source)
+        manifest_path=flow.batch_folder(self.cfg,planned)/'manifest.json'
+        manifest=flow.read_json(manifest_path)
+        manifest['execution_profile']['recording_concurrency']=99
+        with self.assertRaises(flow.Blocked):
+            flow.apply_frozen_execution_profile(self.cfg, manifest)
+
+    def test_memory_recheck_holds_and_releases_both_queue_slot_types(self):
+        for fair in (True, False):
+            self.cfg['execution'] = {'fair_queue': fair, 'recording_concurrency': 2,
+                'recording_min_available_mb': 4096, 'recording_reserve_mb': 2048}
+            def memory(cfg):
+                slot = self.cfg['_root'] / '.runtime/slots/recording/0'
+                with self.assertRaises(flow.Busy):
+                    with flow.BatchLock(slot):
+                        pass
+                return {'ok': False, 'available_mb': 1200, 'required_mb': 6144}
+            with patch('runtime_doctor.recording_memory_status', side_effect=memory), self.assertRaisesRegex(flow.Blocked, 'memory guard'):
+                with flow.stage_slot(self.cfg, 'recording'):
+                    self.fail('Recorder must never start')
+            with flow.BatchLock(self.cfg['_root'] / '.runtime/slots/recording/0'):
+                pass
+
+    def test_two_recorders_overlap_while_third_waits(self):
+        self.cfg['execution']={'fair_queue':True,'recording_concurrency':2}
+        first_two=threading.Barrier(3,timeout=10)
+        release=threading.Event();third=threading.Event();errors=[]
+        def record(index):
+            try:
+                with flow.stage_slot(self.cfg,'recording'):
+                    if index < 2:
+                        first_two.wait();release.wait(10)
+                    else:
+                        third.set()
+            except Exception as exc:
+                errors.append(str(exc))
+        workers=[threading.Thread(target=record,args=(i,)) for i in range(3)]
+        try:
+            for worker in workers[:2]:worker.start()
+            first_two.wait()
+            workers[2].start()
+            self.assertFalse(third.wait(.3))
+            release.set()
+            self.assertTrue(third.wait(10))
+        finally:
+            release.set()
+            for worker in workers:
+                if worker.ident is not None:worker.join(10)
+        self.assertFalse(errors,errors)
+
+    def test_corrupt_port_lease_fails_closed(self):
+        self.make_source();m=flow.plan(self.cfg,self.source)
+        registry=self.cfg['_root']/'.runtime/ports/leases.json'
+        flow.atomic_json(registry,{'bad':'18001'})
+        before=registry.read_bytes()
+        with self.assertRaisesRegex(flow.Blocked,'port lease'):
+            flow.allocate_resources(self.cfg,m,flow.batch_folder(self.cfg,m))
+        self.assertEqual(registry.read_bytes(),before)
+
+    def test_delivered_readback_skips_runtime_checks_but_still_checks_hashes(self):
+        self.make_source(); m = flow.plan(self.cfg, self.source)
+        state = self.run_fake(FakeExecutor())['cases'][0]
+        self.assertEqual(state['stage'], 'delivered')
+        with patch.object(flow, 'native_codex', side_effect=AssertionError('No CLI needed')), \
+             patch('runtime_doctor.check_environment', side_effect=AssertionError('No preflight needed')):
+            self.assertEqual(flow.run_batch(self.cfg, m['batch_id'])['cases'][0]['stage'], 'delivered')
+            from pathlib import Path
+            next(Path(state['delivery']).glob('*.docx')).write_bytes(b'changed')
+            self.assertEqual(flow.run_batch(self.cfg, m['batch_id'])['cases'][0]['stage'], 'blocked')
+
     def test_new_delivery_only_word_and_video_preserves_working_evidence(self):
         self.cfg['runner']['delivery_profile']='word-video'
         source=self.make_source();before=flow.sha256(source)

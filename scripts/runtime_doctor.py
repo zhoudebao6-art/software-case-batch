@@ -30,6 +30,39 @@ def available_memory_mb():
     return None
 
 
+def available_commit_memory_mb():
+    """Return Windows commit headroom when it is available.
+
+    Physical RAM is not the same as the commit limit that commonly surfaces as
+    ``MemoryError`` on Windows. Keep this probe separate so callers can use
+    the more conservative of physical and commit headroom without changing
+    the long-standing integer return contract of ``available_memory_mb``.
+    """
+    if os.name != 'nt':
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+        class PerformanceInformation(ctypes.Structure):
+            _fields_ = [
+                ('cb', wintypes.DWORD), ('commit_total', ctypes.c_size_t),
+                ('commit_limit', ctypes.c_size_t), ('commit_peak', ctypes.c_size_t),
+                ('physical_total', ctypes.c_size_t), ('physical_available', ctypes.c_size_t),
+                ('system_cache', ctypes.c_size_t), ('kernel_total', ctypes.c_size_t),
+                ('kernel_paged', ctypes.c_size_t), ('kernel_nonpaged', ctypes.c_size_t),
+                ('page_size', ctypes.c_size_t), ('handle_count', wintypes.DWORD),
+                ('process_count', wintypes.DWORD), ('thread_count', wintypes.DWORD),
+            ]
+        info = PerformanceInformation()
+        info.cb = ctypes.sizeof(info)
+        if not ctypes.windll.psapi.GetPerformanceInfo(ctypes.byref(info), info.cb):
+            return None
+        headroom = max(0, int(info.commit_limit) - int(info.commit_total))
+        return int(headroom * int(info.page_size) / (1024 * 1024))
+    except (AttributeError, OSError, TypeError, ValueError):
+        return None
+
+
 def recording_memory_requirement_mb(cfg):
     execution = cfg.get('execution', {})
     slots = execution.get('recording_concurrency', 1)
@@ -40,11 +73,23 @@ def recording_memory_requirement_mb(cfg):
     return floor + max(0, slots - 1) * reserve
 
 
+def recording_memory_status(cfg):
+    required = recording_memory_requirement_mb(cfg)
+    physical = available_memory_mb() if required else None
+    commit = available_commit_memory_mb() if required else None
+    readings = [x for x in (physical, commit) if x is not None]
+    available = min(readings) if readings else None
+    return {'name': 'recording_memory', 'ok': not required or available is None or available >= required,
+            'available_mb': available, 'physical_available_mb': physical,
+            'commit_available_mb': commit, 'required_mb': required,
+            'measurement_available': bool(readings)}
+
+
 def failure_kind(message):
     text = message.lower()
     if 'blocked by policy' in text or 'rejected by policy' in text:
         return 'policy_denied'
-    if any(term in text for term in ('memoryerror', 'memory allocation', 'out of memory')):
+    if any(term in text for term in ('memoryerror', 'memory allocation', 'out of memory', 'recording memory guard')):
         return 'memory_exhausted'
     if any(term in text for term in ('access denied', 'permissionerror', 'permission denied')):
         return 'permission_or_lock'
@@ -57,12 +102,15 @@ def check_environment(cfg, *, smoke=False, check_cli=True):
     execution = cfg.get('execution', {})
     required_memory = recording_memory_requirement_mb(cfg)
     if required_memory:
-        available = available_memory_mb()
+        memory = recording_memory_status(cfg)
+        physical, commit, available = (memory[k] for k in ('physical_available_mb', 'commit_available_mb', 'available_mb'))
+        checks.append(memory)
         if available is not None:
-            checks.append({'name': 'recording_memory', 'ok': available >= required_memory,
-                           'available_mb': available, 'required_mb': required_memory})
             if available < required_memory:
-                errors.append(f'Recording memory guard: {available}MB available, at least {required_memory}MB required for {execution.get("recording_concurrency", 1)} recording slot(s); close unrelated programs or lower only this machine\'s recording concurrency before run')
+                details = f'{available}MB effective headroom'
+                if physical is not None and commit is not None:
+                    details += f' (physical {physical}MB, commit {commit}MB)'
+                errors.append(f'Recording memory guard: {details}, at least {required_memory}MB required for {execution.get("recording_concurrency", 1)} recording slot(s); free memory before resuming this batch; lower local recording concurrency before planning a future batch')
     for key in ('python', 'node', 'ffmpeg', 'ffprobe', 'soffice', 'pdftoppm', 'docx_renderer'):
         if not runtime.get(key) or not Path(runtime[key]).is_file():
             errors.append('Missing runtime.' + key + '; configure this machine in config.json')

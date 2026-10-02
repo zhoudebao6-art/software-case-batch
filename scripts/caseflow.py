@@ -559,6 +559,26 @@ def apply_frozen_execution_profile(cfg: dict, manifest: dict) -> dict:
         execution['recording_min_available_mb'] = 0
         execution['recording_reserve_mb'] = 0
     else:
+        if not isinstance(profile, dict):
+            raise Blocked('Batch execution_profile is invalid; create a new plan instead of guessing scheduler limits')
+        allowed = {
+            'case_concurrency', 'review_concurrency', 'expedited_review_concurrency',
+            'recording_concurrency', 'recording_min_available_mb',
+            'recording_reserve_mb', 'evidence_concurrency', 'fair_queue',
+        }
+        unknown = sorted(set(profile) - allowed)
+        if unknown:
+            raise Blocked('Batch execution_profile contains unknown keys: ' + ', '.join(unknown))
+        for key in ('case_concurrency', 'review_concurrency', 'expedited_review_concurrency', 'recording_concurrency', 'evidence_concurrency'):
+            value = profile.get(key)
+            if type(value) is not int or not 1 <= value <= 8:
+                raise Blocked(f'Batch execution_profile.{key} must be an integer from 1 to 8')
+        for key in ('recording_min_available_mb', 'recording_reserve_mb'):
+            value = profile.get(key)
+            if type(value) is not int or not 0 <= value <= 1024 * 1024:
+                raise Blocked(f'Batch execution_profile.{key} must be a bounded non-negative integer')
+        if type(profile.get('fair_queue')) is not bool:
+            raise Blocked('Batch execution_profile.fair_queue must be a boolean')
         execution.update(profile)
     result['execution'] = execution
     return result
@@ -605,6 +625,17 @@ class BatchLock:
 
 @contextmanager
 def stage_slot(cfg: dict, kind: str, *, owner=None, checkpoint=None):
+    def recording_admission():
+        if kind != 'recording':
+            return
+        # This is deliberately checked after the shared slot lock is owned;
+        # startup preflight is only an early failure and memory can change
+        # while a case waits in the fair queue.
+        from runtime_doctor import recording_memory_status
+        memory = recording_memory_status(cfg)
+        if not memory['ok']:
+            raise Blocked(f'Recording memory guard at slot admission: {memory["available_mb"]}MB effective headroom, {memory["required_mb"]}MB required; no recording process was started')
+
     limits = {"build": "case_concurrency", "review": "review_concurrency", "review_expedited": "expedited_review_concurrency", "recording": "recording_concurrency", "evidence": "evidence_concurrency"}
     limit = cfg.get("execution", {}).get(limits[kind], 1)
     root = cfg["_root"] / ".runtime" / "slots" / kind
@@ -612,6 +643,7 @@ def stage_slot(cfg: dict, kind: str, *, owner=None, checkpoint=None):
     if cfg.get('execution', {}).get('fair_queue', False):
         from case_queue import fair_slot
         with fair_slot(root, limit, BatchLock, Busy, atomic_json, owner=owner, checkpoint=checkpoint):
+            recording_admission()
             yield
         return
     acquired = None
@@ -633,6 +665,7 @@ def stage_slot(cfg: dict, kind: str, *, owner=None, checkpoint=None):
     try:
         if checkpoint:
             checkpoint()
+        recording_admission()
         yield
     finally:
         acquired.__exit__(None, None, None)
@@ -646,6 +679,14 @@ def allocate_resources(cfg: dict, m: dict, folder: Path, *, entries=None) -> dic
     registry = directory / "leases.json"
     with BatchLock(directory):
         leases = read_json(registry) if registry.exists() else {}
+        if (not isinstance(leases, dict) or any(
+                not isinstance(key, str) or not isinstance(ports, list) or len(ports) != 4 or
+                any(type(p) is not int or not 18000 <= p < 49000 for p in ports)
+                for key, ports in leases.items())):
+            raise Blocked('Invalid port lease registry; preserve it for repair instead of reallocating live case ports')
+        all_ports = [p for ports in leases.values() for p in ports]
+        if len(all_ports) != len(set(all_ports)):
+            raise Blocked('Duplicate port lease detected; live case ownership needs verification')
         used = {p for ports in leases.values() for p in ports}
         for entry in entries:
             key = m["batch_id"] + ":" + entry["case_id"]
@@ -1491,6 +1532,27 @@ def deferred_worker_blocker(case: Path, state: dict) -> dict | None:
     return None
 
 
+def finish_delivery_cleanup(case: Path, folder: Path, state: dict):
+    """A cleanup failure never changes a verified delivered case to blocked."""
+    if state.get('cleanup_receipt') or state.get('cleanup_pending'):
+        return  # No repeated attempts at a known external/ownership blocker.
+    try:
+        manifest = read_json(artifact(case, 'evidence/artifact-manifest.json'))
+        report = read_json(artifact(case, manifest['capture_report'])) if manifest.get('capture_report') else {}
+        from service_lifecycle import cleanup_after_delivery
+        in_flight = any(state.get(key) for key in ('active_stage', 'waiting_stage', 'recording_pending'))
+        control = read_json(folder / 'control.json') if (folder / 'control.json').is_file() else {}
+        in_flight = bool(in_flight or control.get('keep_online'))
+        receipt = cleanup_after_delivery(case, state['case_id'], report, in_flight=in_flight)
+        # Receipt stays outside the accepted case tree so its hash does not
+        # invalidate the final review or the already published delivery.
+        path = folder / 'maintenance' / 'delivery-cleanup' / (state['case_id'] + '.json')
+        atomic_json(path, receipt)
+        state.update(cleanup_receipt=str(path), cleanup_pending=receipt['status'] != 'stopped')
+    except Exception as exc:
+        state.update(cleanup_pending=True, cleanup_error=f'{type(exc).__name__}: {exc}')
+
+
 def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) -> dict:
     cid = entry["case_id"]
     efficient = m.get('pipeline_profile') in {'efficient-v1', 'deliverable-first-v1'}
@@ -1584,6 +1646,9 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
             report_path = inside(Path(record.get("path", "")), folder / "reviews" / cid, must_exist=True)
             if not record.get("report_sha256") or not report_path.is_file() or sha256(report_path) != record["report_sha256"]:
                 raise Blocked("Recorded review report changed")
+        if executor is invoke:
+            finish_delivery_cleanup(case, folder, state)
+            atomic_json(state_file, state)
         return state
     ctx = {"pipeline_profile": m.get('pipeline_profile','legacy'), "delivery_profile": m.get('delivery_profile','full'), "case_dir": str(case), "source_docx": str(copy), "case_name": entry["case_name"],
            "case_id": cid, "source_sha256": entry["source_sha256"], "batch_id": m["batch_id"],
@@ -1692,7 +1757,7 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
             full['required_action'] = str(full.get('required_action', '')) + ' 本阶段不占录制槽，禁止录屏；先完成材料/代码/图文/UI返修并自检。涉及画面变化时父执行器随后排队video阶段重录，只改Word正文不重录。'
         if efficient and stage in {'prepare_video','repair_video'}:
             full['recording_allowed'] = False
-            full['required_action'] = str(full.get('required_action','')) + ' 本阶段只准备或修复实际页面与声明式capture-plan.json，不录屏、不停服务；父执行器在单槽中运行可信录制程序。'
+            full['required_action'] = str(full.get('required_action','')) + ' 本阶段只准备或修复实际页面与声明式capture-plan.json，不录屏、不停服务；父执行器在批次冻结的录制槽中运行可信录制程序。'
         rec = executor(review_call_config(cfg, route) if route else cfg, case, stage, full, output)
         if route:
             rec.update(review_profile=route['profile'], review_authorization_id=route['authorization_id'])
@@ -1734,7 +1799,7 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
         atomic_json(state_file, state)
         return rec
     def scripted_video():
-        from capture_runner import capture, validate_plan, service_ready, CaptureError
+        from capture_runner import capture, validate_plan, CaptureError, CaptureEnvironmentError
         resources=cfg.get('_case_resources',{}).get(cid,{})
         while True:
             checkpoint()
@@ -1742,7 +1807,6 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
                 plan=validate_plan(case,cid,resources['ports'])
                 if m.get('pipeline_profile') == 'deliverable-first-v1' and plan.get('schema_version') != 2:
                     raise CaptureError('Prepare both recording pages and bind scene data with capture schema 2')
-                service_ready(case,cid,plan)
                 state['waiting_stage']='capture_video'
                 atomic_json(state_file,state)
                 queued=time.monotonic()
@@ -1762,6 +1826,12 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
                 state['recording_pending']=False
                 atomic_json(state_file,state)
                 return report
+            except CaptureEnvironmentError as exc:
+                state.pop('active_stage',None);state.pop('active_started_at',None);state.pop('waiting_stage',None)
+                state['recording_pending']=True
+                state.setdefault('capture_failures',[]).append({'time':time.time(),'error':str(exc),'environment':True})
+                atomic_json(state_file,state)
+                raise Blocked('Capture service identity requires owner verification; no paid repair dispatched: '+str(exc)) from exc
             except (CaptureError, subprocess.SubprocessError, KeyError) as exc:
                 state.pop('active_stage',None);state.pop('active_started_at',None);state.pop('waiting_stage',None)
                 state['recording_pending']=True
@@ -2055,6 +2125,9 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
                 raise Blocked("Existing delivery identity differs")
             state.update(stage="delivered", delivery=str(dest), delivery_sha256=expected, reason=None)
             atomic_json(state_file, state)
+            if executor is invoke:
+                finish_delivery_cleanup(case, folder, state)
+                atomic_json(state_file, state)
             return state
         staging = output_root / f".{cid}.staging-{os.getpid()}"
         if staging.exists():
@@ -2106,6 +2179,9 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
             raise
         state.update(stage="delivered", delivery=str(dest), delivery_sha256={p.relative_to(dest).as_posix(): sha256(p) for p in dest.rglob("*") if p.is_file()}, reason=None)
         atomic_json(state_file, state)
+        if executor is invoke:
+            finish_delivery_cleanup(case, folder, state)
+            atomic_json(state_file, state)
         return state
 
 
@@ -2142,7 +2218,19 @@ def run_batch(cfg: dict, ref: str, *, dry_run: bool = False, executor=invoke, ca
         if journal.exists() and read_json(journal).get("status") != "complete":
             raise Blocked("Workspace migration incomplete; resume migrate before run")
         prepare_control_directories(cfg["_root"])
-        if executor is invoke:
+        selected_needs_execution = True
+        if selected_entries:
+            selected_needs_execution = False
+            for entry in selected_entries:
+                state_path = state_at(folder, entry['case_id'])
+                try:
+                    current = read_json(state_path) if state_path.is_file() else {}
+                except (OSError, ValueError, TypeError):
+                    current = {}
+                if current.get('stage') != 'delivered' or current.get('recording_pending'):
+                    selected_needs_execution = True
+                    break
+        if executor is invoke and selected_needs_execution:
             native_codex(cfg)
             for name in ("python", "ffmpeg", "ffprobe", "soffice", "pdftoppm", "docx_renderer"):
                 value = cfg.get("runtime", {}).get(name)

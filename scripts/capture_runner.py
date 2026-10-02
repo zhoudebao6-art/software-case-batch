@@ -11,12 +11,25 @@ import subprocess
 import time
 from urllib.error import URLError
 from urllib.parse import urlsplit
-from urllib.request import urlopen
+from urllib.request import build_opener, HTTPRedirectHandler
 from path_safety import has_path_link
 
 
 class CaptureError(ValueError):
     pass
+
+
+class CaptureEnvironmentError(CaptureError):
+    """A process/permission problem must not trigger another paid UI repair."""
+
+
+class LocalHealthOnly(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise CaptureEnvironmentError('Health endpoint redirect refused; use the assigned local case URL')
+
+
+def urlopen(url, *, timeout):
+    return build_opener(LocalHealthOnly()).open(url, timeout=timeout)
 
 
 def digest(path):
@@ -108,19 +121,60 @@ def validate_plan(case, case_id, ports):
             raise CaptureError(f'Application changed after preparation: {name}')
     if plan['schema_version'] == 2:
         scene_dependencies(case, plan)
+    identity = plan.get('service_identity')
+    if identity is not None:
+        if not isinstance(identity, dict) or type(identity.get('pid')) is not int or identity['pid'] <= 0:
+            raise CaptureError('service_identity.pid must be a positive listener PID')
+        if type(identity.get('port')) is not int or identity['port'] != port:
+            raise CaptureError('service_identity.port must match the assigned capture port')
+        if not isinstance(identity.get('created_at'), str) or not identity['created_at'].strip():
+            raise CaptureError('service_identity.created_at is required')
+        digest_value = identity.get('command_line_sha256')
+        if not isinstance(digest_value, str) or len(digest_value) != 64 or any(c not in '0123456789abcdef' for c in digest_value):
+            raise CaptureError('service_identity.command_line_sha256 must be a SHA256')
     return plan
+
+
+def _listener_identity(port):
+    """Read the live listener/process tuple without guessing by process name."""
+    from service_lifecycle import listener_identity, IdentityError
+    try:
+        value = listener_identity(port)
+    except IdentityError as exc:
+        raise CaptureEnvironmentError(str(exc)) from exc
+    if value is None:
+        raise CaptureEnvironmentError('No listener at the assigned case port')
+    return value
+
+
+def _verify_service_identity(plan, health):
+    expected = plan.get('service_identity')
+    if expected is None:
+        return
+    for key in ('pid', 'port'):
+        if key in health and health[key] != expected[key]:
+            raise CaptureEnvironmentError(f'Health service identity field {key} differs from the frozen plan')
+    live = _listener_identity(expected['port'])
+    for key in ('pid', 'created_at', 'command_line_sha256'):
+        if live.get(key) != expected[key]:
+            raise CaptureEnvironmentError(f'Live service identity field {key} differs from the frozen plan')
 
 
 def service_ready(case, case_id, plan, timeout=90):
     deadline=time.monotonic()+timeout
     last='No response'
+    expected_url = plan['base_url'] + plan['health_path']
     while True:
         try:
-            with urlopen(plan['base_url']+plan['health_path'],timeout=min(5,max(.1,deadline-time.monotonic()))) as response:
+            with urlopen(expected_url,timeout=min(5,max(.1,deadline-time.monotonic()))) as response:
+                final_url = response.geturl() if hasattr(response, 'geturl') else None
+                if final_url and final_url != expected_url:
+                    raise CaptureEnvironmentError('Health endpoint redirected away from the assigned local case URL; service identity is not trusted')
                 health=json.load(response)
             if (not isinstance(health,dict) or health.get('case_id')!=case_id or health.get('version')!=plan['version'] or
                     Path(str(health.get('workspace',''))).resolve()!=Path(case).resolve()):
-                raise CaptureError('Running service case/workspace/version differs; do not reuse or restart it blindly')
+                raise CaptureEnvironmentError('Running service case/workspace/version differs; do not reuse or restart it blindly')
+            _verify_service_identity(plan, health)
             return health
         except (URLError,TimeoutError,ConnectionError) as exc:
             last=str(exc)
@@ -179,6 +233,8 @@ def capture(cfg, case, case_id, resources, *, mode='record'):
     case=Path(case).resolve(strict=True)
     plan=validate_plan(case,case_id,resources['ports'])
     health=service_ready(case,case_id,plan)
+    from service_lifecycle import capture_identity, same_process
+    service_process = capture_identity(case, resources['ports'], plan)
     output=case/'recording'/f'capture-{time.time_ns()}'
     output.mkdir(parents=True)
     if output.resolve()!=output.absolute():
@@ -200,8 +256,14 @@ def capture(cfg, case, case_id, resources, *, mode='record'):
             raise CaptureError('Visible-copy or screenshot binding failure')
     validate_plan(case,case_id,resources['ports'])
     service_ready(case,case_id,plan,timeout=5)
+    after_process = capture_identity(case, resources['ports'], plan)
+    if service_process.get('status') == 'verified':
+        if not same_process(service_process.get('identity'), after_process.get('identity')):
+            raise CaptureEnvironmentError('Service process changed during capture; preserve the recording and verify ownership')
+        service_process = after_process
     report={'mode':mode,'health':health,'output':str(output),'duration_seconds':round(time.monotonic()-started,2),
-            'pages':proof['pages'],'independent_review':'pending'}
+            'pages':proof['pages'],'independent_review':'pending', 'service_process': service_process,
+            'service_plan': {key: plan[key] for key in ('case_id','base_url','health_path','version')}}
     if mode=='probe':
         save(output/'result.json',report)
         return report

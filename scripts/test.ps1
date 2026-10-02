@@ -13,6 +13,6 @@ Push-Location $TaskRoot
 try {
     & $Python -X utf8 -m unittest discover -s tests -v
     if ($LASTEXITCODE -ne 0) { throw 'Python tests failed.' }
-    & node --test tests/test_capture_audit_reuse.cjs tests/test_capture_owner_repair.cjs tests/test_capture_transition.cjs
+    & node --test tests/test_capture_audit_reuse.cjs tests/test_capture_owner_repair.cjs tests/test_capture_transition.cjs tests/test_capture_page_contract.cjs
     if ($LASTEXITCODE -ne 0) { throw 'Node tests failed.' }
 } finally { Pop-Location }
