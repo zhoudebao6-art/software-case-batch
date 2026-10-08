@@ -32,7 +32,7 @@ cd software-case-batch
 
 ## 执行约定
 
-- 建设 GPT-6.1 Sol high，返修 GPT-6.1 Sol ultra；普通独立验收 GPT-6 Sol ultra，用户明确加急才用 Astra low。实际模型参数固定，不静默降低。
+- 建设 GPT-6.1 Sol high，返修 GPT-6.1 Sol ultra；普通独立验收 GPT-6.1 Sol ultra，用户明确加急才用 Astra low。实际模型参数固定，不静默降低。
 - 默认 8 个建设/返修槽、3 个普通验收槽、1 个录制槽。槽位限额只覆盖同一台电脑的同一个工作区，不是跨电脑全局额度控制。
 - 缺数据先补来源或可复现输入并实际计算；结果性质与未验证范围保留工作区。原文、源式、原图不丢失。
 - plan/dry-run/doctor/单元测试均不代表真实案件交付完成。独立验收和当前文件哈希绑定。

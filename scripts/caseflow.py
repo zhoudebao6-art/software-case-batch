@@ -58,21 +58,27 @@ class ReviewRerouted(RuntimeError):
 
 
 REVIEW_PROFILES = {
-    'standard': {'model': 'gpt-6-sol', 'reasoning_effort': 'ultra', 'slot': 'review'},
+    'standard': {'model': 'gpt-6.1-sol', 'reasoning_effort': 'ultra', 'slot': 'review'},
     'expedited': {'model': 'gpt-6-astra', 'reasoning_effort': 'low', 'slot': 'review_expedited'},
 }
 
 
-def selected_review_route(folder, case_id):
+def selected_review_route(folder, case_id, cfg=None):
+    standard = dict(REVIEW_PROFILES['standard'])
+    if cfg is not None:
+        # Honor an explicitly loaded configuration; do not silently replace a
+        # legacy caller's model with the current default.
+        standard.update(cfg['models']['reviewer'])
     path = folder / 'control.json'
     control = read_json(path) if path.is_file() else {}
     selection = control.get('review_routes', {}).get(case_id, control.get('review_route'))
     if selection is None:
-        return {'profile': 'standard', **REVIEW_PROFILES['standard'], 'authorization_id': None}
+        return {'profile': 'standard', **standard, 'authorization_id': None}
     if (not isinstance(selection, dict) or selection.get('profile') not in REVIEW_PROFILES or
             not isinstance(selection.get('authorization_id'), str) or not selection['authorization_id']):
         raise Blocked('Invalid explicit review route authorization')
-    return {**selection, **REVIEW_PROFILES[selection['profile']]}
+    route = standard if selection['profile'] == 'standard' else REVIEW_PROFILES[selection['profile']]
+    return {**selection, **route}
 
 
 def review_call_config(cfg, route):
@@ -85,6 +91,10 @@ def review_record_allowed(record, state):
         return False
     profile = record.get('review_profile', 'standard')
     expected = REVIEW_PROFILES.get(profile)
+    if profile == 'standard' and record.get('model') == 'gpt-6-sol':
+        # Historical passes retain their actual model identity. Current calls
+        # are additionally checked against the selected route before saving.
+        expected = {**expected, 'model': 'gpt-6-sol'}
     if not expected or any(record.get(key) != expected[key] for key in ('model', 'reasoning_effort')):
         return False
     if profile == 'expedited':
@@ -260,8 +270,10 @@ def config_at(path: Path) -> dict:
         raise Blocked("Builder route must be an explicitly configured Sol model with high effort")
     if 'repairer' in cfg.get('models', {}) and cfg['models']['repairer'] != {'model': 'gpt-6.1-sol', 'reasoning_effort': 'ultra'}:
         raise Blocked('Explicit repair route must be gpt-6.1-sol with ultra effort')
-    if cfg.get("models", {}).get("reviewer") != {"model": "gpt-6-sol", "reasoning_effort": "ultra"}:
-        raise Blocked("Reviewer route must be gpt-6-sol/ultra")
+    if cfg.get("models", {}).get("reviewer") not in (
+            {"model": "gpt-6-sol", "reasoning_effort": "ultra"},
+            {"model": "gpt-6.1-sol", "reasoning_effort": "ultra"}):
+        raise Blocked("Reviewer route must be an explicitly configured Sol model with ultra effort")
     expedited = cfg.get('models', {}).get('expedited_reviewer', {'model': 'gpt-6-astra', 'reasoning_effort': 'low'})
     if expedited != {'model': 'gpt-6-astra', 'reasoning_effort': 'low'}:
         raise Blocked('Expedited reviewer route must be gpt-6-astra/low')
@@ -1329,11 +1341,11 @@ def prompt(cfg: dict, stage: str, context: dict) -> str:
         body += '\n\n输出必须使用review-response.schema.json的evidence-ids-v1协议。只返回review_id、protocol、verdict、issues、chart_reviews、reviewed_evidence、coverage、limitations八字段。reviewed_evidence和每图evidence_ids填写review_request.evidence中的短ID，不抄写SHA256或长路径列表，不输出旧版reviewed_files/snapshot_sha256/png_sha256。父执行器核对审查前后文件未变，再绑定哈希，保留原始答复。必须实际审查当前全部必要证据，覆盖方式在coverage中明确；不得把声明IDs当成看过。'
         body += '\n受控timeline若含完整frame_files映射，均匀采样画面通过全部接触页审查，reviewed_evidence只登记实际看的接触页ID，不声称逐个打开原帧。全部原帧仍由父执行器逐个验证哈希；真实首尾帧、交互前后关键原帧和疑点原帧仍须打开。coverage明确本次查看方式。旧timeline无映射时不推定覆盖。revise证据清单不全可作为返修意见，但不能签通过；pass必须覆盖全部当前必要ID。'
         body += '\n提交pass前，用context.runtime.python运行共享scripts/review_check.py "context.review_request_path" --ids 后跟本次实际检查或合法沿用的全部短ID，先核对遗漏/重复/未知ID。程序只检查清单，不证明已阅，也不补齐ID。PDF与其PNG页是不同证据：PDF需读取页数/文档完整性并核对受控render绑定；全页视觉可由当前PNG完成。复验可沿用此前真正核验且哈希未变的PDF，不重复渲染或逐页重读，但须在coverage如实说明。未核验的缺项先实际核验，不能直接抄齐清单。'
-    body += '\n\n用户已授权加急案件独立验收使用gpt-6-astra/low，普通案件仍为gpt-6-sol/ultra；实际角色以context.review_route和真实CLI参数为准。加急只改变审查模型与排队槽，图表/Word/界面/视频的证据覆盖、哈希绑定和通过条件不变，返修使用显式repairer配置。旧规则中固定ultra的表述仅适用普通审查，不能要求加急案再排一次Sol Ultra，也不能自行切模型或自签通过。'
+    body += '\n\n用户已授权加急案件独立验收使用gpt-6-astra/low，普通案件使用配置中的Sol/ultra（当前默认gpt-6.1-sol/ultra）；实际角色以context.review_route和真实CLI参数为准。加急只改变审查模型与排队槽，图表/Word/界面/视频的证据覆盖、哈希绑定和通过条件不变，返修使用显式repairer配置。旧规则中固定ultra的表述仅适用普通审查，不能要求加急案再排一次Sol Ultra，也不能自行切模型或自签通过。'
     builder = cfg.get('models', {}).get('builder', {}).get('model')
     if builder:
         repairer = model_for_stage(cfg, 'repair_final')
-        body += '\n\n建设使用' + builder + '/high；返修（含录制问题准备/修复）使用' + repairer['model'] + '/' + repairer['reasoning_effort'] + '；普通独立验收仍gpt-6-sol/ultra、明确加急gpt-6-astra/low。此显式路由覆盖旧规则中的返修high表述，实际CLI参数为准，禁止静默回退。'
+        body += '\n\n建设使用' + builder + '/high；返修（含录制问题准备/修复）使用' + repairer['model'] + '/' + repairer['reasoning_effort'] + '；普通独立验收使用配置中的Sol/ultra（当前默认gpt-6.1-sol/ultra）、明确加急gpt-6-astra/low。此显式路由覆盖旧规则中的返修high表述，实际CLI参数为准，禁止静默回退。'
     if context.get('pipeline_profile') == 'deliverable-first-v1':
         body += '\n\n' + (Path(__file__).resolve().parent.parent / 'rules' / 'deliverable-first.md').read_text(encoding='utf-8')
         body += '\n\n' + (Path(__file__).resolve().parent.parent / 'rules' / 'case-design.md').read_text(encoding='utf-8')
@@ -1678,7 +1690,7 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
         if stage == 'video' and efficient and executor is invoke:
             return scripted_video()
         while True:
-            route = selected_review_route(folder, cid) if stage.startswith('review_') else None
+            route = selected_review_route(folder, cid, cfg) if stage.startswith('review_') else None
             kind = route['slot'] if route else 'recording' if stage in {'video','repair_video'} else 'build'
             if efficient and stage == 'repair_video':
                 kind = 'build'
@@ -1689,7 +1701,7 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
             atomic_json(state_file, state)
             def admission_checkpoint():
                 checkpoint()
-                if route and selected_review_route(folder,cid) != route:
+                if route and selected_review_route(folder,cid,cfg) != route:
                     raise ReviewRerouted()
             try:
                 with stage_slot(cfg, kind, owner=owner, checkpoint=admission_checkpoint):
@@ -2204,7 +2216,7 @@ def run_batch(cfg: dict, ref: str, *, dry_run: bool = False, executor=invoke, ca
         stages = ("build", "repair_visual", "video", "repair_video", "review_final", "repair_final") if cfg["runner"].get("review_mode") == "combined_final" else ("build", "review_visual", "repair_visual", "video", "review_video", "repair_video")
         for e in selected_entries:
             case = case_workspace(folder, e)
-            route_cfg = review_call_config(cfg, selected_review_route(folder, e['case_id']))
+            route_cfg = review_call_config(cfg, selected_review_route(folder, e['case_id'], cfg))
             commands = {s: command_for(route_cfg, case, s, folder / "reviews" / e["case_id"] / f"{s}.json", dry_run=True) for s in stages}
             if m.get('pipeline_profile') in {'efficient-v1', 'deliverable-first-v1'}:
                 commands.pop('video', None)

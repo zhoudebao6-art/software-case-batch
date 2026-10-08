@@ -28,7 +28,7 @@
       "reasoning_effort": "ultra"
     },
     "reviewer": {
-      "model": "gpt-6-sol",
+      "model": "gpt-6.1-sol",
       "reasoning_effort": "ultra"
     },
     "allow_fallback": false,
