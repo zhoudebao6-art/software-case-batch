@@ -737,7 +737,12 @@ def allocate_resources(cfg: dict, m: dict, folder: Path, *, entries=None) -> dic
 
 def native_codex(cfg: dict) -> Path:
     override = cfg["runner"].get("codex_executable")
-    candidates = [Path(override)] if override else []
+    if override:
+        pinned = Path(override)
+        if pinned.is_file() and pinned.suffix.lower() == '.exe':
+            return pinned.resolve()
+        raise Blocked('Configured native codex.exe is missing; refusing fallback to another CLI: ' + str(pinned))
+    candidates = []
     found = shutil.which("codex.exe")
     if found:
         candidates.append(Path(found))
@@ -777,7 +782,14 @@ def command_for(cfg: dict, case: Path, stage: str, output: Path | None = None, *
     # that supported flag itself selects workspace-write.
     sandbox = ([] if not review and approval_mode == "auto_review" else
                ["--sandbox", "read-only" if review else "workspace-write"])
-    command = [str(cfg["runner"].get("codex_executable") or "codex.exe") if dry_run else str(native_codex(cfg)), "exec", "--model", model["model"], "--config", f"model_reasoning_effort={model['reasoning_effort']}",
+    cli = str(cfg["runner"].get("codex_executable") or "codex.exe") if dry_run else str(native_codex(cfg))
+    runtime_binding = []
+    if cfg['runner'].get('bind_node_repl_cli', False):
+        # Only opt in when this machine has the desktop node_repl MCP configured.
+        # Its nested sandbox commands must use the same verified CLI as the worker.
+        runtime_binding = ['--config', 'mcp_servers.node_repl.env.CODEX_CLI_PATH=' + json.dumps(cli)]
+    command = [cli, "exec", "--model", model["model"], "--config", f"model_reasoning_effort={model['reasoning_effort']}",
+               *runtime_binding,
                *approval, "--json", "--skip-git-repo-check", *sandbox, "-C", str(case)]
     if review:
         assert output is not None
@@ -1424,7 +1436,8 @@ def invoke(cfg: dict, case: Path, stage: str, context: dict, output: Path | None
               "text": True, "encoding": "utf-8", "errors": "replace", "shell": False, "cwd": case}
     isolated_temp = case / ".runtime" / "tmp"
     isolated_temp.mkdir(parents=True, exist_ok=True)
-    kwargs["env"] = {**os.environ, "TEMP": str(isolated_temp), "TMP": str(isolated_temp), "TMPDIR": str(isolated_temp)}
+    kwargs["env"] = {**os.environ, "TEMP": str(isolated_temp), "TMP": str(isolated_temp), "TMPDIR": str(isolated_temp),
+                     "CODEX_CLI_PATH": command[0]}
     if os.name == "nt":
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
     else:

@@ -1,5 +1,7 @@
 # 本项目约定
 
+- 2026-10-08运行时回归：`0.162.0-alpha.2` 活跃 EXE/DLL 的 `root-only update ... os error 32` 可在桌面重开后复发。按 rules/worker-environment.md 验证官方修复 CLI 并固定本机路径，node_repl 子调用按需绑定同一 CLI；必须在桌面及运行时存活时证明原受限模式可执行且写入边界仍有效。不得以反复重启、改安全 ACL/审批/沙箱或每案付费重试替代修复；固定 CLI 缺失禁止静默回退。
+
 这是软通案件批次工具。入口为 `scripts/caseflow.ps1`，设计见 `开始使用.md`，最新图表标准在 `rules/requirements.md` 和 `rules/chart-acceptance.md`。
 
 - 仅在用户明确要求处理某批时启动，不定时扫描、不后台学习其他任务、不空闲巡检。只有当前批次清单已确认时才能执行真实run；plan及dry-run不算制作成功。

@@ -11,6 +11,7 @@
     "require_ui_text_audit": true,
     "max_final_review_repairs": null,
     "codex_executable": null,
+    "bind_node_repl_cli": false,
     "prompts_dir": "prompts",
     "protected_source_roots": [],
     "max_review_calls_per_case": null,

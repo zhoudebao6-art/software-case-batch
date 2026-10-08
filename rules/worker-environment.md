@@ -48,3 +48,14 @@
 - 若仍有业务依赖、无法证明归属或停止被拒，保留进程并记录具体原因；策略拒绝、ACL、占用、OOM分别记录，不换命令/工具或改安全设置绕过拒绝。回收失败不伪造已释放，也不否定已完成交付。后续用户再要求在线或返修时，按正常归属及环境预检恢复服务，不自动重启已回收服务。
 
 2026-10-02父执行器实现：可信录制前后保留真实Windows监听进程身份；交付后只自动回收命令行含本案完整绝对路径、全部监听端口属于本案、健康版本一致且身份未变的listener。停止时持有同一Windows进程句柄并再核对创建时间和实时命令行，防PID复用。不会沿进程树停止launcher、共享进程或拟名称/Hermes；这些仍需负责人单独证明归属。需继续在线时在本案`.runtime/keep-online.json`保留标记。回执写在批次`maintenance/delivery-cleanup/<case_id>.json`，不写入已验收的案件证据树，不破坏审查哈希。身份不足或停止失败设置cleanup_pending，后续普通重读不反复尝试；由负责人依据新证据处理。该机制不扫描/清理历史批次。
+# 2026-10-08：桌面保持运行时的 CLI 回归修复
+
+已实测的 `codex-cli 0.162.0-alpha.2` 存在 Windows 活跃 EXE/DLL 的 runtime ACL 校验回归：`open ACL target for root-only update ... os error 32`。关闭桌面后的短暂通过不能说明恢复；桌面或 worker 再加载运行时后可能重现。不得把这种共享故障分摊成每案付费返修、迁移或反复重启。
+
+官方 `rust-v0.162.0-alpha.20` 的 `windows-sandbox-rs/src/acl.rs` 已限制相关 MAXIMUM_ALLOWED 打开操作仅用于目录，保留文件原有权限与 Deny。遇到相同已证实回归时，可将经官方来源、包完整性和现场测试核验的 CLI 并排安装到本机运行资源目录，通过本机 `runner.codex_executable` 固定；不替换正在运行的桌面程序，不修改用户全局沙箱、审批或安全 ACL。版本为本次修复记录，不是后续机器一律安装 alpha 的要求。
+
+恢复证据必须在原桌面及其运行时仍打开时产生：原 workspace-write 的真实写入/读回、原 read-only 的真实读取，并验证只读写入和工作区外写入仍被限制；保留 CLI 路径、版本、哈希、时间和运行时进程身份。版本/登录成功或关闭桌面时的预检不能替代。每案仍需新的本案探测及来源哈希核对，保留原批次、计数、历史阻塞和成品。
+
+本机若已配置 node_repl MCP，且其 `env.CODEX_CLI_PATH` 指向旧桌面 CLI，显式配置 `runner.bind_node_repl_cli=true`，仅为批次子调用绑定同一已验证 CLI；未配置该 MCP 的机器保持 false，不凭空新建服务。固定 CLI 缺失时失败并指明路径，禁止静默回退到旧桌面二进制。模型与受限权限路由不变。
+
+上游依据：https://github.com/openai/codex/issues/51634 ；修复源码：https://github.com/openai/codex/blob/rust-v0.162.0-alpha.20/codex-rs/windows-sandbox-rs/src/acl.rs 。
