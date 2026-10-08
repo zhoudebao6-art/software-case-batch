@@ -1,5 +1,7 @@
 # 本项目约定
 
+- 用户2026-10-08图例补充：公式符号可以保留，但最终PNG和Word必须正常排版；上下标/希腊字母正确，无原样代码、缺字、错位或裁切。不能稳定显示时改用准确业务名称，保留正文与源式映射；同图轴标签也核对。见rules/chart-legend.md。纳入既有自检与验收，不新增固定轮次；本次点名的1007周丽定向修复，其他历史成品不自动返工。
+
 - 2026-10-08运行时回归：`0.162.0-alpha.2` 活跃 EXE/DLL 的 `root-only update ... os error 32` 可在桌面重开后复发。按 rules/worker-environment.md 验证官方修复 CLI 并固定本机路径，node_repl 子调用按需绑定同一 CLI；必须在桌面及运行时存活时证明原受限模式可执行且写入边界仍有效。不得以反复重启、改安全 ACL/审批/沙箱或每案付费重试替代修复；固定 CLI 缺失禁止静默回退。
 
 这是软通案件批次工具。入口为 `scripts/caseflow.ps1`，设计见 `开始使用.md`，最新图表标准在 `rules/requirements.md` 和 `rules/chart-acceptance.md`。
