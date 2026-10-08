@@ -1501,6 +1501,28 @@ def state_at(folder: Path, cid: str) -> Path:
     return folder / "state" / f"{cid}.json"
 
 
+def policy_rejection_reported(reason: str) -> bool:
+    """Require an affirmative rejection, retaining ambiguous mentions conservatively."""
+    terms = re.compile(r'blocked by policy|policy rejection|策略拒绝|策略阻断', re.I)
+    for clause in re.split(r'[。；;，,！!？?\n]|\.(?=\s|$)', str(reason)):
+        for mention in terms.finditer(clause):
+            before, after = clause[:mention.start()], clause[mention.end():]
+            chinese_negative = re.search(
+                r'(?:(?:尚未|未)(?:确认|确定|判定|证实|取得|获得)|'
+                r'(?:尚不能|尚无法|不能|无法|不应|不可)(?:认定|归因|判定|确认|证明)|不推定)'
+                r'[^。；;，,！!？?\n但]{0,48}$', before)
+            english_negative = re.search(
+                r'\b(?:not|no|without)\s+(?:(?:a|any|actual|confirmed|evidence\s+of)\s+)*$',
+                before, re.I)
+            negative_after = re.match(
+                r'\s*(?:(?:尚未|未)(?:确认|证实)|'
+                r'(?:(?:was|is|has been)\s+)?(?:not\s+(?:established|confirmed|proven)|unconfirmed|unproven)\b)',
+                after, re.I)
+            if not (chinese_negative or english_negative or negative_after):
+                return True
+    return False
+
+
 def worker_blocker(case: Path, record: dict | None = None) -> dict | None:
     """Read current structured status, never infer a blocker from historical prose."""
     sources = (('.caseflow-environment.json', 'requires_environment_repair', 'Worker environment needs repair'),
@@ -1517,7 +1539,7 @@ def worker_blocker(case: Path, record: dict | None = None) -> dict | None:
         if not isinstance(note, dict) or note.get('status') != 'blocked' or note.get(flag) is not True:
             continue
         reason = str(note.get('reason') or 'Required operation unavailable')
-        policy = any(term in reason.lower() for term in ('blocked by policy', 'policy rejection', '策略拒绝', '策略阻断'))
+        policy = policy_rejection_reported(reason)
         category = 'tool_policy' if policy else 'worker_environment' if flag == 'requires_environment_repair' else 'external_input'
         return {'category': category, 'message': f'{prefix}: {reason}', 'source': relative,
                 'source_sha256': sha256(path) if path.is_file() else None,

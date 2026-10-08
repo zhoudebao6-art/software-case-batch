@@ -91,6 +91,10 @@ def failure_kind(message):
         return 'policy_denied'
     if any(term in text for term in ('memoryerror', 'memory allocation', 'out of memory', 'recording memory guard')):
         return 'memory_exhausted'
+    if any(term in text for term in ('os error 32', 'sharing violation', '另一个程序正在使用此文件')):
+        return 'file_in_use'
+    if 'setup refresh had errors' in text or 'windows sandbox failed' in text:
+        return 'sandbox_setup_failed'
     if any(term in text for term in ('access denied', 'permissionerror', 'permission denied')):
         return 'permission_or_lock'
     return 'environment_error'
@@ -155,6 +159,19 @@ def check_environment(cfg, *, smoke=False, check_cli=True):
             probe('codex_login', [cli, 'login', 'status'])
             probe('codex_exec_interface', [cli, 'exec', '--help'],
                   required_marker='--approve-for-me' if cfg.get('runner', {}).get('worker_approval_mode') == 'auto_review' else '--sandbox')
+            if os.name == 'nt' and not errors:
+                from sandbox_probe import check_worker_sandbox
+                # Probe the common runtime once before the batch fans out. This
+                # does not replace each worker's own case-directory write check.
+                parent = Path(cfg.get('_root', tempfile.gettempdir())) / '.runtime' / 'preflight'
+                parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.TemporaryDirectory(prefix='sandbox-', dir=parent) as temp:
+                    for mode in ('workspace-write', 'read-only'):
+                        result = check_worker_sandbox(cfg, Path(temp), mode=mode)
+                        checks.append(result)
+                        if not result['ok']:
+                            errors.append(result['name'] + ': ' + result.get('detail', 'failed'))
+                            break  # No second attempt against the same shared blocker.
         except Blocked as exc:
             errors.append(str(exc))
     browser_script = """const {createRequire}=require('module');

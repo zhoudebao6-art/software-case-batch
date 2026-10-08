@@ -1,5 +1,17 @@
 # Worker 环境预检与停止条件
 
+## 付费调用前的公共沙箱检查（2026-10-08）
+
+真实run在并行派发前用`scripts/sandbox_probe.py`调用已安装CLI的`sandbox`接口，保持建设workspace-write、验收read-only，实际执行命令并在专用临时目录做写入/读回/清理。无需模型调用，不更改Codex配置、ACL、Deny或进程。先读取本机CLI帮助选择接口版本，不把`windows --help`误当沙箱内的命令执行。预检结果保存在批次environment-preflight.json；公共预检通过不代表本案文件可写、模型有额度、网络可用或已经交付，worker仍需本案检查。
+
+当`helper_unknown_error: setup refresh had errors`发生，先读取同期`.sandbox`日志。`runtime read/execute validation failed`与`os error 32`应归类为运行时文件占用；不是策略拒绝，也不证明案件目录ACL错误。公共故障在模型派发前阻断，不能让整批案件各付费失败一遍，不能迁移六个工作区来修一个共享运行时。日志是共享上下文，不能凭同期日志推定具体占用PID；进程停止仍必须核对归属和在途任务。
+
+“未确认/不能认定/不能归因/不推定策略拒绝”是尚未证实的原因说明，不能仅以关键词命中标成`tool_policy`；明确或仍有疑问的真实拒绝继续保守阻断。历史误分类按原始结构化报错及指纹核对，保留旧状态/调用，新的受限执行证据通过后才允许恢复。接续入口先核对完整清单的状态和源哈希，再做逐案环境维护，避免检查到半批才发现历史分类不符。启动/退出回执不能代替实际继续执行及最终交付。
+
+使用正常运行时修复/生命周期恢复后，在原受限模式重新取得实际执行证据。涉及共享Codex进程或其他有效任务时，先保存本批状态、原件哈希、调用记录与精确恢复入口，说明影响并交用户决定；不擅自重启共享程序。已停止的原批次恢复前核对锁与完整清单，再逐案确认原工作区读写；只有真实通过才写ready记录并接续原run。旧blocked记录保留，不删调用计数，不用父层的无沙箱成功冒充恢复。
+
+## 案件内检查
+
 开始建设、返修或录制前，先确认自己案件工作区可正常读写：对本轮需要修改的现有业务文件用只打开不写字节的ReadWrite句柄检查访问，并确认本案输出目录可写；不要修改原件或用删除文件测试权限。若历史工程迁移过，优先核对web/scripts/evidence/exports。无关的Get-CimInstance拒绝不能等同于整个案件不可写，进程归属可结合启动记录、自己启动的PID和健康接口核对；不能因此停止其他程序。
 
 如果业务目录的常规必要写入确实返回Access denied，停止该案制作，不反复换写法、不更改ACL/沙箱/安全规则。将实际失败命令与错误记入根目录 .caseflow-environment.json：{"status":"blocked","requires_environment_repair":true,"reason":"具体目录、实际命令和错误"}。evidence不可写时仍使用根目录；根目录也不可写时，最终回复独立一行 `CASEFLOW_ENVIRONMENT_BLOCKER:{"status":"blocked","requires_environment_repair":true,"reason":"具体证据"}`。该结构会让父执行器仅阻断本案，保留进度并继续其他案件，避免空转付费返修。

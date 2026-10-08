@@ -1,5 +1,6 @@
 """Isolated regressions for paid retries and masked worker blockers."""
 import unittest
+from unittest.mock import Mock, patch
 from pathlib import Path
 import test_caseflow as fixtures
 from test_caseflow import flow, FakeExecutor
@@ -10,6 +11,55 @@ class WorkerBlockerTests(unittest.TestCase):
     tearDown = fixtures.CaseflowTests.tearDown
     make_source = fixtures.CaseflowTests.make_source
     run_fake = fixtures.CaseflowTests.run_fake
+
+    def test_negated_policy_mentions_remain_environment_blockers(self):
+        reasons = (
+            'setup refresh had errors；未确认 ACL 或策略拒绝。',
+            'setup refresh had errors；尚不能归因为ACL、文件占用或策略拒绝。',
+            'setup refresh had errors；未取得ACL、文件占用或策略拒绝的分类证据。',
+            'setup refresh had errors；不推定ACL问题、策略拒绝或具体占用PID。',
+            'setup refresh had errors; not blocked by policy.',
+            'setup refresh had errors; no evidence of a policy rejection.',
+            'setup refresh had errors; policy rejection was not established.',
+        )
+        for reason in reasons:
+            with self.subTest(reason=reason):
+                record = {'final_message': 'CASEFLOW_ENVIRONMENT_BLOCKER:' + fixtures.json.dumps({
+                    'status': 'blocked', 'requires_environment_repair': True, 'reason': reason})}
+                blocker = flow.worker_blocker(self.source, record)
+                self.assertEqual(blocker['category'], 'worker_environment')
+
+    def test_affirmative_or_uncertain_policy_is_not_dismissed(self):
+        reasons = (
+            'Service startup rejected: blocked by policy.',
+            '必要写入被策略拒绝，未完成建设。',
+            '未确认ACL原因，服务启动另被策略拒绝。',
+            '不能认定为策略拒绝；另一次启动明确被策略阻断。',
+            '可能是策略拒绝，需要检查。',
+            'No ACL issue but blocked by policy.',
+        )
+        for reason in reasons:
+            with self.subTest(reason=reason):
+                self.assertTrue(flow.policy_rejection_reported(reason))
+
+    def test_common_sandbox_preflight_blocks_before_any_paid_case_dispatch(self):
+        self.make_source('first.docx')
+        self.make_source('second.docx')
+        manifest = flow.plan(self.cfg, self.source)
+        self.cfg['runner']['environment_preflight'] = True
+        self.cfg['runtime'] = {name: str(self.exe) for name in (
+            'python', 'ffmpeg', 'ffprobe', 'soffice', 'pdftoppm', 'docx_renderer')}
+        executor = Mock()
+        report = {'ok': False, 'model_calls': 0, 'errors': ['sandbox setup failed'],
+                  'checks': [{'name': 'worker_sandbox_workspace-write', 'ok': False}]}
+        with patch.object(flow, 'invoke', executor), \
+             patch('runtime_doctor.check_environment', return_value=report):
+            with self.assertRaisesRegex(flow.Blocked, 'before model dispatch'):
+                flow.run_batch(self.cfg, manifest['batch_id'], executor=executor)
+        executor.assert_not_called()
+        folder = flow.batch_folder(self.cfg, manifest)
+        self.assertEqual(flow.read_json(folder / 'environment-preflight.json'), report)
+        self.assertFalse(any((folder / 'state').glob('*.json')))
 
     def blocked_video(self, *, fallback=False):
         self.make_source()
