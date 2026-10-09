@@ -1049,7 +1049,27 @@ def verify_review(report: dict, files: dict[str, str], required: set[str], *, ma
 def review_outcome(report: dict, files: dict[str, str], required: set[str], *, manifest: dict, pipeline_profile='legacy') -> tuple[str, str | None]:
     """Incomplete rejection can guide repair, but can never certify delivery."""
     try:
-        return verify_review(report, files, required, manifest=manifest, pipeline_profile=pipeline_profile), None
+        verdict = verify_review(report, files, required, manifest=manifest, pipeline_profile=pipeline_profile)
+        if verdict == 'blocked':
+            # Older reviewers sometimes label ordinary, fully inspected content
+            # findings as blocked. Preserve that report but route only proven
+            # content findings to repair; missing coverage or environment errors
+            # must keep the diagnostic path, even if their severity is mislabeled.
+            from runtime_doctor import failure_kind
+            details = json.dumps([report['issues'], report.get('limitations', [])], ensure_ascii=False)
+            content_only = all(i['severity'] != 'blocker' and i['artifact'] in files for i in report['issues'])
+            external = (failure_kind(details) != 'environment_error' or policy_rejection_reported(details) or
+                        re.search(r'helper_unknown_error|quota|rate.?limit|额度|无法执行|无法读取|服务不可用|'
+                                  r'cannot (?:read|execute)|unable to (?:read|execute)|connection refused', details, re.I))
+            if content_only and not external:
+                advisory = {**report, 'verdict': 'revise'}
+                try:
+                    verify_review(advisory, files, required, manifest=manifest, pipeline_profile=pipeline_profile)
+                except Blocked:
+                    pass  # Incomplete reads cannot establish a content-only rejection.
+                else:
+                    return 'revise', 'Blocked label with complete content findings; original verdict preserved'
+        return verdict, None
     except Blocked as exc:
         warning = str(exc)
         if (not isinstance(report, dict) or report.get('verdict') != 'revise' or
@@ -1945,6 +1965,8 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
         if integrity_warning:
             state[kind + "_review"].update(advisory_only=True, integrity_warning=integrity_warning,
                 missing_evidence=sorted(required - {r['path'] for r in result['reviewed_files']}))
+            if verdict != result['verdict']:
+                state[kind + '_review']['reported_verdict'] = result['verdict']
             if integrity_warning.startswith('Review contains stale/wrong hash: '):
                 state[kind + "_review"]["advisory_only_hash_error"] = integrity_warning
         if verdict == 'blocked':

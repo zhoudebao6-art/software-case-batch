@@ -15,7 +15,7 @@ class ReviewBlockerTests(unittest.TestCase):
     make_source = fixtures.CaseflowTests.make_source
     run_fake = fixtures.CaseflowTests.run_fake
 
-    def blocked_review(self, complete=False):
+    def blocked_review(self, complete=False, issue=None):
         self.make_source()
         flow.plan(self.cfg, self.source)
         self.cfg['runner'].update(review_mode='combined_final')
@@ -30,7 +30,7 @@ class ReviewBlockerTests(unittest.TestCase):
                     'reason': 'Old successful probe'})
             if stage == 'review_final':
                 raw = compact_response(flow.read_json(output), context['review_request'])
-                raw.update(verdict='blocked', issues=[{
+                raw.update(verdict='blocked', issues=[issue or {
                     'severity': 'blocker', 'artifact': 'read-only runtime',
                     'evidence': 'helper_unknown_error: setup refresh had errors',
                     'fix': 'Owner must verify the restricted runtime before resuming'}])
@@ -67,6 +67,21 @@ class ReviewBlockerTests(unittest.TestCase):
         state = self.blocked_review(complete=True)
         self.assertEqual(state['stage'], 'blocked')
         self.assertEqual(state['review_calls_started'], 1)
+        self.assertFalse(any(s.startswith('repair') for _, s in self.fake.stages))
+
+    def test_environment_error_cannot_be_repaired_by_mislabeling_it_as_content(self):
+        state = self.blocked_review(complete=True, issue={
+            'severity': 'major', 'artifact': 'evidence/ui/overview.png',
+            'evidence': 'helper_unknown_error: command blocked by policy',
+            'fix': 'Retry reading the screenshot'})
+        self.assertEqual(state['stage'], 'blocked')
+        self.assertFalse(any(s.startswith('repair') for _, s in self.fake.stages))
+
+    def test_incomplete_blocked_content_does_not_prove_absence_of_environment_error(self):
+        state = self.blocked_review(issue={
+            'severity': 'major', 'artifact': 'evidence/ui/overview.png',
+            'evidence': 'Legend overlaps the title', 'fix': 'Move the legend'})
+        self.assertEqual(state['stage'], 'blocked')
         self.assertFalse(any(s.startswith('repair') for _, s in self.fake.stages))
 
     def test_same_blocker_and_old_ready_note_do_not_trigger_paid_retry(self):
