@@ -1,6 +1,6 @@
 interface:
   display_name: "软通案件批次制作"
-  short_description: "从一批技术 Word 自动建设系统、审图回填、录制视频并整理成品"
-  default_prompt: "使用 $software-case-batch 处理我提供的案件目录，先列清单，确认后用 Sol 高建设、自检及返修，Sol Ultra集中验收；可修复问题持续处理到通过，减少重复审核。"
+  short_description: "批量制作增补 Word 与真实业务视频，建设内自检、定向返修并保留工作区"
+  default_prompt: "使用 $software-case-batch 完成我指定的案件批次：GPT-6.1 Sol high建设与自检，ultra返修及普通独立验收；每案交付Word和模拟系统目录内的视频。"
 policy:
   allow_implicit_invocation: false

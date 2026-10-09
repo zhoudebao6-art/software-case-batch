@@ -54,3 +54,17 @@ class BuildPreflightTests(unittest.TestCase):
         self.assertIn('calculation_basis', str(result['errors']))
         self.assertIn('all_requested_figures_at_document_end', str(result['errors']))
         self.assertIn('all_requested_figures_referenced_in_body', str(result['errors']))
+
+    def test_preflight_rejects_attempt_to_hide_chart_as_runtime_stream(self):
+        from build_preflight import check
+        case, digest, manifest = self.build()
+        flow.atomic_json(case / 'evidence/runtime-streams.json', {
+            'purpose': 'live_service_output', 'paths': [manifest['charts'][0]['csv']]})
+        with patch('build_preflight.verify', return_value={
+            'structural_preservation_ok': True, 'all_requested_figures_embedded': True,
+            'all_requested_figures_at_document_end': True,
+            'all_requested_figures_referenced_in_body': True}), patch.object(flow, 'invoke') as model:
+            result = check(case, self.source / 'a.docx', source_hash=digest)
+        self.assertFalse(result['ok'])
+        self.assertTrue(any(e.startswith('Snapshot: ') and 'stdout/stderr' in e for e in result['errors']))
+        model.assert_not_called()

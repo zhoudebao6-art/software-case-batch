@@ -892,7 +892,7 @@ def bind_review_response(raw: dict, request: dict, files: dict[str, str], requir
             raise Blocked('Review contains unknown or duplicate evidence IDs')
         return [index[i] for i in ids]
     reviewed = paths(raw['reviewed_evidence'])
-    if raw['verdict'] != 'revise' and not required.issubset(reviewed):
+    if raw['verdict'] not in {'revise', 'blocked'} and not required.issubset(reviewed):
         missing = [f'{key}={path}' for key, path in index.items() if path in required and path not in reviewed]
         raise Blocked('Review omits required evidence: ' + '; '.join(missing))
     if not isinstance(raw['chart_reviews'], list):
@@ -1003,7 +1003,7 @@ def verify_review(report: dict, files: dict[str, str], required: set[str], *, ma
     if not isinstance(rows, list) or any(not isinstance(r, dict) or set(r) != {"path", "sha256"} or not all(isinstance(v, str) for v in r.values()) for r in rows):
         raise Blocked("Invalid reviewed-files array")
     reviewed = {r["path"]: r["sha256"] for r in rows}
-    if len(reviewed) != len(rows) or not required.issubset(reviewed):
+    if len(reviewed) != len(rows) or (verdict != 'blocked' and not required.issubset(reviewed)):
         raise Blocked("Review omits required evidence")
     for rel, digest in reviewed.items():
         if files.get(rel) != digest:
@@ -1041,7 +1041,7 @@ def verify_review(report: dict, files: dict[str, str], required: set[str], *, ma
                 raise Blocked("Chart review omits normal-size Word evidence")
             if pipeline_profile != 'deliverable-first-v1' and not set(evidence).intersection(manifest['ui_screenshots']):
                 raise Blocked("Chart review omits normal-size UI/Word evidence")
-    if manifest is not None and seen != set(expected):
+    if manifest is not None and verdict != 'blocked' and seen != set(expected):
         raise Blocked("Review must cover every chart exactly once")
     return verdict
 
@@ -1353,6 +1353,7 @@ def prompt(cfg: dict, stage: str, context: dict) -> str:
         body += '\n\n输出必须使用review-response.schema.json的evidence-ids-v1协议。只返回review_id、protocol、verdict、issues、chart_reviews、reviewed_evidence、coverage、limitations八字段。reviewed_evidence和每图evidence_ids填写review_request.evidence中的短ID，不抄写SHA256或长路径列表，不输出旧版reviewed_files/snapshot_sha256/png_sha256。父执行器核对审查前后文件未变，再绑定哈希，保留原始答复。必须实际审查当前全部必要证据，覆盖方式在coverage中明确；不得把声明IDs当成看过。'
         body += '\n受控timeline若含完整frame_files映射，均匀采样画面通过全部接触页审查，reviewed_evidence只登记实际看的接触页ID，不声称逐个打开原帧。全部原帧仍由父执行器逐个验证哈希；真实首尾帧、交互前后关键原帧和疑点原帧仍须打开。coverage明确本次查看方式。旧timeline无映射时不推定覆盖。revise证据清单不全可作为返修意见，但不能签通过；pass必须覆盖全部当前必要ID。'
         body += '\n提交pass前，用context.runtime.python运行共享scripts/review_check.py "context.review_request_path" --ids 后跟本次实际检查或合法沿用的全部短ID，先核对遗漏/重复/未知ID。程序只检查清单，不证明已阅，也不补齐ID。PDF与其PNG页是不同证据：PDF需读取页数/文档完整性并核对受控render绑定；全页视觉可由当前PNG完成。复验可沿用此前真正核验且哈希未变的PDF，不重复渲染或逐页重读，但须在coverage如实说明。未核验的缺项先实际核验，不能直接抄齐清单。'
+        body += '\n若真实外部故障使检查无法完成，返回blocked、原始错误和解除条件；只列实际已阅证据及实际完成的逐图检查，未读/未审范围写limitations，不为凑全ID伪造检查。父执行器保存诊断并停止本案无效重试；pass仍严格全覆盖。普通数据不足或可修复内容问题按规则返回revise。'
     body += '\n\n用户已授权加急案件独立验收使用gpt-6-astra/low，普通案件使用配置中的Sol/ultra（当前默认gpt-6.1-sol/ultra）；实际角色以context.review_route和真实CLI参数为准。加急只改变审查模型与排队槽，图表/Word/界面/视频的证据覆盖、哈希绑定和通过条件不变，返修使用显式repairer配置。旧规则中固定ultra的表述仅适用普通审查，不能要求加急案再排一次Sol Ultra，也不能自行切模型或自签通过。'
     builder = cfg.get('models', {}).get('builder', {}).get('model')
     if builder:
@@ -1579,6 +1580,16 @@ def deferred_worker_blocker(case: Path, state: dict) -> dict | None:
     return None
 
 
+def environment_blocker(case: Path, message: str, category: str) -> dict:
+    """Retain diagnostics until a fresh owner recovery note, without writing in the case."""
+    relative = '.caseflow-environment.json'
+    path = case / relative
+    return {'category': category, 'message': message, 'source': relative,
+            'source_sha256': sha256(artifact(case, relative)) if path.is_file() else None,
+            'from_final_response': True,
+            'fingerprint': hashlib.sha256((category + '\n' + message).encode('utf-8')).hexdigest()}
+
+
 def finish_delivery_cleanup(case: Path, folder: Path, state: dict):
     """A cleanup failure never changes a verified delivered case to blocked."""
     if state.get('cleanup_receipt') or state.get('cleanup_pending'):
@@ -1781,7 +1792,7 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
             full['required_action'] = (
                 '上次录制使用的服务身份与本案当前修复身份不一致。'
                 '先只读核对本案 capture-plan.json、resources.json（若有）、健康接口返回的案件ID、工作区、端口、创建时间、PID、命令行和版本，'
-                '再由 Sol high 让页面、录制计划、应用输入和当前健康身份指向同一个已核实服务；'
+                '再由 GPT-6.1 Sol ultra 让页面、录制计划、应用输入和当前健康身份指向同一个已核实服务；'
                 '保全旧视频和日志，重新排练并录制，逐帧解码、抽帧核对交互与可见文案，重建 ui_text_audit、时间线及视频清单哈希。'
                 '不得把旧服务的静态页面变化视为当前版本，也不得启动、重启、切换或用其他命令绕过被策略拒绝的服务。'
                 '完成前不能送独立验收；详见 video_service_mismatch.evidence。'
@@ -1936,7 +1947,21 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
                 missing_evidence=sorted(required - {r['path'] for r in result['reviewed_files']}))
             if integrity_warning.startswith('Review contains stale/wrong hash: '):
                 state[kind + "_review"]["advisory_only_hash_error"] = integrity_warning
+        if verdict == 'blocked':
+            # A failed runtime cannot inspect all evidence. Preserve the explicit
+            # reads and original blocker; never manufacture coverage or send it
+            # to a content repairer. Pass coverage remains strict above.
+            state[kind + '_review'].update(diagnostic_only=True,
+                missing_evidence=sorted(required - {r['path'] for r in result['reviewed_files']}),
+                missing_charts=sorted({c['figure_id'] for c in manifest['charts']} -
+                                      {c['figure_id'] for c in result['chart_reviews']}))
+            message = 'Independent review blocked: ' + '; '.join(
+                f"{i['artifact']}: {i['evidence']} ({i['fix']})" for i in result['issues'])
+            state['worker_blocker'] = environment_blocker(case, message, 'review_blocked')
+            state['resume_deferred'] = 'Owner recovery evidence required; no paid content repair dispatched'
         atomic_json(state_file, state)
+        if verdict == 'blocked':
+            raise WorkerBlocked(state['worker_blocker'])
         return verdict
     def controlled(mode: str):
         checkpoint()
@@ -1980,9 +2005,10 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
                 # case so the owner can repair the runtime or policy boundary.
                 from runtime_doctor import failure_kind
                 environment_kind = failure_kind(f"{type(exc).__name__}: {exc}")
-                if environment_kind in {'policy_denied', 'memory_exhausted', 'permission_or_lock'}:
-                    blocker = {'category': environment_kind, 'message': str(exc),
-                               'stage': 'controlled_' + kind}
+                if environment_kind in {'policy_denied', 'memory_exhausted', 'permission_or_lock',
+                                        'file_in_use', 'sandbox_setup_failed'}:
+                    blocker = environment_blocker(case, str(exc), environment_kind)
+                    blocker['stage'] = 'controlled_' + kind
                     state['worker_blocker'] = blocker
                     state['resume_deferred'] = 'Environment blocker retained; no paid retry dispatched'
                     atomic_json(state_file, state)
@@ -2112,7 +2138,7 @@ def run_case(cfg: dict, m: dict, folder: Path, entry: dict, *, executor=invoke) 
                 break
             prior = state.get("final_review", {})
             repair_limit = cfg["runner"].get("max_final_review_repairs", 1)
-            if prior.get("verdict") in {"revise", "blocked"} and prior.get("snapshot_sha256") == snapshot_id(files):
+            if prior.get("verdict") == "revise" and prior.get("snapshot_sha256") == snapshot_id(files):
                 if repair_limit is not None and state["repairs_final"] >= repair_limit:
                     raise Blocked("Final review rejected after permitted repair; user decision required")
                 call_limit = cfg["runner"].get("max_review_calls_per_case", cfg["runner"].get("max_astra_calls_per_case"))

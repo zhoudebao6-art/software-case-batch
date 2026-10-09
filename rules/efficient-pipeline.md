@@ -1,6 +1,6 @@
 # efficient-v1 新批次执行约定
 
-此协议只在 context.pipeline_profile 为 efficient-v1 时启用；旧批次不自动迁移。模型仍为 Sol high 建设与返修、Sol ultra 独立只读集中验收。
+此协议只在 context.pipeline_profile 为 efficient-v1 时启用；旧批次不自动迁移。当前新调用使用GPT-6.1 Sol high建设、GPT-6.1 Sol ultra返修及普通独立只读集中验收；历史有效调用记录不改写。
 
 1. 建设完成时同时准备录制，减少另开模型重复了解本案：选1–2个表现良好的业务模块，按 docs/capture-plan.md 保存 evidence/capture-plan.json，运行 capture_runner.py probe 并查看实际截图。建设阶段不录屏；实际视频由父执行器在独立录制槽内生成。
 2. prepare_video 与 repair_video 只修页面、服务就绪条件和录制计划，在8个建设槽中排队，禁止在这些阶段录屏。新视频、完整解码、时间线、抽帧和最终独立验收仍由父执行器组织。不减少图表、Word上下文或视频视觉检查。
@@ -12,4 +12,4 @@
 
 ## 加急验收路由（2026-09-28用户明确授权）
 
-普通案件仍由Sol Ultra只读验收；用户要求加急时改用Astra / 低思考（gpt-6-astra/low），使用独立review_expedited单槽，不等待普通Sol Ultra槽。建设和返修仍Sol高，图表、Word、界面和视频的原验收标准、证据覆盖与哈希绑定保持不变，不另加一次Sol Ultra复核。按[rules/expedited-review.md](expedited-review.md)执行：对已确认批次运行 `scripts/caseflow.ps1 control <批次ID> expedite`，仅指定案件加急则加`--case-id <ID>`。新版执行器在尚未启动审核的排队阶段可以自动改队列，正在运行的有效调用不重复启动；旧父需在安全检查点恢复同批。原文“固定ultra”约束只适用于普通审查，加急以本条为准，不得静默替换模型。只恢复指定案件可用`run <批次ID> --case-id <ID1> --case-id <ID2>`，不会调度或改写其他案的state/成品，返回结果明确标注selected_cases，不能把选中案件完成说成全批完成。
+普通案件仍由Sol Ultra只读验收；用户要求加急时改用Astra / 低思考（gpt-6-astra/low），使用独立review_expedited单槽，不等待普通Sol Ultra槽。建设使用GPT-6.1 Sol high、返修使用GPT-6.1 Sol ultra，图表、Word、界面和视频的原验收标准、证据覆盖与哈希绑定保持不变，不另加一次Sol Ultra复核。按[rules/expedited-review.md](expedited-review.md)执行：对已确认批次运行 `scripts/caseflow.ps1 control <批次ID> expedite`，仅指定案件加急则加`--case-id <ID>`。新版执行器在尚未启动审核的排队阶段可以自动改队列，正在运行的有效调用不重复启动；旧父需在安全检查点恢复同批。原文“固定ultra”约束只适用于普通审查，加急以本条为准，不得静默替换模型。只恢复指定案件可用`run <批次ID> --case-id <ID1> --case-id <ID2>`，不会调度或改写其他案的state/成品，返回结果明确标注selected_cases，不能把选中案件完成说成全批完成。

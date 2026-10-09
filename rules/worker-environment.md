@@ -59,3 +59,10 @@
 本机若已配置 node_repl MCP，且其 `env.CODEX_CLI_PATH` 指向旧桌面 CLI，显式配置 `runner.bind_node_repl_cli=true`，仅为批次子调用绑定同一已验证 CLI；未配置该 MCP 的机器保持 false，不凭空新建服务。固定 CLI 缺失时失败并指明路径，禁止静默回退到旧桌面二进制。模型与受限权限路由不变。
 
 上游依据：https://github.com/openai/codex/issues/51634 ；修复源码：https://github.com/openai/codex/blob/rust-v0.162.0-alpha.20/codex-rs/windows-sandbox-rs/src/acl.rs 。
+
+
+## 验收环境阻塞的接续
+
+独立验收工具无法运行或读取必要证据时，返回`blocked`及实际已阅ID、原错误、未验证范围。父执行器保存`diagnostic_only`、`missing_evidence`与`missing_charts`，不以“缺项”覆盖原始故障，不补齐看图记录，不进入普通付费内容返修。`pass`仍严格核对全部必要证据、每图五项、真实模型和当前哈希。数据/实现/图文等可修复内容缺陷仍返回`revise`。
+
+父执行器在案件外保存阻塞指纹与失败时`.caseflow-environment.json`的哈希。唯一负责人解决实际原因、取得本案原受限模式恢复证据后，才写入新的`status=ready`、`requires_environment_repair=false`记录，并附准确原因与证据路径；旧ready、重复run或单改状态字段不算恢复证据。原阻塞与未读项保留，接续独立检查；若另有明确内容缺陷，先由负责人安排对应定向修复。受控Word/视频阶段的`file_in_use`和`sandbox_setup_failed`同样阻止付费返修。不得为得到ready绕过拒绝或放宽安全设置。

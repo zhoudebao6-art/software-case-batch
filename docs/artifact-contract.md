@@ -132,3 +132,16 @@ video_evidence.py 对 MP4 解码和采样，输出 timeline.json、5fps的逐帧
 Word排版固定规则：红字说明应合理插入正文对应实施例的合适部分，衔接前后文并保留独立图号引用；仅新增图片及其图题按图号统一追加在全部原文内容之后，图题在对应图片下方。原文、原图、原式及其位置保留。禁止图片夹入实施例，禁止说明随图片一起移到文末。
 
 新生成的 preservation_report 必须包含 all_requested_figures_at_document_end=true、all_requested_figures_referenced_in_body=true 以及 figure_placement（图片实际关系、正文块位置、图题、缺失正文引用和问题列表）。每张图在正文对应说明中独立出现“请参考图N”等引用，只有图下图题不算正文引用。程序拒绝正文中夹图、图片只存于包内但未绘制、重复插图、缺少下方图题、图后仍有正文内容或正文漏掉对应图号引用；保留检查与全页视觉检查继续执行，位置和引用检查不能证明说明的语义衔接。历史报告缺字段不视为已经检查位置及引用，也不自动重开历史批次；下一次授权生成 Word 证据时执行此检查。
+
+
+## 运行流与冻结证据
+
+服务的持续stdout/stderr可置于本案`.runtime/`，或使用以下已有快照协议：
+
+```json
+{"purpose":"live_service_output","paths":["evidence/service-20261009-120000-stdout.log","evidence/service-20261009-120000-stderr.log"]}
+```
+
+保存为`evidence/runtime-streams.json`，列出的文件须已存在且属于本案；仅支持`evidence/service-[数字或连字符]-(stdout|stderr).log`。登记文件本身进入快照，不能送验中途修改。父执行器仅排除这些持续运行流；清单声明的成品、CSV、计算记录及test_report引用的测试日志仍纳入哈希，不能通过登记绕开必要证据。当前测试日志使用已完成、不会继续追加的文件。使用自定义service.stderr.log但不登记，正常HTTP请求也可能改快照；须在首次启动准备时处理，不能在验收后删除、截断或悄悄扩大排除范围。
+
+`scripts/build_preflight.py`在建设内同时验证快照/登记的路径与声明约束；它不证明运行流以后不会变化，也不替代真实probe和最终审查前后快照比较。

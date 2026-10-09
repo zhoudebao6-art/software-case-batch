@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import zipfile
 
-from caseflow import Blocked, artifact, read_json, sha256, validate_build_contract
+from caseflow import Blocked, artifact, read_json, sha256, snapshot, validate_build_contract
 from verify_docx import verify
 
 
@@ -18,6 +18,10 @@ def check(case, original, *, source_hash=None):
         validate_build_contract(case, expected)
     except (Blocked, OSError, ValueError, KeyError, TypeError) as exc:
         errors.append(str(exc))
+    try:
+        snapshot(case, video=False)
+    except (Blocked, OSError, ValueError, KeyError, TypeError) as exc:
+        errors.append('Snapshot: ' + str(exc))
     word = None
     try:
         manifest = read_json(artifact(case, 'evidence/artifact-manifest.json'))
