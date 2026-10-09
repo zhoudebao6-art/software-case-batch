@@ -41,7 +41,10 @@ def _powershell_json(script):
 def listener_identity(port):
     if type(port) is not int or not 1 <= port <= 65535:
         raise IdentityError('Invalid listener port')
-    script = ("$connections=@(Get-NetTCPConnection -State Listen -ErrorAction Stop); "
+    # Query the same Windows TCP provider directly. Loading the NetTCPIP
+    # PowerShell wrapper for each short-lived probe can consume its deadline.
+    # Keep all listening ports so a shared process cannot look case-exclusive.
+    script = ("$connections=@(Get-CimInstance -Namespace root/StandardCimv2 -ClassName MSFT_NetTCPConnection -Filter 'State = 2' -ErrorAction Stop); "
               "$owners=@($connections | Where-Object { $_.LocalPort -eq %d -and $_.LocalAddress -in @('127.0.0.1','0.0.0.0','::') } | "
               "Select-Object -ExpandProperty OwningProcess -Unique); "
               "if($owners.Count -eq 0){'{\"absent\":true}'; exit 0}; "
