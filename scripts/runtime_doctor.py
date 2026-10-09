@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 
 
 def available_memory_mb():
@@ -124,6 +125,7 @@ def check_environment(cfg, *, smoke=False, check_cli=True):
         return {'ok': False, 'errors': errors, 'checks': checks, 'model_calls': 0}
 
     def probe(name, command, *, timeout=30, env=None, required_marker=None):
+        started = time.monotonic()
         try:
             result = subprocess.run(command, capture_output=True, text=True, encoding='utf-8',
                                     errors='replace', timeout=timeout, env=env,
@@ -132,11 +134,12 @@ def check_environment(cfg, *, smoke=False, check_cli=True):
                 raise RuntimeError((result.stderr or result.stdout or str(result.returncode))[-1600:])
             if required_marker and required_marker not in result.stdout + result.stderr:
                 raise RuntimeError('Installed CLI does not support configured ' + required_marker + '; update CLI without weakening approval settings')
-            checks.append({'name': name, 'ok': True})
+            checks.append({'name': name, 'ok': True, 'elapsed_seconds': round(time.monotonic() - started, 3)})
             return True
         except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
             detail = str(exc)[-1600:]
-            checks.append({'name': name, 'ok': False, 'kind': failure_kind(detail), 'detail': detail})
+            checks.append({'name': name, 'ok': False, 'kind': failure_kind(detail), 'detail': detail,
+                           'elapsed_seconds': round(time.monotonic() - started, 3)})
             errors.append(name + ': ' + detail)
             return False
 
@@ -156,7 +159,10 @@ def check_environment(cfg, *, smoke=False, check_cli=True):
         try:
             cli = str(native_codex(cfg))
             probe('codex_version', [cli, '--version'])
-            probe('codex_login', [cli, 'login', 'status'])
+            # Cold credential lookup can legitimately exceed 30 seconds. Keep
+            # a bounded wait and require the real successful exit, never retry
+            # a rejected operation or infer login from the version command.
+            probe('codex_login', [cli, 'login', 'status'], timeout=60)
             probe('codex_exec_interface', [cli, 'exec', '--help'],
                   required_marker='--approve-for-me' if cfg.get('runner', {}).get('worker_approval_mode') == 'auto_review' else '--sandbox')
             if os.name == 'nt' and not errors:

@@ -2334,7 +2334,7 @@ def run_batch(cfg: dict, ref: str, *, dry_run: bool = False, executor=invoke, ca
             if m.get('pipeline_profile') in {'efficient-v1', 'deliverable-first-v1'}:
                 if not Path(cfg.get('runtime',{}).get('node','')).is_file() or not (Path(cfg.get('runtime',{}).get('node_modules',''))/'playwright/package.json').is_file():
                     raise Blocked('Trusted recorder requires configured Node and bundled Playwright')
-            if cfg['runner'].get('environment_preflight', False):
+            if cfg['runner'].get('environment_preflight', True):
                 from runtime_doctor import check_environment
                 preflight = check_environment(cfg, smoke=False)
                 atomic_json(folder / 'environment-preflight.json', preflight)

@@ -43,10 +43,19 @@ class WorkerBlockerTests(unittest.TestCase):
                 self.assertTrue(flow.policy_rejection_reported(reason))
 
     def test_common_sandbox_preflight_blocks_before_any_paid_case_dispatch(self):
+        self.assert_common_preflight(True)
+
+    def test_older_config_without_preflight_flag_still_checks_before_dispatch(self):
+        self.assert_common_preflight(None)
+
+    def assert_common_preflight(self, configured):
         self.make_source('first.docx')
         self.make_source('second.docx')
         manifest = flow.plan(self.cfg, self.source)
-        self.cfg['runner']['environment_preflight'] = True
+        if configured is None:
+            self.cfg['runner'].pop('environment_preflight', None)
+        else:
+            self.cfg['runner']['environment_preflight'] = configured
         self.cfg['runtime'] = {name: str(self.exe) for name in (
             'python', 'ffmpeg', 'ffprobe', 'soffice', 'pdftoppm', 'docx_renderer')}
         executor = Mock()

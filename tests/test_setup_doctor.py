@@ -48,6 +48,34 @@ class SetupDoctorTests(unittest.TestCase):
         self.assertEqual(failure_kind('memory allocation failed'), 'memory_exhausted')
         self.assertEqual(failure_kind('PermissionError: Access denied'), 'permission_or_lock')
 
+    def test_slow_login_status_is_bounded_and_actual_login_failure_still_blocks(self):
+        import subprocess
+        from types import SimpleNamespace
+        from runtime_doctor import check_environment
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg = {'runtime': test_caseflow.fake_runtime(root), 'runner': {}, '_root': root}
+            for logged_in in (True, False):
+                calls = []
+                def execute(command, **kwargs):
+                    if command[1:] == ['login', 'status']:
+                        calls.append(command)
+                        if kwargs['timeout'] < 36:
+                            raise subprocess.TimeoutExpired(command, kwargs['timeout'])
+                        self.assertLessEqual(kwargs['timeout'], 60)
+                        return SimpleNamespace(returncode=0 if logged_in else 1,
+                            stdout='', stderr='Logged in using ChatGPT' if logged_in else 'Not logged in')
+                    return SimpleNamespace(returncode=0, stdout='--sandbox', stderr='')
+                with self.subTest(logged_in=logged_in), \
+                     patch('caseflow.native_codex', return_value=root/'codex.exe'), \
+                     patch('runtime_doctor.subprocess.run', side_effect=execute), \
+                     patch('sandbox_probe.check_worker_sandbox', return_value={'name': 'sandbox', 'ok': True}):
+                    report = check_environment(cfg)
+                self.assertEqual(report['ok'], logged_in, report)
+                self.assertEqual(len(calls), 1)
+                if not logged_in:
+                    self.assertTrue(any('Not logged in' in err for err in report['errors']))
+
     def test_low_memory_is_reported_before_model_dispatch(self):
         from runtime_doctor import recording_memory_requirement_mb, check_environment
         from unittest.mock import patch

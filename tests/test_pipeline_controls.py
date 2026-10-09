@@ -296,7 +296,7 @@ class PipelineControls(unittest.TestCase):
         def process(args,**kwargs):
             value={'files':{},'manifest_fields':{}} if any('controlled_evidence.py' in str(a) for a in args) else {'format':{'duration':'8.0'},'streams':[{'codec_name':'h264','width':1920,'height':1080,'avg_frame_rate':'30/1'}]}
             return SimpleNamespace(returncode=0,stdout=json.dumps(value),stderr='')
-        with patch.object(flow,'invoke',execute),patch.object(flow,'native_codex'),patch.object(flow.subprocess,'run',side_effect=process),patch('capture_runner.validate_plan',return_value={}),patch('capture_runner.service_ready',return_value={}),patch('capture_runner.capture',side_effect=scripted):
+        with patch.object(flow,'invoke',execute),patch.object(flow,'native_codex'),patch('runtime_doctor.check_environment',return_value={'ok': True, 'errors': [], 'checks': [], 'model_calls': 0}),patch.object(flow.subprocess,'run',side_effect=process),patch('capture_runner.validate_plan',return_value={}),patch('capture_runner.service_ready',return_value={}),patch('capture_runner.capture',side_effect=scripted):
             result=flow.run_batch(self.cfg,m['batch_id'],executor=execute)
         state=result['cases'][0]
         self.assertEqual(state['stage'],'delivered',state.get('reason'))

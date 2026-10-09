@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from sandbox_probe import check_worker_sandbox, runtime_diagnostics
+from sandbox_probe import check_worker_sandbox, runtime_diagnostics, run_probe_command
 from runtime_doctor import failure_kind
 
 
@@ -79,6 +79,35 @@ class SandboxProbeTests(unittest.TestCase):
         self.assertFalse(result['ok'])
         with self.assertRaises(ValueError):
             check_worker_sandbox({}, '.', mode='danger-full-access')
+
+    def test_cold_setup_gets_one_bounded_attempt_and_still_requires_success(self):
+        calls = []
+        def execute(command, **kwargs):
+            if command[1:] == ['help', 'sandbox']:
+                return subprocess.CompletedProcess(command, 0, 'Full command args to run under Windows', '')
+            calls.append(command)
+            self.assertGreaterEqual(kwargs['timeout'], 55)
+            self.assertLessEqual(kwargs['timeout'], 90)
+            marker = command[-1].split('print(')[1].split(')')[0].strip("'")
+            return subprocess.CompletedProcess(command, 0, marker, '')
+        self.assertTrue(self.run_probe(execute)['ok'])
+        self.assertEqual(len(calls), 1)
+
+    def test_timeout_retains_actual_output_and_never_accepts_a_printed_marker(self):
+        def hang(command, **kwargs):
+            kwargs['stdout'].write(b'CASEFLOW_SANDBOX_OK_test\n')
+            kwargs['stderr'].write(b'blocked by policy\n')
+            raise subprocess.TimeoutExpired(command, kwargs['timeout'])
+        with patch('sandbox_probe.subprocess.run', side_effect=hang):
+            with self.assertRaises(subprocess.TimeoutExpired) as caught:
+                run_probe_command(['probe'], timeout=90)
+        result = self.run_probe([caught.exception])
+        self.assertFalse(result['ok'])
+        self.assertTrue(result['timed_out'])
+        self.assertEqual(result['kind'], 'policy_denied')
+        self.assertIn('blocked by policy', result['stderr'])
+        self.assertEqual(result['timeout_seconds'], 90)
+        self.assertIn('elapsed_seconds', result)
 
     def test_sharing_setup_and_policy_are_distinct(self):
         self.assertEqual(failure_kind('os error 32'), 'file_in_use')
