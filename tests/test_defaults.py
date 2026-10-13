@@ -45,6 +45,9 @@ class DefaultPolicyTests(unittest.TestCase):
             prompt=(work/'.product-v2/深化命令词.txt').read_text(encoding='utf8')
             self.assertIn(r'D:\研发图表',prompt);self.assertIn(str(output),prompt)
             self.assertIn('原定义→具体接受/拒绝断言→最终同引擎派生结果重算',prompt)
+            for rule in ('先用最小业务闭环和关键反例调用真实最终函数', '通过后再扩量及制作依赖图文和录制',
+                         '业务失败立即停止依赖生成、保留未变成果和独立验收'):
+                self.assertIn(rule,prompt)
             for rule in ("high提交前实际运行contracts.chart_snapshot(workspace,Path(run['word']),run)",
                          'labels（只登记真实非空可见标签', '缺项在建设内修齐',
                          '不新增模型、审批或渲染', '不替代逐图/全页视觉'):
