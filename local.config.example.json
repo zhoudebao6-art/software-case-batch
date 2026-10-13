@@ -1,0 +1,8 @@
+{
+  "output_root": "F:\\研发图表",
+  "python": "D:\\codex+\\dependencies\\software-case-batch\\.venv\\Scripts\\python.exe",
+  "node": "D:\\codex+\\cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe",
+  "playwright_module": "D:\\codex+\\cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\node_modules\\playwright",
+  "ffmpeg": "填写本机 ffmpeg.exe 的绝对路径",
+  "ffprobe": "填写本机 ffprobe.exe 的绝对路径"
+}

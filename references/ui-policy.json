@@ -1,0 +1,5 @@
+{
+  "source": "original/rules/web-visible-copy.md:5-10",
+  "chinese": ["物理仿真", "专利", "权利要求", "权要", "模拟", "虚拟", "仿真", "工程样本", "工程示例", "模拟数据", "演示数据", "推演数据", "合成数据", "参考", "源文件", "公式", "正文"],
+  "english_patterns": ["\\bmock\\b", "\\bdummy\\b", "\\bsynthetic\\b", "\\bsimulated\\b", "\\bsimulation\\b", "\\bvirtual\\b", "\\bdemo[\\s_-]+data\\b"]
+}

@@ -1,0 +1,176 @@
+# 工具和证据格式
+
+加载 `Enter-Environment.ps1` 后，`$env:SCB_PRO_PYTHON` 是已配置 Python。下面 `工具目录` 均指本技能 scripts；`案件目录` 是用户点名的原案件工作区。工具不调用模型；父会话实际分派high建设、ultra返修，普通独立审核ultra，真实当前批/案原加急授权后的独立审核Astra/low；不能把配置或自检当成调用证明。
+
+## 准备、数据、源码
+
+```powershell
+& $env:SCB_PRO_PYTHON '工具目录\proflow.py' prepare --workspace '案件目录' --output '成品新目录' --title '业务名称' --source-docx '原输入Word绝对路径.docx'
+& $env:SCB_PRO_PYTHON '工具目录\proflow.py' clean-data --workspace '案件目录' --manifest '重要CSV清单绝对路径'
+& $env:SCB_PRO_PYTHON '工具目录\proflow.py' pack-source --workspace '案件目录' --manifest '源码清单绝对路径'
+& $env:SCB_PRO_PYTHON '工具目录\proflow.py' scan --workspace '案件目录'
+```
+
+`--source-docx` 必须指向一个明确原输入，检查Word包并冻结绝对路径、SHA256和完整basename（含中文、括号等）；不扫描多个Word任意选择。run schema 2的 `word_name`、`word` 是动态交付路径。成品根目录只允许该basename和 `模拟系统`；系统内只允许 `项目源码.zip`、`演示视频.mp4`、`数据`，数据目录直接存重要CSV。源码ZIP也排除使用/运行/安装/部署说明、制作过程、原件解析及数据构造/来源说明，不放揭示模拟性质的文案；启动脚本和必要许可证保留。run 1及旧收据保留，不能原地升级。
+
+清洗前须有本次 `process_guard.py stop` 的成功回执，清洗命令再次查询 OS，旧回执不能掩盖已重启后台。重要 CSV 清单（每项按本案实际替换，路径相对工作区）：
+
+```json
+{"files":[{"path":"data/operations.csv","name":"运行记录.csv","reason":"业务主记录及关键结果","primary_key":["对象编号","时间"],"min_rows":100000,"encoding":"utf-8-sig","delimiter":","}]}
+```
+
+脚本保留其他单元格和字段顺序，仅去指定元数据整列。输出 UTF-8 BOM。字段数不齐、空/重复列、主键缺失/重复、不足计划行数、禁词值或不安全路径使本次失败；不会静默删行补值。输入不变；事务暂存留在工作区，失败不发布部分数据。清洗前后的哈希和删列记录在 `.product-v2/data-cleaning.json`。主键去重检查用内存集合，百万级以上须按实际内存改用磁盘唯一性检查，不能为过门禁减规模。
+
+源码清单是需要交付的实际文件列表；不支持盲目打包全工作区。`exclude` 补充本案特有解析文件名/路径：
+
+```json
+{"files":["app/server.py","app/import_parser.py","web/index.html","web/app.js","requirements.txt","启动.ps1","app/.env.example","README.md","evidence/source_trace.json"],"exclude":["材料整理/**","*.analysis.json"]}
+```
+
+示例中 README 和 evidence 项会自动排除并记录。`import_parser.py` 是业务模块则保留；针对技术 Word 的解析、抽取、映射文件需逐项核实排除。排除所有层级的 README 名称、原技术文档、过程证据、缓存、依赖、日志、数据库和凭据。不要交付依赖本地状态库的压缩包：通过成品外部 CSV 和初始化脚本恢复运行。额外必需资源按白名单明确加入，许可证按原要求保留；`.env.example` 只能放无真实密钥的配置范例。
+
+所有写入均拒绝覆盖已有同名产物。自检失败后，确认仍为未完成草稿，用下列命令把指定旧草稿保全到原工作区，再重新生成；原输入、旧稿与哈希保留。已经 `finalize` 的交付不能这样改，应建立新案件修订工作区与新成品目录。
+
+```powershell
+& $env:SCB_PRO_PYTHON '工具目录\proflow.py' preserve-draft --workspace '案件目录' --artifact data
+# artifact 可选 data/source/video；只移动确定的本次草稿，不清空目录。
+```
+
+## 录制和进程
+
+```powershell
+& $env:SCB_PRO_PYTHON '工具目录\process_guard.py' register --workspace '案件目录' --pid 12345
+& $env:SCB_PRO_PYTHON '工具目录\proflow.py' record --workspace '案件目录' --plan '录制计划绝对路径' --phase capture
+# 父finally释放record槽；其余live capture结束后，取得evidence单槽。
+& $env:SCB_PRO_PYTHON '工具目录\proflow.py' record --workspace '案件目录' --phase evidence
+& $env:SCB_PRO_PYTHON '工具目录\process_guard.py' inspect --workspace '案件目录'
+& $env:SCB_PRO_PYTHON '工具目录\process_guard.py' stop --workspace '案件目录'
+```
+
+新批次默认auto最高4路，显式2/3/4和旧批兼容见 [并发录制](recording-concurrency.md)。新批次capture/evidence均须加`--batch-root 调度root --batch-id 本批 --case-id 本案 --media-token 已取得当前阶段active槽token --owner-pid 真实长期父PID`；原`--record-token`是兼容别名，但token必须属于当前phase。`proflow.py`原样传到录制器；启动前核冻结工作区绑定、阶段互斥和Windows Job身份，capture另重新核资源。省略/部分lease、其他阶段token或批次full调用拒绝。
+
+PID 必须来自本次实际启动，每个专属进程逐项登记；录制器自身浏览器由它关闭。健康服务身份另按本案健康接口核实，不能只看端口可连。录制计划格式：
+
+无phase的旧full入口保留独立串行兼容，批次必须使用以上两阶段。capture不产成功成片或受控证据；evidence可恢复同capture的失败生成，不能用失败原片/旧证据通过finalize。重媒体与live capture互斥的队列/失败释放见execution.md。
+
+父建立完整必查文件清单后，用`evidence_index.py create --workspace 案件目录 --manifest 必查清单.json --index 新内部索引.json`机械收集短ID/hash，再用`review-input --workspace 案件目录 --index 新内部索引.json --output 新内部事实.json`绑定当前产物、图与timeline。事实文件不含decision、已阅ID或审查者签名，不替代finalize的fresh检查；独立审查者读完整必查集合后写自己的review JSON。
+
+```json
+{
+  "url":"http://127.0.0.1:8123/",
+  "health_path":"/api/health",
+  "version":"本案启动时冻结的实际版本",
+  "ready":"[data-ready='records']",
+  "duration_seconds":60,
+  "input_files":["app/server.py","web/app.js","web/index.html","data/records.csv"],
+  "steps":[
+    {"at":2,"action":"fill","selector":"#query","value":"设备01","expect":"#query"},
+    {"at":10,"action":"click","selector":"#search","expect":"#rows","text":"设备01"},
+    {"at":20,"action":"click","selector":"#detail","expect":"#detail-panel"},
+    {"at":30,"action":"select","selector":"#priority","value":"high","expect":"#priority"},
+    {"at":40,"action":"click","selector":"#save","expect":"#save-result","text":"已保存"},
+    {"at":53,"action":"download","selector":"#export","expect":"#save-result"}
+  ]
+}
+```
+
+健康接口返回实际 `run_id`（run.json）、`workspace`（案件绝对目录）、`version`（启动时冻结，匹配计划）与 `pid`（实际监听进程）。录制前后与当前 OS 和登记记录核对；Windows venv 的启动器和实际监听子进程可能不同，两者都要登记。选择器和操作必须来自本案实际界面；无需为了符合示例命名修改业务。此计划只是格式示例，不能把“已保存”文本当持久化验证。当前录制工具支持同一浏览器页内操作；需要弹窗或新标签业务时先扩展工具和相应测试，不悄悄改成假流程。不能自动把不足一分钟的内容补长。
+
+## 最终验证
+
+新版默认正式根`F:\研发图表\批次\案件`；`prepare --output`仍必须显式提供，默认路线的私有候选为`F:\研发图表\.staging\本批-本案-唯一版本`，与正式根同卷。`local.config.json.output_root`和当前进程`SCB_PRO_OUTPUT_ROOT/SCB_OUTPUT_ROOT`明确该默认根，不静默回D盘/桌面。用户明确其他目录优先；工作区方案采用`总工作区/成品/...`，每案执行目录为`总工作区/cases/...`，两者隔离。旧成果和冻结原规范中的D路径保留历史，不自动迁移。
+
+`.product-v2/chart-manifest.json` 仅在工作区，记录新增2–6张不同PNG：
+
+```json
+{"figures":[
+  {"figure_id":3,"png":"evidence/新增图3.png","sha256":"当前PNG的64位SHA256","caption":"图3 设备状态变化","title_policy":"none"},
+  {"figure_id":4,"png":"evidence/新增图4.png","sha256":"当前PNG的64位SHA256","caption":"图4 运行结果对比","title_policy":"none"}
+]}
+```
+
+图号延续原文；每图不同结果，按图号递增，图内无顶部标题/表头/图N。脚本检查PNG签名及当前hash、图下唯一精确caption、前文独立“请参考图N”、Word实际drawing嵌入同字节PNG，原Word正文块/原媒体保留且新增图题在全部原文后。`title_policy` 是设计约束，不能当实际PNG视觉无标题的证明。保存源实施例锚点、原式映射、前后文、计算及解释设计证据供独立ultra实际审核。
+
+父会话实际调用如下工具阶段（不是PowerShell或自动caseflow命令）：
+
+```text
+spawn_agent(task_name="本案建设", fork_turns="none", model="gpt-6.1-sol", reasoning_effort="high", message="本案材料和完整建设/自检要求")
+spawn_agent(task_name="本案返修", fork_turns="none", model="gpt-6.1-sol", reasoning_effort="ultra", message="本案全部具体问题定向修复和自检；不代独立审查")
+spawn_agent(task_name="本案独立验收", fork_turns="none", model="gpt-6.1-sol", reasoning_effort="ultra", message="只读当前产物和证据，独立写review.json，不修改产物；final输出精确验收JSON SHA256")
+```
+
+保存 `.product-v2/model-dispatch.json`，schema 1：
+
+```json
+{
+  "schema_version":1,
+  "stages":{
+    "build":{"session_log":"C:/Users/Administrator/.codex/sessions/.../父会话.jsonl","call_id":"实际建设call_id","agent_id":"/root/实际建设task_name","artifact_hashes":{"原名.docx":"SHA256","模拟系统/项目源码.zip":"SHA256","模拟系统/演示视频.mp4":"SHA256","模拟系统/数据/记录.csv":"SHA256"},"chart_snapshot":{"manifest_sha256":"SHA256","figures":{"3":"PNG_SHA256","4":"PNG_SHA256"}}},
+    "review":{"session_log":"C:/Users/Administrator/.codex/sessions/.../父会话.jsonl","call_id":"实际独立验收call_id","agent_id":"/root/实际独立验收task_name","review_session_log":"C:/Users/Administrator/.codex/sessions/.../验收子会话.jsonl","artifact_hashes":{"原名.docx":"SHA256","模拟系统/项目源码.zip":"SHA256","模拟系统/演示视频.mp4":"SHA256","模拟系统/数据/记录.csv":"SHA256"},"chart_snapshot":{"manifest_sha256":"SHA256","figures":{"3":"PNG_SHA256","4":"PNG_SHA256"}}}
+  }
+}
+```
+
+`artifact_hashes` 是完成该阶段时交付相对路径→hash，`chart_snapshot`来自该时点PNG。存在返修时`stages`增加按连续顺序`repair-1`、`repair-2`等，每条真实派发均sol/ultra，与建设/独立review不同身份，保留原high建设时的快照；最终返修及review必须绑定全部当前交付hash。不能把high建设改名作ultra返修或让reviewer写实现。字段`agent_id`使用真实canonical task_name，不杜撰。脚本从原session JSONL核验实际call/output/model/effort/fork，摘要、配置、工作区伪日志不能替代。原CLI自动调度未移植；父显式dispatch和批次资源工具提供实际等效路由。不能支持目标时保持未验收，不降级。
+
+`.product-v2/data-provenance.json` 保留 `nature`（真实数据性质）、`sources`（实际入口/检索失败/许可/下载哈希和适配记录）和 `validation`（规模、边界、主外键及分布验证）；不放进交付目录或源码包。没有成功下载时 `sources` 如实写尝试与限制，不能伪造取得。
+
+建设者保存六类实际执行材料，独立ultra核验后写最后验收JSON：`checks` 恰含 `algorithm/api/persistence/browser/build/package_startup` 六类，每项含实际 `command`、`exit_code`、相对工作区的 `log` 和该日志 `sha256`。`package_startup` 必须从最终 ZIP 解压的新目录执行。另含 `source_zip_sha256`、`video_timeline_sha256`（父控完整5fps timeline）、`reviewed_files`（与scan全部成品路径→hash一致）、`visual_notes`（完整Word页/PNG/全部视频接触页、首尾及操作关键帧，区分实际打开和合法继承）、非空 `limitations`、`reviewer_agent_id`、`decision:"pass"`和chart_snapshot。父短证据索引通过evidence_index.py核实际已阅ID，不自动补签。建设者只提供事实，不写独立decision/pass。
+
+验收JSON的 `chart_reviews` 覆盖每个当前图，每项包含 `figure_id`、当前 `png_sha256`、`no_title_header:true`、具体 `no_title_header_evidence`；以及 `meaning/data/legibility/layout/explanation` 五项，各有 `passed:true` 和具体 `evidence`。explanation必须记录实际正文实施例位置、前文—红字—后文、解释深度、原式关键符号首次简释（有原式才检查符号）和Word实际页面。没有实际查看或存在问题不能填true/pass。
+
+独立ultra写完不可再改的验收JSON后，其**最终消息仅输出这个JSON对象**（SHA256实际读取文件计算）：
+
+```json
+{"reviewer_agent_id":"/root/实际独立验收task_name","review_evidence_sha256":"最终验收JSON实际SHA256"}
+```
+
+门禁从 `review_session_log` 验证真实 `session_meta.source.subagent.thread_spawn.agent_path` 和 `turn_context.model/effort`，并读取真实assistant final的上述精确hash。若系统Memory政策要求末尾引用，允许精确JSON后附一个标准 `oai-mem-citation` 块；除此之外不从任意文字抽取JSON或使用中间答复。建设者代写验收文件、借用调用ID或验收后变更JSON不能通过。独立审查者可写自己的review JSON，产物与其他证据只读。未能完成视觉或业务核查返回具体问题/未完成状态，不给通过hash。
+
+```powershell
+& $env:SCB_PRO_PYTHON '工具目录\proflow.py' finalize --workspace '案件目录' --evidence '本案真实验收JSON路径'
+```
+
+脚本检查目录合同、内部图/Word嵌入图与caption、CSV和ZIP当前哈希、录屏时长及不变输入、完整5fps timeline及原帧/contact映射hash、六类测试日志、扫描、当前后台退出、真实high建设/ultra返修/独立ultra调用和final答复绑定。它不自行判定图像审美、科研有效性或日志业务含义，不创建独立通过。成功收据位于工作区`.product-v2/final-receipt.json`，已有拒绝重写。进程只读命令中出现case路径不算后台。
+
+## 原子发布候选
+
+最终candidate验收后，父使用`proflow.py publish --workspace '当前工作区' --destination 'F:\研发图表\正式本批\本案'`。门禁冻结publish-intent、再次逐文件核hash与本案后台停止、仅同卷新目标整体原子rename；新run路径更新与独立publish-receipt保存，原final receipt/独立review不改。intent保留便于崩溃后原命令恢复，不删除旧目标、不合并、不重签。未发布verified-candidate不可作下一修订父案；已publish的新schema父验证当前publish receipt，旧历史complete维持原兼容。
+
+## 原显式加急条件路由
+
+默认普通独立审核sol/ultra。真实user明确指定当前案/批“加急”即选择 `original-expedited` 和实际Astra/low，不要求固定“原加急模式”口令；授权格式保留`{run_id,workspace,session_log,user_message_sha256,statement,scope_name}`，scope名必须为注册ID/唯一冻结名称，纯“这批加急”另须同实际user JSONL单一当前批标识的scope_context（绑定root/batch/manifest hash）。真实肯定消息及hash逐次核，快一点/支持吗/条件/示例/材料引用/否定不授权。`batch_control expedite`设全案waiting priority10；build/review争同共享宿主位时较高priority且可获本stage槽的候选先做，inactive/损坏run/invalid source/auth/preflight不阻塞普通。未来queue(review)/acquire自动按有效授权路由，已active普通审核保留原模型。新登记批次冻结review admission，父实际派发前`verify-review`取得不可变permit/nonce，实际spawn message、stages.review及review proof绑定同token/run/workspace与两项path/hash；final gate按取得的route核实际JSONL和proofhash，不依据最终state回写旧模型。详情与完整父调用次序见 [加急审核路由](expedited-routing.md)。建设high/返修ultra、不追加ultra复核、不跨批外溢和完整质量要求保持。
+
+## 文档专用修订
+
+只有用户明确点名Word/图文修订且旧软件未变时，另建revision工作区和成品目录。`--revision-of`指向已实际发布的finalized工作区，冻结旧收据与全系统hash；旧run/旧收据不变。
+
+```powershell
+& $env:SCB_PRO_PYTHON '工具目录\proflow.py' prepare --workspace '新修订工作区' --output '新修订成品目录' --title '业务名称' --source-docx '原输入Word绝对路径.docx' --revision-of '旧工作区'
+# 若用户授权的新草稿成品已经存在，Word及系统目录精确符合合同，且全部系统字节与旧交付一致，可加 --adopt-draft；不会覆盖文件。
+& $env:SCB_PRO_PYTHON '工具目录\proflow.py' finalize-document-revision --workspace '新修订工作区' --evidence '独立ultra写的修订review.json'
+```
+
+原六类执行检查、ZIP启动检查、录制及输入hash、CSV输入及输出hash、数据性质/出处、旧后台退出均从未变旧工作区与旧收据重核。新工作区也须有真实process_guard stop收尾记录；不为创建记录启动新软件。新验收JSON保存当前 `reviewed_files/visual_notes/limitations/reviewer_agent_id/decision/chart_snapshot/chart_reviews`，新的high建设与ultra独立验收记录仅证明本次文档修订，不能伪称旧软件按新模型重建。新收据标 `scope:document-revision`、`inherited_system` 与 `inherited_checks`。系统任何字节或旧证据有变化都拒绝继承，改走完整建设检查；未变不强制重建、重录。旧版本仍保持其历史执行身份。
+
+## 源码说明专用修订
+
+仅用户明确授权删ZIP说明/非必要制作用语且业务代码未变使用此入口，不能作为业务bug返修捷径。新工作区和新成品；`--revision-of`指向最近finalized Word或包revision，而不是全盘扫描猜旧case。
+
+```powershell
+& $env:SCB_PRO_PYTHON '工具目录\proflow.py' prepare --workspace '新包修订工作区' --output '新成品目录' --title '业务名称' --source-docx '原输入Word.docx' --revision-of '最近finalized工作区' --revision-scope package
+# 已授权草稿精确符合结构可--adopt-draft；父输出含未登记用户文件时仅本次包修订可显式--allow-untracked-base。
+& $env:SCB_PRO_PYTHON '工具目录\proflow.py' finalize-package-revision --workspace '新包修订工作区' --evidence '独立ultra本次review.json'
+```
+
+`--allow-untracked-base`只在package prepare有效：父receipt登记每个文件逐项核hash，拒绝登记文件变动与链接；只按receipt白名单复制。额外Office owner临时文件/用户说明等分别记录`untracked_base_files`与hash，原位保留、不复制、不删除；finalize普通严格目录门禁不忽略杂物。最终新目录仍exact原名Word+模拟系统三项。
+
+门禁沿显式`revision_of/inherited_system`验证每代receipt/proofhash与登记产物、原源文件、原六类测试日志、源码、录制依赖、CSV输入输出和出处，不扫描其他case。当前Word/视频/每CSV与最近父登记文件每字节相同，chart_snapshot包含manifest与PNG也相同；以前真实全页/逐图阅读合法继承并在coverage区别说明，不重新渲染/录制。
+
+ZIP差异只允许移除明确排除的说明文档；业务members不得新增、删除或改变一个字节。许可证/NOTICE如需删非必要构造说明，保留原首段完整作者/题名/发布者/入口/DOI/许可及URL，并保留modified/Changes指示；独立审核确认法律必要内容和语义，不把LICENSES整文件豁免制作用语。真正业务修正改走完整run+ultra返修。
+
+新review具有当前`reviewed_files/chart_snapshot/chart_reviews/visual_notes/limitations/reviewer_agent_id/decision`及`checks`恰一项`package_startup`（实际command/exit_code/log/sha256）、`source_zip_sha256`。`inherited_evidence_chain`按最近父至原完整case列`[{workspace,receipt_sha256,proof_sha256}]`，与受控解析结果精确相同；同时`video_timeline`相对新工作区和`video_timeline_sha256`绑定同hash视频的完整5fps/关键帧证据。新ZIP必须实际新目录解压启动与核心业务验证，不能沿用旧package_startup。当前model-dispatch仍真实high建设/独立ultra，原软件历史执行身份不重写。新receipt标scope=package-revision及inherited_checks/new checks，旧receipt不改。
+
+## 本机与发布
+
+`local.config.json` 是本机运行时路径，已复用现用 Python/Node/Playwright/FFmpeg；不提交仓库或携带凭据。本技能注册为 `software-case-batch-pro`，原名称不动。原上游地址为 https://github.com/zhoudebao6-art/software-case-batch ，本次核对 HEAD 为 `2d46ad180c4d057396082a0abb0be9b66acaaff7`。这次没有修改、覆盖或上传该仓库。用户认可后再单独规划如何将新版契约接入原自动批次编排器；不能只修改旧 video 配置就声称整套新版生效。

@@ -1,0 +1,335 @@
+"""Read-only artifact and recorded dispatch checks; never create model evidence."""
+import hashlib
+import json
+from pathlib import Path
+import re
+import xml.etree.ElementTree as ET
+import zipfile
+from common import digest, inside, no_links, read_json
+from source_intake import source_figure_numbers
+
+SESSION_ROOT = Path.home()/'.codex/sessions'
+NS = {'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
+      'a':'http://schemas.openxmlformats.org/drawingml/2006/main',
+      'r':'http://schemas.openxmlformats.org/officeDocument/2006/relationships'}
+
+def delivery_layout(output, run):
+    """Exact user-facing names, including empty unexpected directories."""
+    if run.get('schema_version') != 2 or not run.get('word_name'):
+        raise ValueError('Legacy run is frozen; create a new version with explicit source-docx')
+    expected = {run['word_name'], '模拟系统'}
+    if {p.name for p in output.iterdir()} != expected:
+        raise ValueError('Delivery root must contain exactly the original Word filename and 模拟系统')
+    word = inside(output, run['word_name'])
+    system = no_links(output/'模拟系统')
+    if not system.is_dir() or {p.name for p in system.iterdir()} != {'项目源码.zip','演示视频.mp4','数据'}:
+        raise ValueError('模拟系统 must contain exactly 项目源码.zip, 演示视频.mp4 and 数据')
+    for name in ('项目源码.zip','演示视频.mp4'):
+        if inside(system,name).stat().st_size == 0:
+            raise ValueError('Empty deliverable: '+name)
+    data=no_links(system/'数据')
+    if not data.is_dir() or not list(data.iterdir()) or any(not p.is_file() or p.suffix.lower()!='.csv' for p in data.iterdir()):
+        raise ValueError('数据 must contain nonempty selected CSV files only')
+    return word
+
+def chart_snapshot(workspace, word, run):
+    """Bind internal PNG bytes to actual Word drawings and captions.
+
+    No pixel classifier is claimed. The independent review must check absence of
+    title/header in the actual PNG and Word, tied to these hashes.
+    """
+    source=no_links(run['source_docx'])
+    if digest(source)!=run['source_docx_sha256'] or source.name!=run['word_name']:
+        raise ValueError('Frozen source Word identity changed')
+    manifest=inside(workspace,'.product-v2/chart-manifest.json')
+    spec=read_json(manifest)
+    figures=spec.get('figures',[])
+    rejected_path=Path(__file__).resolve().parents[1]/'references/original/rules/rejected-chart-versions.json'
+    rejected={r['sha256'] for r in read_json(rejected_path).get('versions',[])} if rejected_path.exists() else set()
+    if not isinstance(figures,list) or not 2<=len(figures)<=6:
+        raise ValueError('Two to six distinct final chart records required')
+    if run.get('chart_numbering_policy') == 'source-sequential-v1':
+        start = max(source_figure_numbers(source), default=0) + 1
+        if [f.get('figure_id') for f in figures] != list(range(start, start+len(figures))):
+            raise ValueError('New result figure numbers must continue sequentially after all source figure numbers')
+    with zipfile.ZipFile(word) as z:
+        doc=ET.fromstring(z.read('word/document.xml'))
+        rels=ET.fromstring(z.read('word/_rels/document.xml.rels'))
+        relations={r.attrib['Id']:r.attrib['Target'] for r in rels}
+        body=doc.find('w:body',NS)
+        blocks=list(body)
+        # w:t only avoids counting field and styling values as captions.
+        paragraphs=[''.join(t.text or '' for t in b.findall('.//w:t',NS)) for b in blocks]
+        media={name:hashlib.sha256(z.read(name)).hexdigest() for name in z.namelist() if name.startswith('word/media/')}
+        ids,pngs,positions=set(),set(),[]
+        for f in figures:
+            number=f.get('figure_id')
+            if not isinstance(number,int) or isinstance(number,bool) or number<1 or number in ids:
+                raise ValueError('Distinct positive figure_id required')
+            ids.add(number)
+            png=inside(workspace,f['png'])
+            sha=digest(png)
+            if sha in rejected:raise ValueError('User-rejected chart PNG version cannot be resubmitted unchanged')
+            if png.suffix.lower()!='.png' or not png.read_bytes().startswith(b'\x89PNG\r\n\x1a\n') or sha!=f.get('sha256') or sha in pngs:
+                raise ValueError('Distinct current PNG snapshots required')
+            pngs.add(sha)
+            if f.get('title_policy')!='none':
+                raise ValueError('PNG title/header policy must be none')
+            caption=f.get('caption','')
+            if not caption.startswith('图'+str(number)) or len(caption)<=len('图'+str(number)):
+                raise ValueError('Exact descriptive Word caption required')
+            matches=[i for i,text in enumerate(paragraphs) if text==caption]
+            if len(matches)!=1 or matches[0]==0:
+                raise ValueError('Chart caption must occur once below its image in Word')
+            at=matches[0]
+            embeds=blocks[at-1].findall('.//a:blip',NS)
+            matching=False
+            for b in embeds:
+                target=relations.get(b.get('{'+NS['r']+'}embed'),'')
+                member='word/'+target if not target.startswith('/') else target.lstrip('/')
+                if media.get(member)==sha: matching=True
+            if not matching:
+                raise ValueError('Word embedded chart bytes differ or caption is not immediately below image')
+            positions.append(at)
+            if not any('请参考图'+str(number) in text for text in paragraphs[:at-1]):
+                raise ValueError('Each chart requires an independent body reference before the appended image')
+        if positions!=sorted(positions) or [f['figure_id'] for f in figures]!=sorted(ids):
+            raise ValueError('Appended chart captions must follow figure-number order')
+        # An original drawing cannot be relabeled as a new result figure.
+        with zipfile.ZipFile(source) as original:
+            for member in original.namelist():
+                if member.startswith('word/') and member not in {'word/document.xml','word/_rels/document.xml.rels'}:
+                    if member not in z.namelist() or original.read(member)!=z.read(member):
+                        raise ValueError('Original Word non-body parts, media, headers/footers or embedded objects must remain unchanged: '+member)
+            old_media={hashlib.sha256(original.read(n)).hexdigest() for n in original.namelist() if n.startswith('word/media/')}
+            if pngs & old_media:
+                raise ValueError('New result charts cannot reuse original embedded images')
+            if not old_media.issubset(set(media.values())):
+                raise ValueError('Original Word images must remain unchanged')
+            source_body=ET.fromstring(original.read('word/document.xml')).find('w:body',NS)
+            if source_body.findall('.//a:blip',NS):
+                original_rels=ET.fromstring(original.read('word/_rels/document.xml.rels'))
+                original_targets={r.attrib['Id']:r.attrib['Target'] for r in original_rels}
+                for blip in source_body.findall('.//a:blip',NS):
+                    rid=blip.get('{'+NS['r']+'}embed')
+                    target=original_targets.get(rid,'')
+                    member='word/'+target if not target.startswith('/') else target.lstrip('/')
+                    if relations.get(rid)!=target or media.get(member)!=hashlib.sha256(original.read(member)).hexdigest():
+                        raise ValueError('Original Word drawing relationships and image bytes must remain unchanged')
+            originals=[ET.tostring(b) for b in source_body if not b.tag.endswith('}sectPr')]
+            current=[ET.tostring(b) for b in blocks]
+            cursor=0
+            for original_block in originals:
+                try: at=current.index(original_block,cursor)
+                except ValueError: raise ValueError('Original Word body blocks must remain unchanged and in order')
+                cursor=at+1
+            if positions and cursor>min(positions)-1:
+                raise ValueError('All added images and captions must follow all original body content')
+    return {'manifest_sha256':digest(manifest),'figures':{str(f['figure_id']):f['sha256'] for f in figures}}
+
+def _dispatch_events(path, call_id):
+    path=no_links(path)
+    root=no_links(SESSION_ROOT)
+    if root not in path.parents or path.suffix.lower()!='.jsonl':
+        raise ValueError('Dispatch must be verified against actual Codex session JSONL, not a hand-written workspace transcript')
+    calls,outputs=[],[]
+    session_id=None
+    with path.open(encoding='utf-8') as stream:
+        for line in stream:
+            try: event=json.loads(line)
+            except json.JSONDecodeError: continue  # active final partial line is not evidence
+            if event.get('type')=='session_meta': session_id=event.get('payload',{}).get('id')
+            if event.get('type')!='response_item': continue
+            payload=event.get('payload',{})
+            if payload.get('call_id')!=call_id: continue
+            if payload.get('type')=='function_call': calls.append(event)
+            if payload.get('type')=='function_call_output': outputs.append(event)
+    if len(calls)!=1 or len(outputs)!=1:
+        raise ValueError('One actual dispatch call and matching successful output required')
+    if not session_id: raise ValueError('Actual parent session identity required')
+    return calls[0],outputs[0],session_id
+
+def _scope_mentioned(text,name):
+    prefix=r'(?:^|[\s,，;；:：()（）\[\]【】]|请|帮|给|把|将|对|让|当前|本次|现在|加急)'
+    suffix=r'(?=$|[\s,，.。;；:：()（）\[\]【】]|加急|使用|启用|采用|按|请|要|需要|要求|这批|本批|该批|此批)'
+    return bool(name and re.search(prefix+re.escape(name)+suffix,text))
+
+def _direct_user_lines(text):
+    fenced=False;material=False;result=[]
+    for raw in text.splitlines():
+        line=raw.strip()
+        if line.startswith(('```','~~~')):fenced=not fenced;continue
+        if not line:material=False;continue
+        if re.match(r'^(?:材料|原文|引用|示例|例如).{0,12}[:：]\s*$',line):material=True;continue
+        if not fenced and not material and not line.startswith('>'):result.append(line)
+    return result
+
+def expedited_authorization(workspace,record):
+    """Explicit original expedited-mode request in a real scoped user message."""
+    run=read_json(inside(workspace,'.product-v2/run.json'))
+    if record.get('run_id')!=run['run_id'] or record.get('workspace')!=str(no_links(workspace)):
+        raise ValueError('Expedited authorization must be restricted to this actual run/workspace')
+    path=no_links(record['session_log'])
+    if no_links(SESSION_ROOT) not in path.parents or path.suffix.lower()!='.jsonl':
+        raise ValueError('Expedited authorization needs an actual parent user message, not a workspace assertion')
+    statement=record.get('statement','');scope_name=record.get('scope_name','')
+    implicit=bool(re.fullmatch(r'(?:这批|本批|该批|此批)(?:案件)?(?:请|要|需要|都|全部|直接|马上|\s)*加急(?:一下|处理|办理|审核|验收)?[。.!！]?',statement))
+    clauses=re.split(r'[,，;；。]',statement);targeted=[clause for clause in clauses if _scope_mentioned(clause,scope_name)]
+    text='；'.join(targeted) if targeted else statement
+    match=re.search(r'(?:启用|使用|采用|按).{0,8}(?:原加急模式|Astra.{0,8}(?:低|low))',text,re.I)
+    if not match:match=re.search(r'加急',text)
+    negative=r'(?:不(?:建议|应该|需要|希望|打算)?|禁止|不要|不得|无需|勿)(?:再|继续|尝试|考虑|准备|自动|直接|\s)*$'
+    conditional=r'如果|假如|倘若|若(?:是|以后|用户|本|此|该|需|要|这|当前|\s)|当.{0,20}时|待.{0,20}批准|例如|示例|条件|支持(?:此|原|使用|启用)|保留(?:原|此|使用)|以后|将来'
+    negative_command=r'(?:不要|别|禁止|不得|无需|勿|不(?:建议|应该|需要|希望|打算|要)?).{0,20}加急'
+    reference_or_question=r'支持|是否|能否|能不能|可以不可以|可不可以|什么(?:是|叫)|介绍|解释|材料(?:引用|原文|内容|名称)|原文|引用|示例|例如'
+    if (not match or re.search(negative,text[:match.start()]) or re.search(conditional,text) or
+        re.search(negative_command,text) or re.search(reference_or_question,text) or re.search(r'[?？]|(?:吗|么)\s*$',text)):
+        raise ValueError('Only an explicit positive original expedited-mode request selects Astra/low; speed alone does not')
+    if not scope_name or (not targeted and not implicit):
+        raise ValueError('Actual expedited request must name its current authorized batch or case')
+    context=record.get('scope_context');found=False;last_batch_context=None
+    if implicit and (not isinstance(context,dict) or context.get('batch_id')!=scope_name):
+        raise ValueError('Implicit batch expedite needs the frozen real current-batch context')
+    with path.open(encoding='utf-8') as stream:
+        for line in stream:
+            try:event=json.loads(line)
+            except json.JSONDecodeError:continue
+            payload=event.get('payload',{})
+            if event.get('type')!='response_item' or payload.get('type')!='message' or payload.get('role')!='user':continue
+            actual='\n'.join(part.get('text','') for part in payload.get('content',[]));lines=_direct_user_lines(actual)
+            if hashlib.sha256(actual.encode()).hexdigest()==record.get('user_message_sha256') and statement in lines:
+                if not implicit:found=True
+                elif (last_batch_context and last_batch_context['hash']==context.get('user_message_sha256') and
+                      last_batch_context['text'].strip()==context.get('statement','').strip() and
+                      len(last_batch_context['lines'])==1 and last_batch_context['lines'][0]==context.get('statement') and
+                      re.fullmatch(r'(?:当前批次|本次批次|现在处理批次)\s*[:：=]?\s*'+re.escape(scope_name)+r'\s*[。.]?',context['statement'])):
+                    found=True
+            if any(re.search(r'批次|当前批|这批|本批|该批|另.{0,8}批|切换.{0,8}批|下一批|\bbatch\b',line,re.I) for line in lines):
+                last_batch_context={'hash':hashlib.sha256(actual.encode()).hexdigest(),'lines':lines,'text':actual}
+    if not found:raise ValueError('Scoped positive expedited authorization not found in the real user message')
+    result={'run_id':run['run_id'],'scope_name':scope_name,'user_message_sha256':record['user_message_sha256']}
+    if implicit:result['scope_context_user_message_sha256']=context['user_message_sha256']
+    return result
+
+def model_review(workspace, proof, files, charts, evidence_path):
+    """Verify actual implementation and admitted independent review dispatch."""
+    spec=read_json(inside(workspace,'.product-v2/model-dispatch.json'))
+    stages=spec.get('stages',{})
+    if (spec.get('schema_version')!=1 or not {'build','review'}.issubset(stages)
+            or any(k not in {'build','review'} and not re.fullmatch(r'repair-[1-9][0-9]*',k) for k in stages)):
+        raise ValueError('Actual build and independent review dispatch records required')
+    agents,call_ids,verified={},set(),{}
+    mode=spec.get('review_mode','ordinary')
+    from batch_control import media_binding,batch,load_review_admission,load_review_dispatch_permit,REVIEW_ADMISSION_CONTRACT
+    binding=media_binding(workspace)
+    required=False
+    if binding:
+        _,manifest=batch(binding['root'],binding['batch_id'])
+        required=manifest.get('review_admission_contract')==REVIEW_ADMISSION_CONTRACT
+    reference=stages['review'].get('review_admission');admission=None;dispatch_permit=None
+    if required or reference is not None:
+        if not isinstance(reference,dict):raise ValueError('New batch review must bind its immutable acquired admission')
+        admission=load_review_admission(workspace,reference)
+        if mode!=admission['mode'] or proof.get('review_admission')!=reference:
+            raise ValueError('Actual model review and independent proof must bind the acquired review route')
+        permit_reference=stages['review'].get('review_dispatch_permit')
+        if not isinstance(permit_reference,dict) or proof.get('review_dispatch_permit')!=permit_reference:
+            raise ValueError('Actual review and proof require the paid-before-dispatch verification permit')
+        dispatch_permit=load_review_dispatch_permit(workspace,reference,permit_reference)
+        verified['review_admission']={'reference':reference,'token':admission['token'],'route':admission['mode'],
+                                     'model':admission['model'],'effort':admission['effort']}
+        verified['review_dispatch_permit']=permit_reference
+    if mode not in {'ordinary','original-expedited'}:raise ValueError('Unknown review route; do not silently change models')
+    review_model,review_effort='gpt-6.1-sol','ultra'
+    if mode=='original-expedited':
+        authorization=read_json(admission['authorization']['path']) if admission else spec.get('expedited_authorization',{})
+        verified['expedited_authorization']=expedited_authorization(workspace,authorization)
+        review_model,review_effort='gpt-6-astra','low'
+    review_parent=None
+    repairs=sorted((k for k in stages if k.startswith('repair-')),key=lambda k:int(k.split('-')[1]))
+    if repairs!=['repair-'+str(i) for i in range(1,len(repairs)+1)]:
+        raise ValueError('Repair dispatch sequence must be contiguous and retained')
+    order=[('build','high')]+[(k,'ultra') for k in repairs]+[('review',review_effort)]
+    final_implementation=repairs[-1] if repairs else 'build'
+    for stage,effort in order:
+        record=spec['stages'][stage]
+        call_id=record.get('call_id')
+        if not call_id or call_id in call_ids: raise ValueError('Distinct stage dispatch call IDs required')
+        call_ids.add(call_id)
+        call,result,parent_id=_dispatch_events(record['session_log'],call_id)
+        if stage=='review': review_parent=parent_id
+        payload=call['payload']
+        if payload.get('name','').split('.')[-1] not in {'spawn_agent'}:
+            raise ValueError('Unsupported model dispatch entry; do not silently downgrade')
+        args=json.loads(payload['arguments'])
+        if stage=='review' and admission:
+            message=args.get('message','')
+            if (not isinstance(message,str) or admission['token'] not in message or dispatch_permit['dispatch_nonce'] not in message or admission['run_id'] not in message or
+                admission['workspace'].casefold() not in message.casefold()):
+                raise ValueError('Actual review dispatch message must name its admission token, verified permit nonce, run and workspace')
+        expected_model=review_model if stage=='review' else 'gpt-6.1-sol'
+        if args.get('fork_turns')!='none' or args.get('model')!=expected_model or args.get('reasoning_effort')!=effort:
+            raise ValueError('Actual '+stage+' dispatch must explicitly use '+expected_model+'/'+effort+' with fork_turns=none')
+        output=result['payload'].get('output')
+        if isinstance(output,str):
+            # Actual tool output is commonly a JSON object, optionally wrapped.
+            output=json.loads(output)
+        # This desktop returns task_name, rather than an undocumented agent UUID.
+        agent_id=output.get('task_name') if isinstance(output,dict) else None
+        if not agent_id or record.get('agent_id')!=agent_id or agent_id in agents.values():
+            raise ValueError('Distinct actual stage agent IDs required')
+        agents[stage]=agent_id
+        if (stage in {final_implementation,'review'}
+                and (record.get('artifact_hashes')!=files or record.get('chart_snapshot')!=charts)):
+            raise ValueError('Model stage record is not bound to current artifacts and chart snapshots')
+        if not isinstance(record.get('artifact_hashes'),dict) or not record.get('artifact_hashes') or not record.get('chart_snapshot'):
+            raise ValueError('Every original build/repair must retain its actual completion snapshot')
+        verified[stage]={'agent_id':agent_id,'call_id':call_id,
+            'dispatch_event_sha256':hashlib.sha256(json.dumps([call,result],sort_keys=True,ensure_ascii=False).encode()).hexdigest()}
+    if proof.get('reviewer_agent_id')!=agents['review'] or proof.get('decision')!='pass' or proof.get('chart_snapshot')!=charts:
+        raise ValueError('Current independent admitted reviewer decision and chart snapshot required')
+    review_record=spec['stages']['review']
+    review_log=no_links(review_record['review_session_log'])
+    if no_links(SESSION_ROOT) not in review_log.parents or review_log.suffix.lower()!='.jsonl':
+        raise ValueError('Actual independent review session log required')
+    actual_model=False
+    actual_identity=False
+    actual_attestation=False
+    proof_hash=digest(evidence_path)
+    with review_log.open(encoding='utf-8') as stream:
+        for line in stream:
+            try: event=json.loads(line)
+            except json.JSONDecodeError: continue
+            payload=event.get('payload',{})
+            if event.get('type')=='session_meta':
+                spawned=payload.get('source',{}).get('subagent',{}).get('thread_spawn',{}) if isinstance(payload.get('source'),dict) else {}
+                if spawned.get('agent_path')==agents['review'] and spawned.get('parent_thread_id')==review_parent: actual_identity=True
+            if event.get('type')=='turn_context':
+                actual_model=payload.get('model')==review_model and payload.get('effort')==review_effort
+            final_message=(payload.get('phase')=='final_answer'
+                           or ('phase' not in payload and payload.get('channel')=='final'))
+            if event.get('type')=='response_item' and payload.get('type')=='message' and payload.get('role')=='assistant' and final_message:
+                actual_attestation=False  # Only the most recent actual final can sign this proof.
+                for part in payload.get('content',[]):
+                    # The memory policy can mandate one final XML citation block.
+                    # Strip only that exact trailing structure, never extract
+                    # arbitrary JSON from prose or intermediate messages.
+                    raw=part.get('text','')
+                    raw=re.sub(r'\s*<oai-mem-citation>\s*<citation_entries>[\s\S]*?</citation_entries>\s*<rollout_ids>[\s\S]*?</rollout_ids>\s*</oai-mem-citation>\s*$','',raw)
+                    try: attestation=json.loads(raw)
+                    except (json.JSONDecodeError,AttributeError): continue
+                    if (actual_model and attestation.get('reviewer_agent_id')==agents['review']
+                            and attestation.get('review_evidence_sha256')==proof_hash): actual_attestation=True
+    if not actual_identity or not actual_attestation:
+        raise ValueError('Independent reviewer final must attest the exact review JSON SHA256; builder cannot self-sign pass')
+    reviews=proof.get('chart_reviews',[])
+    if len(reviews)!=len(charts['figures']) or {str(r.get('figure_id')) for r in reviews}!=set(charts['figures']):
+        raise ValueError('Independent review must cover every current chart')
+    for r in reviews:
+        if r.get('png_sha256')!=charts['figures'][str(r['figure_id'])] or r.get('no_title_header') is not True or not r.get('no_title_header_evidence'):
+            raise ValueError('Actual PNG/Word no-title-header review required')
+        for key in ('meaning','data','legibility','layout','explanation'):
+            item=r.get(key,{})
+            if item.get('passed') is not True or not item.get('evidence'):
+                raise ValueError('Independent chart review failed or missing: '+key)
+    return verified

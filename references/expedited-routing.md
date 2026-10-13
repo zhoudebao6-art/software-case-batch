@@ -1,0 +1,27 @@
+# 加急优先与实际审核调用
+
+加急只改变独立只读审核的模型和队列。建设及建设内自检仍 `gpt-6.1-sol/high`，返修及录制准备修复仍 `gpt-6.1-sol/ultra`；普通独立审核为 `gpt-6.1-sol/ultra`，当前批/案明确授权原加急模式后为 `gpt-6-astra/low`。Astra通过后不额外追加Sol ultra，Astra不建设、不实现返修。图文、系统、数据、视频与当前hash的完整验收范围不减。
+
+用户的肯定授权必须来自真实父会话user消息，点名当前批/案，绑定当前run/workspace及消息hash。“原加急模式”不是必须口令；用户已定义加急就是Astra低思考，因此“c1加急”“加急c1”“modern 这批加急”等明确指定当前scope的肯定命令直接授权。单说快一点、支持加急吗、示例/材料引用/代码块、否定或条件句不选择Astra。授权JSON保留原字段：`run_id/workspace/session_log/user_message_sha256/statement/scope_name`。`scope_name`必须是当前注册case_id、batch_id、`batch_id/case_id`或登记时冻结的唯一案名映射；准备title和显式aliases只在本批唯一且不冒充其他案/批标识时纳入。两个案共享同title时必须用注册ID，改auth run/workspace不能把c1语句扩成c2或其他批；新批/案用户请求不自动外溢。批范围按冻结确认清单逐案登记，不扫描其他批/历史案件。授权文件或真实消息变更后，queue/acquire及付费前核验拒绝准入，保留票据和诊断，不静默回普通模型。
+
+纯“这批加急”需要额外`scope_context:{root,batch_id,manifest_sha256,statement,user_message_sha256}`，绑定同一真实user JSONL中此前最近的当前批上下文及当前冻结manifest。上下文必须整条只有单一、明确的声明，如“当前批次：modern”（也可“当前批次 modern”“本次批次 modern”“现在处理批次 modern”）；不能只因文本提到modern就推断它是当前批。“当前批次other；modern不处理”等冲突、多条或引述上下文拒绝，要求直接点名批次。context元数据不能替代实际user消息；缺真实当前批关联时不猜批次。scope_context的batch_id必须等于本manifest batch_id，scope_name也必须是该batch_id，不能把代指批次套给单案别名。
+
+`expedite`在同一控制事务把本案priority设为原设计的10，更新本案所有waiting票据的priority；waiting review改到expedited，保留token、submitted_ns及历史。未来`queue --stage review`自动解析本案当前授权，选择普通或加急route；waiting acquire再次核真实授权/path/hash、源与预检。active有效普通审核及其准入快照不重写、不打断，未来审核/复验采用新授权路线。calls/usage一直追加，不因切换、负责人恢复或重排归零。
+
+加急审核仍使用独立单槽，普通review最多3槽；所有MODEL stage（build/review/expedited）共享宿主worker容量，媒体不占新profile模型位。请求者仅为真正可运行、priority更高且自身stage槽有空位的候选让出下一个共享空位，所以已加急案的build也优先于低priority普通review；建设模型仍high，不能改Astra。候选须当前owner有效、未drain、案件未blocked/delivered、源hash/零模型预检/真实授权有效；新review合同还须当前prepared run_id/workspace有效，能够冻结admission。失活或证据已变候选保持历史但不能阻塞普通案；高priority候选自身stage已满时也不阻塞其他空闲模型位。同stage按priority、submitted_ns、token公平排序，同priority跨stage仍由实际父编排，不另加全局FIFO；已有active建设或审核不预占。录制、证据和媒体互斥逻辑保持原合同。
+
+新登记schema2 manifest增加`review_admission_contract=frozen-review-route-v1`，不热改历史manifest。普通或加急review取得active槽后，控制器在本批`review-admissions`独占新建不可变准入：当前case/run、token、source/preflight、实际route/model/effort、owner和授权快照。加急授权按原字节保存专属snapshot并核原hash；后续案件授权变更不回写已开始有效调用身份。此准入是资源/路线事实，不能称已付费调用或独立通过。
+
+父实际派发审核前执行：
+
+```powershell
+& $env:SCB_PRO_PYTHON '工具目录\batch_control.py' verify-review --root '当前共享root' --batch-id '本批' --pid 12345 --case-id '本案ID' --token '已取得active审核token' --value '本案绝对工作区'
+```
+
+命令复核当前active owner/token、源/预检、冻结admission及当前加急原授权，独占生成本次dispatch permit和随机nonce。仅环境或模型配置不能代替核验。重复核验保持同permit，失败不释放active槽、不启动付费调用；负责人修复、等待或合法结束该阶段后再接续。原manifest没有不可变合同的调用仍返回明确`legacy_admission=true`，保留旧模式/旧proof兼容，不能称具有新合同的route-proof绑定能力。
+
+父使用返回的model/effort，实际 `spawn_agent(fork_turns="none", model=返回model, reasoning_effort=返回effort, message=本案完整只读审核要求)`；message同时明文包括当前workspace、run_id、admission token和dispatch nonce。Astra使用 `gpt-6-astra/low`，不能等待普通ultra槽或追加ultra复核；模型不可调用则如实记录，不换模型或伪签。此脚本没有自动付费CLI或自动模型派发能力。
+
+新合同的`.product-v2/model-dispatch.json`中 `stages.review`增加原样的`review_admission:{path,sha256}`及`review_dispatch_permit:{path,sha256}`；`review_mode`等于冻结admission的ordinary/original-expedited。独立review JSON也包含相同两项引用。final gate核本批真实已取得ticket、不可变hash、实际父JSONL call/output/model/effort/fork、message内token/nonce/run/workspace和实际reviewer最终proofhash；按当时取得的route核模型，不能按最终state加急字段逼旧ordinary调用改名成Astra。旧独立schema1 spec、旧manifest、历史收据按原兼容路径核验，不补写虚构新准入。
+
+父在真实派发前保存attempt/pending标记，真实成功、失败和中断均追加calls/usage及实际session/call ID，继续使用原完整责任和恢复规则。queue/acquire/verify-review不自动计一次付费；不得删失败调用或重置累计计数。返修后下一次审核重新queue/acquire/verify-review并绑定新的token/permit，保留旧调用和历史快照。

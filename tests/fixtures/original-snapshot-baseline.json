@@ -1,0 +1,33 @@
+{
+  "purpose": "Immutable original specification baseline for portable regression checks; contains only relative paths and hashes from the existing r1 snapshot.",
+  "origin_snapshot_sha256": "7811925be3a3f2664ab960d42ed4d8795dffc4ad92bacd063a8d9dbe129310be",
+  "files": {
+    "references/original/AGENTS.md": "799126b1c21ac7fb1500fdf874f4f761dd20ca8d7733c489214a92fab4cba578",
+    "references/original/config.json": "4ccbd7b170d60e9cd82409a9148a718e5541b7b69defd89228aeedc5c61591ce",
+    "references/original/docs/architecture.md": "252d8a2783df8eb3a127bce0b7f256cb2c699d252f85605d4be6d0dc92605711",
+    "references/original/docs/artifact-contract.md": "7c89c94bd01b1ea39d349a4d6b9cf52520211f00b056fe8d16b2c888e3f026bc",
+    "references/original/docs/capture-plan.md": "62eddf9a7d83888652c189c2ce59d00cb60091ed955b8606e8f7680bcb14d861",
+    "references/original/docs/发布核验.md": "1c2403bd15a3dd11330df98ae03d1e3271c7eea4a27d4a678274836ab230c396",
+    "references/original/docs/新电脑使用.md": "73ecff0131a5e2340f2b82ad80ba3c0e659ae6384395a5d5ec2a15ec9ee8f04e",
+    "references/original/rules/case-design.md": "12617c41d86d01e3bfa93baf37521fd8b0a38b9086eed0c16390f396b3fc853d",
+    "references/original/rules/chart-acceptance.md": "7d4c0208b7fd143cf3b0f27ae59367ab1d471d1ed002ba168dc7b72144232bca",
+    "references/original/rules/chart-legend-scope.json": "d732be80d2f91102a1e1beeca007d214b18ffec2648cd4ee62910e0c1b56dc19",
+    "references/original/rules/chart-legend.md": "e634dc207aa74a05e89689b316269885b743814b1fbdf297e52f5ea8a75dc01f",
+    "references/original/rules/chart-professional-scope.json": "013d020174c89f50418f3b45d7310a58bbf94e0aabf8eb7eb9789b46f7a3e954",
+    "references/original/rules/chart-professional.md": "f08d645f531560fe57742734cd5eb0ff061f714761553ec11f0b9132dd8d6a06",
+    "references/original/rules/chart-quality.md": "7f1d55b02f28ba103613698ed42ab201e7562b174d4f208817015acab9205221",
+    "references/original/rules/deliverable-first.md": "26d252c75901cb13ddcb512a64300682a9ffd6bd4fa0512e2d24d00ba426c8de",
+    "references/original/rules/efficient-pipeline.md": "5a82f626f9d597e1d09f3aaf7db7be86a6b7649f29ae0bc64e6c83071ba953af",
+    "references/original/rules/execution-efficiency.md": "b45d573232773ad5a31b72d1903410666a662b9317e19ce1750429d594620210",
+    "references/original/rules/expedited-review.md": "9adf77f88281773a34a5445b6afc80700599cc99c61d7c37ebc035879d0a3677",
+    "references/original/rules/material-sourcing.md": "d1ce34c60acd54a1ce657e8a61b27b689b595027f6f674fc69cdb5e8c639439b",
+    "references/original/rules/rejected-chart-versions.json": "4768b2197bce554c0042100d19360a7a430201753845bfbcf55df02db2c343d3",
+    "references/original/rules/requirements.md": "9ae3d000bcc509e346915655c8169b293adbd00a71a647a90bd5b5b3dd8c74c2",
+    "references/original/rules/web-visible-copy.md": "a4f82a82d51c6ac67fde16157f3a725d11d908150767ec207fcf9758127270fa",
+    "references/original/rules/worker-environment.md": "ec895e82ee46a2fc4acf08a11ef24da894408960be2c1ffe0d130822db37079e",
+    "references/original/skill/SKILL.md": "2c537f5d02bbdad345d36f36c02560ff3220ca908329a1976a9646ab3cb068df",
+    "references/original/开始使用.md": "68666afcdc135a9a4a1cdb06e00265d9ce931a474c399dfba8a38e771e085772",
+    "references/original/本机接手说明.md": "cbc41dae5a51aee84cb926ca06b5d639620ba8a738318fe0ba442cfff125b52e",
+    "references/original-sources.json": "7ee6393d504cc2e8316b884097831fed60239ff23dcb38c728576f9bdb063feb"
+  }
+}

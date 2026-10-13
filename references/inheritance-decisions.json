@@ -1,0 +1,1505 @@
+{
+  "schema_version": 1,
+  "audit_type": "human maintained effective requirement decisions",
+  "rows": [
+    {
+      "requirement": "authorization",
+      "source": "skill/SKILL.md",
+      "original_clauses": [
+        {
+          "start_line": 31,
+          "end_line": 31,
+          "original": "- 仅执行用户明确授权的批次；同一清单已确认不重复问。示例目录只读，不扫描新材料、不定时唤醒、不空闲巡检。已登记批次按 manifest 冻结的 pipeline/delivery/execution profile，规则更新不自动重做历史成品。明确点名返修另存版本，保留旧交付与建设目录。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "parent plus register"
+      },
+      "gap_and_fix": "原新版仅单案入口未完整批责任；新增确认清单与唯一父路由，禁止后台扫描",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "case-completeness",
+      "source": "skill/SKILL.md",
+      "original_clauses": [
+        {
+          "start_line": 32,
+          "end_line": 32,
+          "original": "- **完成义务。** 承接整批即负责把授权清单内每案制作、修复、验收并交付，不能以plan/预检/worker退出或“已报blocked”结束制作。可修复的启动、依赖、编码、路径、普通代码和材料缺口由负责人处理并接续原批；worker停止重复付费尝试不等于负责人停止解决。确需用户介入的真实外部限制按[负责人接续责任](../rules/worker-environment.md#负责人接续责任)说明具体动作，其他可做部分继续。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "parent plus state"
+      },
+      "gap_and_fix": "明确负责人持续修复可恢复故障并接续完整清单，单案/plan/worker退出不能称整批完成",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "one-word-one-case",
+      "source": "rules/requirements.md",
+      "original_clauses": [
+        {
+          "start_line": 7,
+          "end_line": 7,
+          "original": "用户选择每批提供目录路径、确认清单后整批运行。工作区 <项目目录>\\cases，输出默认输入目录的同级“原目录名1”。plan 与 run 分开；“这是示例”“拿来对比”不是开始制作授权。已确认的批次无需每案再确认。一个 Word 默认一案；同一案件多份材料必须在清单中说明组合，不能擅自合并。忽略 Word 临时锁文件；旧 .doc、损坏文件、加密文件要明确阻断，不能悄悄跳过。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "parent guidance"
+      },
+      "gap_and_fix": "保留合并材料须清单明确及doc损坏/加密/锁文件规则，不静默跳案",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "frozen-source",
+      "source": "rules/requirements.md",
+      "original_clauses": [
+        {
+          "start_line": 9,
+          "end_line": 9,
+          "original": "保存原文件名、绝对路径、相对路径、SHA-256、大小与采集时间。复制到每案 source 后校验哈希；原料目录完全不改。重跑复用状态，但输入或证据改变时旧验收作废。遇到同名案件、已有成品或非空工作区，检查身份并保留旧成果，不能覆盖。生成的 source 清单属于内部证据，不暴露到产品界面。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/quality.md",
+        "entry": "scripts/contracts.py",
+        "status": "prepare and chart gate"
+      },
+      "gap_and_fix": "显式source-docx冻结原basename/hash，原件只读，内部源复制逐文件核验",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "output-no-overwrite",
+      "source": "rules/requirements.md",
+      "original_clauses": [
+        {
+          "start_line": 9,
+          "end_line": 9,
+          "original": "保存原文件名、绝对路径、相对路径、SHA-256、大小与采集时间。复制到每案 source 后校验哈希；原料目录完全不改。重跑复用状态，但输入或证据改变时旧验收作废。遇到同名案件、已有成品或非空工作区，检查身份并保留旧成果，不能覆盖。生成的 source 清单属于内部证据，不暴露到产品界面。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/tools.md",
+        "entry": "scripts/proflow.py",
+        "status": "prepare immutable receipt"
+      },
+      "gap_and_fix": "保留历史与源，draft显式保全，修订另存工作区/输出，不改旧receipt",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "model-build",
+      "source": "skill/SKILL.md",
+      "original_clauses": [
+        {
+          "start_line": 38,
+          "end_line": 38,
+          "original": "| 建设与建设内自检 | `gpt-6.1-sol/high` |"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/tools.md",
+        "entry": "scripts/contracts.py",
+        "status": "actual JSONL gate"
+      },
+      "gap_and_fix": "实际spawn sol/high，配置不当执行，自检不冒充独立审核",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "model-repair",
+      "source": "skill/SKILL.md",
+      "original_clauses": [
+        {
+          "start_line": 39,
+          "end_line": 39,
+          "original": "| 返修、录制准备修复 | `gpt-6.1-sol/ultra` |"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/tools.md",
+        "entry": "scripts/contracts.py",
+        "status": "actual repair dispatch gate"
+      },
+      "gap_and_fix": "修复新版错误high返修override；stages repair-N连续sol/ultra，独立于reviewer",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "model-review",
+      "source": "skill/SKILL.md",
+      "original_clauses": [
+        {
+          "start_line": 40,
+          "end_line": 40,
+          "original": "| 普通独立只读验收 | `gpt-6.1-sol/ultra` |"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/tools.md",
+        "entry": "scripts/contracts.py",
+        "status": "actual final proof gate"
+      },
+      "gap_and_fix": "真实另一个sol/ultra，session identity及final精确proofhash，reviewer不建设",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "model-expedited",
+      "source": "rules/expedited-review.md",
+      "original_clauses": [
+        {
+          "start_line": 10,
+          "end_line": 10,
+          "original": "- 批次/单案加急授权只用于该批/该案；其他正常批次默认路由不变。原规则中“验收固定ultra”的约束仅适用于普通案件，加急以本条为准。"
+        }
+      ],
+      "decision": "conditional-preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "parent scoped conditional route"
+      },
+      "gap_and_fix": "仅显式原加急模式Astra/low；本次不启用，提速不能换模型，授权不跨批",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "inflight-model",
+      "source": "skill/SKILL.md",
+      "original_clauses": [
+        {
+          "start_line": 43,
+          "end_line": 43,
+          "original": "新批次跨批共享8个建设/返修槽、3个普通验收槽、2个可信录制槽；受控证据和明确加急验收各1槽。录制受物理及提交内存准入保护。旧批次依冻结配置，不热改、不为腾槽打断有效调用。加急不追加 Ultra 复核。模型由实际 CLI 参数决定，禁止自签、静默降级或让独立验收者建设。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "parent guidance"
+      },
+      "gap_and_fix": "保留历史模型身份与已在途有效调用，不热切换/重复启动",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "unique-owner",
+      "source": "skill/SKILL.md",
+      "original_clauses": [
+        {
+          "start_line": 45,
+          "end_line": 45,
+          "original": "入口对话负责本批接续；案件 worker 只改自己的案件目录，父执行器保存状态和审查。共享脚本/规则由唯一维护者修改，多任务协作先明确归属。已有父进程或 worker 运行时禁止重复启动；侧栏 idle、锁文件存在、worker退出均不能代替进程身份与阶段日志核对。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "claim and scoped state"
+      },
+      "gap_and_fix": "补唯一父PID+创建时间，worker本案写权限、review原始结果由父保存、共享唯一维护",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "workspace-month",
+      "source": "skill/SKILL.md",
+      "original_clauses": [
+        {
+          "start_line": 49,
+          "end_line": 49,
+          "original": "1. **确定范围。** 读 [成品优先规则](../rules/deliverable-first.md)、[成果合同](../docs/artifact-contract.md)，按需查 [质量规则](../rules/requirements.md) 和 [实际改图标准](../rules/chart-acceptance.md)。只对指定目录 `plan \"<目录>\"`，核对清单、数量、源哈希、异常及输出。工作区为 `cases/YYYY-MM/案件名`，同月重名加序号；管理文件在 `cases/.batches`，默认成品在原料同级“原目录名1”。不得改原件或移动运行目录。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "parent case list"
+      },
+      "gap_and_fix": "新案按登记月份/同名中文序号，本次用户指定旧revision优先，不移动运行目录",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "capacities",
+      "source": "skill/SKILL.md",
+      "original_clauses": [
+        {
+          "start_line": 43,
+          "end_line": 43,
+          "original": "新批次跨批共享8个建设/返修槽、3个普通验收槽、2个可信录制槽；受控证据和明确加急验收各1槽。录制受物理及提交内存准入保护。旧批次依冻结配置，不热改、不为腾槽打断有效调用。加急不追加 Ultra 复核。模型由实际 CLI 参数决定，禁止自签、静默降级或让独立验收者建设。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "manifest and shared queue"
+      },
+      "gap_and_fix": "保留8/3/2/1/1原逻辑上限；本机4总槽扣父及占用仅降并发，不降低模型",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "manifest-freeze",
+      "source": "rules/execution-efficiency.md",
+      "original_clauses": [
+        {
+          "start_line": 5,
+          "end_line": 5,
+          "original": "新登记批次在 `execution_profile` 中冻结 `recording_concurrency=2`、最低可用内存 4096 MB、每个额外录制槽预留 2048 MB。`runtime_doctor` 在真正的模型调用前检查物理可用内存与 Windows 提交内存余量，并在实际取得录制槽后再次检查；不足时记为 `memory_exhausted` 环境问题，不进入付费返修，也不通过更换命令或安全设置绕过。低内存新机应在第一次 `plan` 登记前将本机录制并发设为1；登记后配置已冻结，改config不会覆盖原批。已登记批次需释放可确认闲置的资源后恢复，不能靠重建批次或热改manifest丢弃进度。模型等级、图表质量和验收范围不变。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "immutable register"
+      },
+      "gap_and_fix": "原新版遗漏execution冻结；新增host capacity及model/resource manifest，旧batch不热改",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "fair-queue",
+      "source": "rules/efficient-pipeline.md",
+      "original_clauses": [
+        {
+          "start_line": 10,
+          "end_line": 10,
+          "original": "6. 父执行器按同优先级先到先得排录制/验收等资源；显式加急只能改变尚未开始的排队顺序，不中断正在付费运行的任务。旧进程不热加载，不能声称运行中的旧批次已获得新协议。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "queue/acquire/release-slot"
+      },
+      "gap_and_fix": "补同优先级FIFO及优先级；等待录制/审核释放建设槽，单案不双占",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "memory-admission",
+      "source": "rules/execution-efficiency.md",
+      "original_clauses": [
+        {
+          "start_line": 5,
+          "end_line": 5,
+          "original": "新登记批次在 `execution_profile` 中冻结 `recording_concurrency=2`、最低可用内存 4096 MB、每个额外录制槽预留 2048 MB。`runtime_doctor` 在真正的模型调用前检查物理可用内存与 Windows 提交内存余量，并在实际取得录制槽后再次检查；不足时记为 `memory_exhausted` 环境问题，不进入付费返修，也不通过更换命令或安全设置绕过。低内存新机应在第一次 `plan` 登记前将本机录制并发设为1；登记后配置已冻结，改config不会覆盖原批。已登记批次需释放可确认闲置的资源后恢复，不能靠重建批次或热改manifest丢弃进度。模型等级、图表质量和验收范围不变。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "actual Windows memory admission"
+      },
+      "gap_and_fix": "补录制取得槽复查min physical/commit、4096+2048；新批可降1路不热改旧批",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "priority",
+      "source": "rules/execution-efficiency.md",
+      "original_clauses": [
+        {
+          "start_line": 56,
+          "end_line": 56,
+          "original": "- `scripts/caseflow.ps1 control <批次ID> priority --value 10`：提高尚未开始阶段的排队优先级，可加`--case-id <ID>`只加急单案，不打断正在执行的付费调用。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "priority scoped pending tickets"
+      },
+      "gap_and_fix": "父显式提高未开始阶段priority，不打断付费调用，不等于Astra",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "drain",
+      "source": "rules/execution-efficiency.md",
+      "original_clauses": [
+        {
+          "start_line": 58,
+          "end_line": 58,
+          "original": "- `scripts/caseflow.ps1 control <批次ID> drain`：让当前调用完成，在下一阶段边界保留状态后停下，不杀进程；后续`control <批次ID> continue`解除，再run恢复。仅用户明确要求暂停/维护切换时使用。"
+        }
+      ],
+      "decision": "conditional-preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "drain/continue boundary"
+      },
+      "gap_and_fix": "只用户显式暂停维护；现阶段完成后停新派发，保留状态和队列",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "resume",
+      "source": "rules/execution-efficiency.md",
+      "original_clauses": [
+        {
+          "start_line": 57,
+          "end_line": 57,
+          "original": "- `scripts/caseflow.ps1 control <批次ID> resume-case --case-id <ID>`：外部故障已解除、用户已授权继续时，让当前新执行器重新调度该案；不会重复启动仍在跑或已交付的案。执行器已退出时用原run恢复。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "resume-case/recover-owner"
+      },
+      "gap_and_fix": "本父存活接续；已退出核锁/源/状态恢复原批，不重建，不重置calls/usage",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "environment-first",
+      "source": "rules/worker-environment.md",
+      "original_clauses": [
+        {
+          "start_line": 7,
+          "end_line": 7,
+          "original": "启动失败先区分路径/解释器/依赖、命令编码、端口身份、内存、文件占用和真实工具拒绝。普通实现与材料不足走既有返修/补齐流程；共享运行时故障由唯一维护者集中处理并在桌面存活时验证原受限模式。首次部署或运行时变化先运行`doctor --smoke`验证隔离浏览器和临时Word渲染，每次真实run再执行公共命令预检；这些都是零模型环境检查，不作为案件交付。旧配置缺省`environment_preflight`时同样默认检查，不因缺字段跳过。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "parent smoke plus preflight gate"
+      },
+      "gap_and_fix": "补零模型实际依赖/浏览器/临时Word，版本登录不替代；原doctor未自动移植明确等效",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "sandbox-preflight",
+      "source": "rules/worker-environment.md",
+      "original_clauses": [
+        {
+          "start_line": 21,
+          "end_line": 21,
+          "original": "真实run在并行派发前用`scripts/sandbox_probe.py`调用已安装CLI的`sandbox`接口，保持建设workspace-write、验收read-only，实际执行命令并在专用临时目录做写入/读回/清理。无需模型调用，不更改Codex配置、ACL、Deny或进程。先读取本机CLI帮助选择接口版本，不把`windows --help`误当沙箱内的命令执行。预检结果保存在批次environment-preflight.json；公共预检通过不代表本案文件可写、模型有额度、网络可用或已经交付，worker仍需本案检查。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "parent actual constrained checks"
+      },
+      "gap_and_fix": "付费派发前原write/read-only命令+读写边界，桌面存活，环境证据登记不绕过安全",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "bounded-probes",
+      "source": "rules/worker-environment.md",
+      "original_clauses": [
+        {
+          "start_line": 13,
+          "end_line": 13,
+          "original": "受限命令预检的Windows冷初始化单次最多等90秒，记录实际耗时；超时保留stdout/stderr及同期日志，仍判失败，不凭打印标记认定执行完成。初始化耗时、文件占用、策略拒绝分别诊断，不因等待超时而改权限或让每案重试。确认是有进展的冷启动时可由负责人做一次同模式、有界诊断；没有新证据不自动循环。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "parent bounded execution"
+      },
+      "gap_and_fix": "保留登录60秒、受限冷初始化90秒，实际退出与原错/耗时；不循环免费/付费试错",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "local-write",
+      "source": "rules/worker-environment.md",
+      "original_clauses": [
+        {
+          "start_line": 31,
+          "end_line": 31,
+          "original": "开始建设、返修或录制前，先确认自己案件工作区可正常读写：对本轮需要修改的现有业务文件用只打开不写字节的ReadWrite句柄检查访问，并确认本案输出目录可写；不要修改原件或用删除文件测试权限。若历史工程迁移过，优先核对web/scripts/evidence/exports。无关的Get-CimInstance拒绝不能等同于整个案件不可写，进程归属可结合启动记录、自己启动的PID和健康接口核对；不能因此停止其他程序。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "worker parent guidance"
+      },
+      "gap_and_fix": "每案必要现有业务文件只开RW不改字节及输出可写，不用删原件测权限",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "error-classification",
+      "source": "rules/worker-environment.md",
+      "original_clauses": [
+        {
+          "start_line": 25,
+          "end_line": 25,
+          "original": "“未确认/不能认定/不能归因/不推定策略拒绝”是尚未证实的原因说明，不能仅以关键词命中标成`tool_policy`；明确或仍有疑问的真实拒绝继续保守阻断。历史误分类按原始结构化报错及指纹核对，保留旧状态/调用，新的受限执行证据通过后才允许恢复。接续入口先核对完整清单的状态和源哈希，再做逐案环境维护，避免检查到半批才发现历史分类不符。启动/退出回执不能代替实际继续执行及最终交付。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "parent diagnosis"
+      },
+      "gap_and_fix": "策略/ACL/占用/初始化/OOM/依赖分别记，否定措辞不关键词误分类",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "no-safety-bypass",
+      "source": "rules/worker-environment.md",
+      "original_clauses": [
+        {
+          "start_line": 21,
+          "end_line": 21,
+          "original": "真实run在并行派发前用`scripts/sandbox_probe.py`调用已安装CLI的`sandbox`接口，保持建设workspace-write、验收read-only，实际执行命令并在专用临时目录做写入/读回/清理。无需模型调用，不更改Codex配置、ACL、Deny或进程。先读取本机CLI帮助选择接口版本，不把`windows --help`误当沙箱内的命令执行。预检结果保存在批次environment-preflight.json；公共预检通过不代表本案文件可写、模型有额度、网络可用或已经交付，worker仍需本案检查。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "parent constraint"
+      },
+      "gap_and_fix": "保留原sandbox/approval/ACL/Deny，固定CLI缺失不回退，共享重启先用户明确授权",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "repair-recovery-proof",
+      "source": "rules/worker-environment.md",
+      "original_clauses": [
+        {
+          "start_line": 86,
+          "end_line": 86,
+          "original": "父执行器在案件外保存阻塞指纹与失败时`.caseflow-environment.json`的哈希。唯一负责人解决实际原因、取得本案原受限模式恢复证据后，才写入新的`status=ready`、`requires_environment_repair=false`记录，并附准确原因与证据路径；旧ready、重复run或单改状态字段不算恢复证据。原阻塞与未读项保留，接续独立检查；若另有明确内容缺陷，先由负责人安排对应定向修复。受控Word/视频阶段的`file_in_use`和`sandbox_setup_failed`同样阻止付费返修。不得为得到ready绕过拒绝或放宽安全设置。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "recovery path/hash and blocker fingerprint"
+      },
+      "gap_and_fix": "原状态不得假解除；恢复日志真实非空hash、指纹匹配，旧blocked和未读项保留",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "venv",
+      "source": "rules/worker-environment.md",
+      "original_clauses": [
+        {
+          "start_line": 49,
+          "end_line": 49,
+          "original": "- `ModuleNotFoundError` 是依赖/解释器选择错误，不是权限不足。必须保留实际可用的虚拟环境启动器；venv 的监听子进程可能显示基础 uv Python，不能把该子进程路径直接替换启动器。先用拟使用的启动器真实导入本案依赖，记录启动器路径、sys.executable、sys.prefix、sys.base_prefix及包版本；失败时修正本案运行环境，不改整个机器的权限或批次全局运行时。测试仍按项目既定bundled Python约定；需项目依赖的服务使用已核验的案件环境。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/process_guard.py",
+        "status": "parent verified startup"
+      },
+      "gap_and_fix": "保留正确venv启动器真实import/sys.prefix，不以listener基础Python替换",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "powershell51",
+      "source": "rules/worker-environment.md",
+      "original_clauses": [
+        {
+          "start_line": 50,
+          "end_line": 50,
+          "original": "- Windows PowerShell 5.1 用户脚本含中文时保存UTF-8 BOM，读UTF-8 JSON显式指定编码。在实际5.1解析之外，还要用脚本中的准确Python启动器做真实依赖检查；仅语法通过不能写“可启动”。PowerShell5.1调用含引号的Python代码时，优先使用独立.py文件并通过真实5.1进程运行该预检，避免只在新版shell验证-c字符串。启动脚本显示进度，子进程已退出即读独立stderr并停止无效健康轮询。"
+        }
+      ],
+      "decision": "conditional-preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/process_guard.py",
+        "status": "parent actual 5.1 validation"
+      },
+      "gap_and_fix": "保留中文BOM和准确venv依赖/实跑，不只语法；hidden启动记录launcher/listener",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "healthy-service",
+      "source": "rules/worker-environment.md",
+      "original_clauses": [
+        {
+          "start_line": 51,
+          "end_line": 51,
+          "original": "- 同一案件已出现服务启动 `blocked by policy` 且没有外部解除证据时，worker禁止停止仍健康的本案服务，包括为了重启读回、换计算版本或清理阶段；先完成可做的代码/离线自检与证据准备，保留服务，记录在线版本与磁盘版本差异。需要合法维护时交由单一负责人协调，不能先停再发现启动受限，更不能换工具、命令包装、进程或安全配置绕过原拒绝。保留旧服务不代表可把旧证据当成当前版验收。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/process_guard.py",
+        "status": "parent health/ownership route"
+      },
+      "gap_and_fix": "保持已拒启动时健康本案服务，先离线准备及合法恢复；不为录制重复重启",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "full-source-read",
+      "source": "rules/requirements.md",
+      "original_clauses": [
+        {
+          "start_line": 13,
+          "end_line": 13,
+          "original": "完整读正文、权利要求、实施方式、表格、文本框、页眉页脚、DrawingML/VML、媒体、嵌入对象、OMML 与普通文本公式。机器计数和实际独立公式组分开记录：oMath 节点数、oMathPara 节点数都不能自动等于“大公式数量”。独立陈列公式组要人工结合正文和渲染确认；一个公式组包含多条等式时默认作为一组，一组可有多个关联结果，不能宣称因此多了几条源公式。行内符号、变量定义、文字计算关系分别登记。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/quality.md",
+        "entry": "scripts/contracts.py",
+        "status": "builder guidance plus OOXML gate"
+      },
+      "gap_and_fix": "正文/表格/文本框/页眉页脚/DrawingML/VML/嵌入/OMML和普通公式完整读，不能只摘要",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "formula-count",
+      "source": "rules/requirements.md",
+      "original_clauses": [
+        {
+          "start_line": 13,
+          "end_line": 13,
+          "original": "完整读正文、权利要求、实施方式、表格、文本框、页眉页脚、DrawingML/VML、媒体、嵌入对象、OMML 与普通文本公式。机器计数和实际独立公式组分开记录：oMath 节点数、oMathPara 节点数都不能自动等于“大公式数量”。独立陈列公式组要人工结合正文和渲染确认；一个公式组包含多条等式时默认作为一组，一组可有多个关联结果，不能宣称因此多了几条源公式。行内符号、变量定义、文字计算关系分别登记。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/quality.md",
+        "entry": "scripts/contracts.py",
+        "status": "builder plus independent semantics"
+      },
+      "gap_and_fix": "节点数不等源独立公式组；原无公式不补造，组/行内变量/文字规则分开登记",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "source-trace",
+      "source": "rules/requirements.md",
+      "original_clauses": [
+        {
+          "start_line": 15,
+          "end_line": 15,
+          "original": "持久化 source_audit、formula_registry、source_trace、calculation_trace_map、coverage_matrix。每个公式条目保留 raw_formula、normalized_formula、变量、单位、边界、来源段落/公式对象、实施例、后端函数、测试和图表映射。源没有提供的公式不得补造为源公式。文字规则可以按原意实现，但必须标成文字规则；用于生成输入的辅助关系和工程假设单独登记，不冒充源定义。数值矛盾、缺项、单位不明要保留问题和相关证据；其他独立功能可继续。输入参数缺省按material-sourcing.md明确工程假设并实际计算，不能凭视觉需求预填结果；源定义确实矛盾时保留冲突，不悄悄改公式。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/quality.md",
+        "entry": "scripts/contracts.py",
+        "status": "builder persisted trace"
+      },
+      "gap_and_fix": "保留raw/normalized/变量单位边界/原位置/实施例/函数/测试/图映射及coverage/calculation trace",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "formula-constraints",
+      "source": "rules/deliverable-first.md",
+      "original_clauses": [
+        {
+          "start_line": 42,
+          "end_line": 42,
+          "original": "- **计算必须满足源定义的约束。** 不仅比较CSV与同一个程序是否相等。把材料中的共同区域/同次配对、对象归属、容量上限、概率与置信度关系等适用约束写成有意义的断言，并独立核算代表值及边界值；没有相应业务就不套该检查。保存实际配对/对象ID和输入，禁止仅因输出看似合理就跳过源约束。确定性归属等假设落实到一致的最终输入，原输入留存，不单独强改派生量。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/quality.md",
+        "entry": "scripts/contracts.py",
+        "status": "real algorithm assertion and independent check"
+      },
+      "gap_and_fix": "源约束/身份归属/代表值边界独立复算，不只是CSV与同程序相等",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "narrative-numbers",
+      "source": "rules/deliverable-first.md",
+      "original_clauses": [
+        {
+          "start_line": 43,
+          "end_line": 43,
+          "original": "- **说明里的数字也须验算。** 阈值、交点、最大值和前后变化从冻结结果引用，或代入原式独立复算；明确舍入精度，不能把约数推到边界另一侧。程序零起始索引不直接写成自然语言奇偶位置。保留 `raw_formula` 与规范式的索引、帽号和含义；说明先于源定义出现时，就地自然补业务含义，不提前使用未说明符号。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/quality.md",
+        "entry": "scripts/contracts.py",
+        "status": "builder plus independent semantics"
+      },
+      "gap_and_fix": "冻结数值/原式复算，舍入不跨边界，0索引不误写自然位置，首次符号简释",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "complete-web",
+      "source": "rules/deliverable-first.md",
+      "original_clauses": [
+        {
+          "start_line": 9,
+          "end_line": 9,
+          "original": "3. **网页框架保留，两个页面完成。** 根据本案业务保留完整侧栏/导航、其他模块入口、路由和各页面标题；其他模块可以暂时留空或显示中性空状态，后续再完善。不能以空模块为返修理由，也不伪造其功能已实现。优先选择两个最能体现该案件对应系统形态的业务界面和操作流程：页面布局、功能组织、业务对象、任务状态及必要操作符合该类系统，内容充实、层次清晰、观感专业。可选择业务工作台、任务处理、设备作业、流程配置或业务详情等合适模块，按案件决定，不套固定模板。这两个页面不应做成图表看板或计算结果展示墙；图表主要服务Word。实际计算只支撑页面需要的业务字段，保留真实导航和必要可用交互，不将未实现模块描述为已实现。不能用截图冒充网页、制作与源方法无关的界面；不删除已有合格功能。不为不交付的功能新增账号体系、权限管理、复杂部署、设备接入、后台管理或完整数据库业务，除非源方法的计算确实依赖它。"
+        }
+      ],
+      "decision": "partial-explicit-override",
+      "current_evidence": {
+        "guidance": "references/system-data.md",
+        "entry": "scripts/proflow.py",
+        "status": "U1 complete business implementation"
+      },
+      "gap_and_fix": "仅原两页/空模块例外改完整可部署中文Web；保留导航/业务状态/适用系统形态、非图墙",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "matching-system",
+      "source": "rules/case-design.md",
+      "original_clauses": [
+        {
+          "start_line": 5,
+          "end_line": 5,
+          "original": "两个用于展示和录制的业务页面必须从本案的使用者、业务对象、核心操作和系统形态出发设计。先在本案内部建设说明中写明这四项，以及两个页面的选择理由，再实现页面；不增加用户确认或独立模型调用。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/system-data.md",
+        "entry": "scripts/proflow.py",
+        "status": "builder requirements"
+      },
+      "gap_and_fix": "本案角色对象操作系统形态决定布局，已有正常功能保留，不套统一空壳",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "local-workbench",
+      "source": "rules/requirements.md",
+      "original_clauses": [
+        {
+          "start_line": 25,
+          "end_line": 25,
+          "original": "UI 是数据充分、易读、可操作的业务工作台。每案选择相符视觉语言，文字大小以正常观看可读为准；桌面主视图不能挤压、溢出、大片空白。缺少数据须完善有依据的数据流程，不只换配色。用户历史明确不喜欢登录挡住工作台；本地交付默认直接进入工作台，真实部署鉴权与设备接入按实际实现记录，不能据此声称生产环境接入已完成。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/system-data.md",
+        "entry": "scripts/proflow.py",
+        "status": "builder requirements"
+      },
+      "gap_and_fix": "本地录制不让登录挡工作台，真实部署鉴权安全按用途实现，不冒充生产接入",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "persisted-flow",
+      "source": "rules/requirements.md",
+      "original_clauses": [
+        {
+          "start_line": 23,
+          "end_line": 23,
+          "original": "后端统一计算，API、前端、CSV、PNG 使用同一计算版本和冻结查询快照。必须做代表性的创建/导入→计算→查看→修改/重算→持久化重启→导出链路测试；边界和源实施例数值测试要有意义。测试报告列实际命令、退出码、时间和结论，不能以写了测试文件代替通过。端口动态分配并验证服务身份；结束仅停止 cwd/命令行/父子关系和启动记录已证明属于本案的进程。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/system-data.md",
+        "entry": "scripts/proflow.py",
+        "status": "six real checks gate"
+      },
+      "gap_and_fix": "算法/API/重启持久化/浏览器/构建/最终ZIP启动真实链路命令与日志，不静态假响应",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "state-consistency",
+      "source": "rules/deliverable-first.md",
+      "original_clauses": [
+        {
+          "start_line": 45,
+          "end_line": 45,
+          "original": "- **两页中的状态要一起更新。** 已选择对象后切换工况/阶段/筛选，摘要、表格、当前余额、详情和按钮反馈均来自同一对象与版本；旧详情必须重算或清空选择并合理提示。建设内真实浏览器检查一次正向和反向切换，沿用该次截图与文字审计，不再单开一个模型来做同样检查。"
+        }
+      ],
+      "decision": "partial-explicit-override",
+      "current_evidence": {
+        "guidance": "references/system-data.md",
+        "entry": "scripts/record.cjs",
+        "status": "U9 general actual state/action browser checks"
+      },
+      "gap_and_fix": "原对象/工况/筛选切换同版本继续保留并推广每个授权案件：可见列表/详情/统计/摘要/日志同对象，保留筛选排序及合法分页，关闭抽屉不被迟到异步请求打开，不硬编码测试案业务",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "material-permission",
+      "source": "rules/material-sourcing.md",
+      "original_clauses": [
+        {
+          "start_line": 3,
+          "end_line": 3,
+          "original": "用户已授权：数据不足时检索开源项目、公开数据，仍不足时自行构造模拟输入并继续制作，无需再请求采用模拟数据或调整验收范围的批准。本规则替代旧的“缺专用数据、权重、设备材料就待补暂停”要求，适用于建设、返修和独立验收。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/system-data.md",
+        "entry": "scripts/proflow.py",
+        "status": "builder sourcing route"
+      },
+      "gap_and_fix": "普通缺数据/标定/权重/协议自主补齐实际运行，真外部限制才blocked",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "material-licenses",
+      "source": "rules/material-sourcing.md",
+      "original_clauses": [
+        {
+          "start_line": 12,
+          "end_line": 12,
+          "original": "2. 缺实现或适用材料时，检索官方仓库、作者发布页、模型卡、数据集和设备公开文档。按技术机制、输入输出、依赖及本机运行条件筛选。核对代码、模型权重、数据各自的许可；某链接失效或专用数据拿不到，不等于本案不可做。无需无限检索，发现合理公开资源仍不能补齐的部分就转入下一步。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/system-data.md",
+        "entry": "scripts/package_policy.py",
+        "status": "research plus attribution review"
+      },
+      "gap_and_fix": "实际适用公开入口/版本/许可/下载hash与最小运行，不支付/上传私源/接受身份条款",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "data-mechanism",
+      "source": "rules/material-sourcing.md",
+      "original_clauses": [
+        {
+          "start_line": 15,
+          "end_line": 15,
+          "original": "5. 数据覆盖本案完整且有代表性的正常工况、异常/边界与条件变化，保留同一样本身份、时间因果、变量相关性和物理/业务约束。至少两张图应回答不同业务问题；不以重复行、任意插值、强行造起伏或手填改善率凑图。生成数据是输入，系统输出由真实业务逻辑产生，不能以固定返回值和静态页面替代计算/持久化链路。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/system-data.md",
+        "entry": "scripts/proflow.py",
+        "status": "real constraints and internal provenance"
+      },
+      "gap_and_fix": "物理/业务关联、时序因果、正常边界/异常；不复制行/任意插值/手填改善率",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "data-nature",
+      "source": "rules/material-sourcing.md",
+      "original_clauses": [
+        {
+          "start_line": 20,
+          "end_line": 20,
+          "original": "遇到材料缺口时维护 `evidence/material-research.json`：gap、queries、candidates（url/version/license_code/license_assets/compatibility/download_result）、attempts（command/log/exit_code）、decision、remaining_blocker。没有实际检索或运行的项目如实为空，不补造记录。采用生成数据时同时记录生成脚本路径/哈希、参数配置、假设依据、随机种子或确定性声明、输入与输出哈希、真实运行结果及适用范围；可写在同一文件中，不强制另起一套重复台账。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/system-data.md",
+        "entry": "scripts/proflow.py",
+        "status": "internal provenance gate"
+      },
+      "gap_and_fix": "源/公开/构造输入/实际输出分开，假设/种子/确定性/日志/未验内部保存，不冒充实测或训练成功",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "data-scale-clean",
+      "source": "rules/material-sourcing.md",
+      "original_clauses": [
+        {
+          "start_line": 16,
+          "end_line": 16,
+          "original": "6. 运行导入/生成→计算→修改重算→持久化重启→导出，保存真实命令、日志、退出码与校验。CSV、PNG、Web、Word用同一冻结快照。设备适配器可用输入回放和本地执行结果闭合本地流程；现场协议、设备回执和实测效果仍明确未验证，不能伪造接入成功。"
+        }
+      ],
+      "decision": "partial-explicit-override",
+      "current_evidence": {
+        "guidance": "references/system-data.md",
+        "entry": "scripts/proflow.py",
+        "status": "U6 important CSV allowlist clean"
+      },
+      "gap_and_fix": "加足领域规则数据，重要CSV白名单仅整列删生成/来源元数据，其他单元格顺序精度不改",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "ui-copy",
+      "source": "rules/web-visible-copy.md",
+      "original_clauses": [
+        {
+          "start_line": 5,
+          "end_line": 5,
+          "original": "- 全部网页及视频画面不能出现“模拟、虚拟、仿真、物理仿真、工程样本、工程示例、模拟数据、工程样本模拟数据、演示数据、推演数据、合成数据”等标签，也不能改成 mock、dummy、synthetic、simulated、simulation、virtual、demo data 等英文替代。既有“专利、权利要求、权要”禁词保持生效。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/system-data.md",
+        "entry": "scripts/package_policy.py",
+        "status": "actual browser texts and semantic scan"
+      },
+      "gap_and_fix": "保留原禁词含专利/权利要求及英文同义，扩大用户中文禁词，canvas/SVG图人工补录方法",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "ui-audit",
+      "source": "rules/web-visible-copy.md",
+      "original_clauses": [
+        {
+          "start_line": 8,
+          "end_line": 8,
+          "original": "- Sol 建设和返修后用真实浏览器逐路由、逐关键交互采集可见文字与同状态截图；不扫描整个项目把 README、原件、日志和第三方依赖当网页问题。录制前先清理、排演；界面更新后重出截图与受影响视频，旧视频不能沿用。记录实际检查结果，不填写空白文字绕过。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/recording.md",
+        "entry": "scripts/record.cjs",
+        "status": "observed DOM screenshot pairing"
+      },
+      "gap_and_fix": "全部关键真实状态文字同截图hash，不源代码/预期替代，独立看真实视频/截图",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "chart-value",
+      "source": "rules/chart-quality.md",
+      "original_clauses": [
+        {
+          "start_line": 9,
+          "end_line": 9,
+          "original": "- **每案至少两张有独立信息价值的图。图数与公式数不绑定。** 一条公式可不单独画图、可支撑多图，多条公式可合成一图；没有显式公式也要从有依据的业务过程和计算结果选出至少两图。公式仍须逐项实现/核验，不能为少画图漏实现。不要把子图、换图型的同一内容或同一PNG副本重复计数。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/quality.md",
+        "entry": "scripts/contracts.py",
+        "status": "2-6 count gate plus semantic review"
+      },
+      "gap_and_fix": "有独立价值2–6专业黑白数据图、图数不绑定公式，原图不计，禁止0/1/卡片/真值表换皮",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "chart-scope",
+      "source": "rules/chart-professional.md",
+      "original_clauses": [
+        {
+          "start_line": 3,
+          "end_line": 3,
+          "original": "仅适用于本次更新后首次登记的新批次。以同目录 `chart-professional-scope.json` 为生效边界；其中 existing_batch_ids 内的既有批次（含未完成案）不适用本补充，不因本条重新制作、返修或验收。未取得批次身份时先确定范围，不能默认追溯旧案。原2026-09-24基础规则及其报告协议保持不变。"
+        }
+      ],
+      "decision": "conditional-preserved",
+      "current_evidence": {
+        "guidance": "references/inheritance.md",
+        "entry": "scripts/audit_inheritance.py",
+        "status": "frozen scope source and parent decisions"
+      },
+      "gap_and_fix": "冻结professional/legend scope json和历史批ID，不自动返工其他历史；当前新案标准全保留",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "chart-full-range",
+      "source": "rules/chart-acceptance.md",
+      "original_clauses": [
+        {
+          "start_line": 12,
+          "end_line": 12,
+          "original": "6. **数据充分，曲线完整，同时避免拥挤。** 加热任务不接受大量曲线挤作一团；光伏任务明确“每一个保留一两个典例”。默认按一两个有代表性的工况/对象组织视图，完整数据保留CSV；一个典例所需的多条物理量、边界、阈值仍须完整呈现，不机械限定为两条线。不为简洁漏掉必要图例。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/quality.md",
+        "entry": "scripts/contracts.py",
+        "status": "actual independent normal-size review"
+      },
+      "gap_and_fix": "完整代表周期/边界，真缺测断点、离散阶梯、真重合不偏移，不少点任意平滑造波动",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "chart-legend",
+      "source": "rules/chart-legend.md",
+      "original_clauses": [
+        {
+          "start_line": 7,
+          "end_line": 7,
+          "original": "每幅图、每个子图都须将图例名称与实际数据列、业务对象、工况及绘图对象逐项对应，再核对线型、点形、灰阶和填充纹理。不能仅凭图例文字正确、代码无报错或整体好看判通过；必须查看最终PNG及Word中的实际图，网页展示该图时同步核对。名称/数据错配、样式不符或必要条目遗漏属于必须修复的质量错误，独立验收返回`revise`并指出图号、具体系列、预期与实际差异，修复后核对关联图文及当前哈希；不得降为无关紧要的问题直接放行，也不得误报为环境阻塞。沿用既有建设自检和集中验收，不新增固定轮次。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/quality.md",
+        "entry": "scripts/contracts.py",
+        "status": "actual all PNG/Word five checks"
+      },
+      "gap_and_fix": "每系列名称/数据/对象/工况/线型/点形/灰阶/纹理一致，真实绘图对象图例，错配必须返修",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "chart-title",
+      "source": "rules/chart-quality.md",
+      "original_clauses": [
+        {
+          "start_line": 20,
+          "end_line": 20,
+          "original": "白底黑灰，字深且正常尺寸易读；图内无标题、表头、角注和说明框。图例在绘图区空白处，完整、简短且不压内容。均衡留白，不能大片空洞，也不能曲线挤作一团。区间端点开闭、累计与瞬时、离散与连续、重合与缺失必须准确。保留完整有效范围，不能只画无变化的窄小片段。"
+        }
+      ],
+      "decision": "partial-explicit-override",
+      "current_evidence": {
+        "guidance": "references/quality.md",
+        "entry": "scripts/contracts.py",
+        "status": "U4 title declaration plus real review"
+      },
+      "gap_and_fix": "强化无title/suptitle/表头/图N，图题仅Word图下；轴与必要图例和单位不删",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "chart-units",
+      "source": "rules/chart-quality.md",
+      "original_clauses": [
+        {
+          "start_line": 22,
+          "end_line": 22,
+          "original": "**单位只在确有单位时标注。** 序号、顺序、位置索引、版本号及其他本身无单位的量，轴标签只写业务名称；例如“事件顺序（无时间单位）”改为“事件顺序”。不在图中补写“无单位”“无时间单位”“单位：无”“无量纲”或以“—”“1”“a.u.”占位。此规则同时用于网页图、导出PNG和Word插图。确有且有材料依据的单位（如毫秒、毫米、百分比）必须保留；材料缺失单位不等于量本身无单位，不得猜测，必要的不确定性在说明或README记录，不挤入图轴。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/quality.md",
+        "entry": "scripts/contracts.py",
+        "status": "real labels/units review"
+      },
+      "gap_and_fix": "无单位量仅业务名，不补无单位/a.u./1；确有单位依据保留，缺资料不猜无单位",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "chart-symbols",
+      "source": "rules/chart-legend.md",
+      "original_clauses": [
+        {
+          "start_line": 24,
+          "end_line": 24,
+          "original": "- “正常格式”以最终图像为准：上下标在正确位置，希腊字母、运算符、括号及大小写正确，字体/字号协调，正常阅读尺寸清楚且无裁切、重叠、缺字方块或乱码。将变量当普通字符串画出的 `A_e(t)`、`y_z`、`x^2`，以及可见的 `\\\\alpha`、`\\\\mathrm{...}`、美元分隔符或HTML标记，均不能充当已排版数学符号。原式确实使用普通正文字符的名称不按代码下划线误判；不凭字体样式猜变量含义。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/quality.md",
+        "entry": "scripts/contracts.py",
+        "status": "actual PNG and Word dimensions review"
+      },
+      "gap_and_fix": "正常上下标/帽号/希腊/索引，不裸math代码/乱码；难排可选符号准确业务名保留内部映射",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "red-context",
+      "source": "rules/chart-quality.md",
+      "original_clauses": [
+        {
+          "start_line": 30,
+          "end_line": 30,
+          "original": "网页说明按短段落/必要小标题组织，小按钮打开后有完整解释。**Word说明必须结合正文实施例上下文重新组织，不能直接粘贴独立图表说明。** 先读前后至少各一段及所属实施例/小节，确定本图对象、术语、符号、条件和原文论证位置；承接前文的步骤或问题，引出图中具体结果、原因与判断，再自然连接后文。依据实施例的红字说明放在该实施例对应分析位置，不强行插到无关公式后；同一段可合理解释多图，每图仍有独立引用。**新增图片及其图题统一追加在 Word 全部原文内容之后，图题在对应图片下方，按图号排列；不能将图片夹在实施例中，也不能将解释段落随图片移到文末。** 原文原图原式及其位置保留。不要突兀以“横轴为……”开头连续堆读图说明，不重复相邻原文，不提前引入尚未定义的变量，不在不同工况或对象之间跳转。实际章节适合时才用小标题，不能破坏原有叙述。"
+        }
+      ],
+      "decision": "partial-explicit-override",
+      "current_evidence": {
+        "guidance": "references/quality.md",
+        "entry": "scripts/contracts.py",
+        "status": "U5 contextual deep explanation"
+      },
+      "gap_and_fix": "保留前文红字后文实际阅读，详细讲工况读法算例数值原因判断；有原式用关键符号，无式仅实施例",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "word-position",
+      "source": "rules/requirements.md",
+      "original_clauses": [
+        {
+          "start_line": 43,
+          "end_line": 43,
+          "original": "在原件副本上局部增补，保留原正文、公式、流程图、结构。图的说明放在相关实施例、业务过程、技术分析或公式所在的恰当位置，不能机械地全部接到公式后。插入前读前后段及所在小节，沿用原文对象、术语、条件和叙述顺序，为该处重新组织承接语、具体图中结果、原因和结论，再自然接回后文；不得直接把独立图表说明粘进Word。每图有独立“参阅图N/请参考图N”，新增内容红色（FF0000）；需要时使用原文已定义的变量，不再重复整条公式。不得重写原文、重复邻段、跨工况跳跃、引入未定义概念或扩张数据不支持的结论。说明没有字数限制，详细且连贯。保存插入位置与衔接依据到chart_design.explanation_outline.word_context，验收实际阅读前文—新增说明—后文，跨页读齐。所有新增图片及图题统一追加在全部原文内容之后，每个图题位于对应图片下方，编号接续已有图号；说明留在正文实施例，不随图片迁移。原图保持原位置。说明、图、图题、引用同步，不允许孤立编号。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/quality.md",
+        "entry": "scripts/contracts.py",
+        "status": "chart_snapshot original-block/caption/drawing gate"
+      },
+      "gap_and_fix": "原文原式原图及位置不改、原顺序媒体保留，新增图/下图题全原文后，红字留实施例每图独立引用",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "word-all-pages",
+      "source": "rules/requirements.md",
+      "original_clauses": [
+        {
+          "start_line": 45,
+          "end_line": 45,
+          "original": "修改后做原文顺序对比、OMML 原节点/媒体保留、ZIP 完整性和 figure 文件哈希核对。使用当前 documents 技能及 bundled runtime 渲染最新 DOCX，每一页打开检查；在最终修改后重渲染。只检查页数/文件存在/图片文件，不能声称逐页视觉验收。不能为新的文档设计风格重排用户既有模板。原件与修订稿分别交付用于对照。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/quality.md",
+        "entry": "scripts/contracts.py",
+        "status": "parent final controlled render plus actual all-page review"
+      },
+      "gap_and_fix": "最终修改后全页渲染逐页看；未变且真实已阅页hash合法继承，首次不能抽样",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "chart-five",
+      "source": "rules/chart-quality.md",
+      "original_clauses": [
+        {
+          "start_line": 38,
+          "end_line": 38,
+          "original": "验收者固定Sol ultra、只读、集中验收。每图输出chart_reviews，分别对meaning/data/legibility/layout/explanation给passed和具体evidence，不能只写“通过/清晰/符合标准”。explanation同时检查说明深度与Word上下文衔接：实际读“前文—新增说明—后文”，跨页时读齐；记录具体插入位置/衔接依据，生硬粘贴、对象工况错位、重复或跳跃即返修。evidence_files覆盖该图PNG、CSV、说明、显示该图的正常尺寸UI截图和实际Word页，含检查正文插入段的页。任何一项不合格不得总评pass，必须指出文件/区域和可执行修法；缺图像读取能力不可签通过。代码只能核验数量、结构、版本、覆盖、哈希，视觉、说明质量与行文连贯性必须实际检查。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/quality.md",
+        "entry": "scripts/contracts.py",
+        "status": "strict actual review proof"
+      },
+      "gap_and_fix": "各图五项具体证据，任一失败不pass；PNG/CSV/解释/Word上下文，缺图像能力不签",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "rejected-versions",
+      "source": "rules/chart-quality.md",
+      "original_clauses": [
+        {
+          "start_line": 11,
+          "end_line": 11,
+          "original": "- 用户明确否定：把0/1或三值判断画成长条；把“保留/重算”做成几格卡片；用黑白圆点或大色块重画真值表；几根全为1的柱；只有两个端点插值出的贫乏直线。这些不能作为交付图凑满两张。必要逻辑表可留在系统详情或内部测试。"
+        },
+        {
+          "start_line": 40,
+          "end_line": 40,
+          "original": "用户明确否定的版本不得沿用旧独立验收者通过结论。四张反例、昨天五案全部旧图及原始说明见evidence/quality-audit-20260924；它们是反例，不能照着再出一套。明确被否定的PNG版本登记在rules/rejected-chart-versions.json，执行器按SHA256阻止原样重交；改动文件哈希不是质量通过，仍需实际审查。规则版本变化也使旧验收不能用于新交付。修后同步PNG、CSV、解释、web、Word和受影响视频；Sol自检后再集中送独立验收者，返修仅查修改与关联产物，直到通过。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/quality.md",
+        "entry": "scripts/contracts.py",
+        "status": "frozen rejected hash gate plus review"
+      },
+      "gap_and_fix": "用户否定版本/规则变更旧pass失效，冻结拒交hash，用户推进Word不等视觉认可",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "record-minute",
+      "source": "rules/requirements.md",
+      "original_clauses": [
+        {
+          "start_line": 55,
+          "end_line": 55,
+          "original": "在Sol自检及脚本预检通过之后选择表现最佳且有业务代表性的1–2个模块；默认模式的独立验收者验收在录制后统一进行。每案约10秒，默认接受8–12秒；建议1920×1080、30fps、H.264/yuv420p、无桌面和地址栏，禁止用拼接截图假装真实操作录屏。操作节奏示例：0–4秒完整主视图，4–7秒一次轻量筛选/详情/自然移动，7–10秒结果稳定展示；只有一个优秀模块可录一个，不凑全系统巡游。第二模块只在准备充分时切换。"
+        }
+      ],
+      "decision": "partial-explicit-override",
+      "current_evidence": {
+        "guidance": "references/recording.md",
+        "entry": "scripts/record.cjs",
+        "status": "U2 55-75 actual recording"
+      },
+      "gap_and_fix": "改约60秒完整平顺真实使用；无短版，非静态拼图/循环/变速/假响应/改业务DOM",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "record-health-inputs",
+      "source": "docs/capture-plan.md",
+      "original_clauses": [
+        {
+          "start_line": 22,
+          "end_line": 22,
+          "original": "health_path需返回JSON：case_id、workspace（本案绝对路径）、version。version从启动时加载的版本固定返回，不能每次健康请求读取变化中的磁盘版本。application_files列出实际影响所录页面的服务入口、业务逻辑和前端源码（1–200个），部署产物也要绑定。健康接口不允许重定向到其他地址；服务身份不匹配或文件变化就拒绝录制。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/recording.md",
+        "entry": "scripts/record.cjs",
+        "status": "current listener and immutable inputs gate"
+      },
+      "gap_and_fix": "启动固定version/health/OS身份、实际依赖代码和页面业务数据/可见图hash，前后不变",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "record-transition",
+      "source": "docs/capture-plan.md",
+      "original_clauses": [
+        {
+          "start_line": 39,
+          "end_line": 39,
+          "original": "schema 2 的建设 probe 与录制会话都观察真实导航期间的动画帧：至少一个业务页的H1与全部ready选择器须持续可见，不能清空整个根容器只显示“加载中”。建设时保留导航和旧业务页，数据准备完成后再切换；需要加载提示时放在框架内。ready选择器应指向有实际内容的业务区域，不指向永远存在的空壳。程序不改DOM、不隐藏加载、不拼接画面；失败记录在本次recording/capture-*/browser-failure.json，切页采样计数与首个问题帧时间保留在events。此检查只证明DOM就绪连续性，不能替代实际截图及视频的视觉检查，仍可能需要处理遮挡/样式等视觉缺陷。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/recording.md",
+        "entry": "scripts/record.cjs",
+        "status": "builder actual transition and reviewer"
+      },
+      "gap_and_fix": "保留旧业务内容至新页ready，ready非空壳，截图及视频真实不改DOM隐藏加载",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "record-controlled",
+      "source": "rules/requirements.md",
+      "original_clauses": [
+        {
+          "start_line": 59,
+          "end_line": 59,
+          "original": "MP4 用 FFprobe 核查时长、分辨率、帧率和编码；用解码检查损坏帧。完整时间线每 0.2 秒抽帧（5 fps），额外提取首尾、所有交互前后 0.2 秒与场景切换帧；保留 contact sheet 与逐帧原图。黑屏/冻结/帧差检测辅助定位，静止阅读不直接判失败。Sol Ultra验收者 浏览全时间线、打开每个场景及可疑区段原帧，评估是否存在难看瞬间、是否字小看不清、是否操作自然。抽帧检查不能声称观看了全部原始帧，报告真实审查覆盖与限制。不能仅凭一张首页截图或视频文件存在判通过。失败交 Sol 修界面或重录，再由 独立验收者 重审成片。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/recording.md",
+        "entry": "scripts/media_evidence.py",
+        "status": "full decode/5fps/contact/frame hash gate"
+      },
+      "gap_and_fix": "修原新版10秒抽一帧遗漏；完整5fps映射+首尾/每交互前后0.2s原帧，正常阅读静止不直接失败",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "record-no-load",
+      "source": "rules/execution-efficiency.md",
+      "original_clauses": [
+        {
+          "start_line": 25,
+          "end_line": 25,
+          "original": "新执行器在repair_final的context明确recording_allowed=false：先完成材料、代码、图表、Word、UI返修与自检，不在此阶段录制，也不占录制槽。父执行器比较UI截图、最终图及应用源/数据等输入；画面相关输入变化或审查明确指出视频问题时，记录recording_pending，再排队video阶段重录。Word正文单独变更仍重渲染和审查，但不因此重录未变化的视频。恢复时recording_pending持久保存，不可跳过。旧执行器未提供该context标志时仍依它实际取得的槽运行，不能把新调度承诺套到旧进程。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/recording.md",
+        "entry": "scripts/batch_control.py",
+        "status": "stage parent orchestration"
+      },
+      "gap_and_fix": "ultra prepare/repair不占record槽，父固定程序录制，不与本案构建/大计算/渲染并行",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "controlled-parent",
+      "source": "docs/artifact-contract.md",
+      "original_clauses": [
+        {
+          "start_line": 41,
+          "end_line": 41,
+          "original": "preservation_report和render_report由编排器运行controlled_evidence.py后填入。该脚本直接对照原Word正文、公式树、原媒体与最终PNG，再用固定render_docx.py重新渲染最新Word，按PDF实际页数验证连续页图和哈希，并替换rendered_pages。视频阶段也由编排器直接从最终MP4完整解码、提取首尾及5fps时间线，替换建设者的抽帧路径。受控证据的输入和文件指纹保存在案件目录外的状态文件中；相关文件改变后重新生成。建设者不能自签替代这些结果。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/media_evidence.py",
+        "status": "parent fixed render/media route"
+      },
+      "gap_and_fix": "父受控原Word保留/最新全页/视频证据，worker不能自签；原controlled自动入口未移植标明等效",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "short-evidence",
+      "source": "rules/execution-efficiency.md",
+      "original_clauses": [
+        {
+          "start_line": 31,
+          "end_line": 31,
+          "original": "新模型输出使用schemas/review-response.schema.json，protocol=evidence-ids-v1。父执行器生成短review_id及E001等证据索引；验收者实际检查图、正文、页面及完整视频采样，返回verdict、具体issues、逐图五项checks、reviewed_evidence和每图evidence_ids、coverage、limitations，不抄写SHA256和长路径列表。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/evidence_index.py",
+        "status": "actual ID index and coverage check"
+      },
+      "gap_and_fix": "父生成索引/前后hash，review具体短结论/五项/已阅ID，减少模型抄hash非减少范围",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "revise-blocked-pass",
+      "source": "rules/execution-efficiency.md",
+      "original_clauses": [
+        {
+          "start_line": 37,
+          "end_line": 37,
+          "original": "返修意见与通过结论分别处理：revise若仅漏列部分必要证据，可保存为advisory_only返修意见，原始答复、实际已阅列表和missing_evidence完整保留；不补造ID、不变更模型判断、不标为通过。仍验证审查范围标识、快照、模型路由、问题结构和全部逐图依据。blocked因外部故障未读完时保存为diagnostic_only及未读/未审图清单，保留原错误并等待负责人恢复，不进入内容返修。已声明的证据仍须合法、无重复且哈希匹配。pass保持严格覆盖校验，不能采用这些例外。修复后仍由独立Sol ultra验收。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/contracts.py",
+        "status": "parent result preservation and strict pass"
+      },
+      "gap_and_fix": "revise漏项仅advisory，blocked诊断保留未读/原错不内容付费修；pass完整覆盖无补签",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "repair-unlimited",
+      "source": "rules/requirements.md",
+      "original_clauses": [
+        {
+          "start_line": 51,
+          "end_line": 51,
+          "original": "视觉检查覆盖所有最终 PNG、各主要业务页/交互状态截图、CSV/后端数据一致性、最终 DOCX 全页及插图哈希；独立验收者 必须实际打开图像，不能只读建设说明或低清拼图。检查数据与源定义正确性、图例系列匹配、可读性、无遮挡、页面内容密度、流程与导航、红字定位和图号。硬错误一项即 revise/blocked，不能用平均分掩盖错公式、错图、空白页面。返修只解决问题清单，不重新设计已经合格的无关部分。用户要求可修复问题继续处理到通过，不设固定两次上限：Sol每轮集中修完整清单并自检，再由独立验收者复验修改及关联产物；必要检查范围不缩减。累计记录调用与用量，恢复不重置。缺材料按material-sourcing.md检索开源资源或构造模拟输入，用户已授权，无需补批验收范围；验收核对可复现本地实现，不因没有实测/专用数据/生产权重/设备回执判blocked。补齐未完成或运行/说明有问题返回revise；仅源文件不可读、核心定义无法解释或模型/额度/环境实际故障可阻塞，普通制作问题不能因次数到达就交回用户。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/contracts.py",
+        "status": "parent ultra repair loop"
+      },
+      "gap_and_fix": "可修问题一次完整清单自检复验至通过，无固定轮次，累计calls/usage不重置",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "reuse-by-dependency",
+      "source": "rules/deliverable-first.md",
+      "original_clauses": [
+        {
+          "start_line": 16,
+          "end_line": 16,
+          "original": "- Word文字、红字分析、文档专用PNG/CSV/说明变化：只更新相关图文、清单和Word渲染，不重建页面、不重录视频。证据截图重新采集本身不等于业务画面变更。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/proflow.py",
+        "status": "hash-bound document/package revision"
+      },
+      "gap_and_fix": "不变已阅按hash继承；Word专图不重录，画面代码数据变化重录，不变计算/测试不重做",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "runtime-streams",
+      "source": "docs/artifact-contract.md",
+      "original_clauses": [
+        {
+          "start_line": 139,
+          "end_line": 139,
+          "original": "服务的持续stdout/stderr可置于本案`.runtime/`，或使用以下已有快照协议："
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/evidence_index.py",
+        "status": "parent explicit frozen evidence list"
+      },
+      "gap_and_fix": "持续流有限登记或.runtime，与冻结log/CSV/Word分开，不能忽略全部evidence逃审",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "atomic-delivery",
+      "source": "docs/architecture.md",
+      "original_clauses": [
+        {
+          "start_line": 11,
+          "end_line": 11,
+          "original": "交付先写本批 staging，逐文件校验后保留发布意图，再原子改名；恢复时比对原件、审查和成品哈希，不覆盖其他交付目录。成品固定为每案根目录的 Word 和该案 `模拟系统` 中的视频。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/tools.md",
+        "entry": "scripts/proflow.py",
+        "status": "publish intent plus same-volume whole-directory rename"
+      },
+      "gap_and_fix": "修补原新版仅CSV/ZIP原子缺口：candidate finalize→冻结intent→逐文件hash→整案rename→当前run映射与独立publish receipt；未发布不可作父案，旧receipt/proof不改",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "delivery-shape",
+      "source": "skill/SKILL.md",
+      "original_clauses": [
+        {
+          "start_line": 30,
+          "end_line": 30,
+          "original": "- 成品固定为 `批次目录/案件名称/修订文档.docx` 和 `批次目录/案件名称/模拟系统/演示视频.mp4`。不平铺视频、不混放多案视频。新批次 `word-video` 不复制原件、图表资料或 README；这些及源码、数据、历史证据完整保留工作区。"
+        }
+      ],
+      "decision": "partial-explicit-override",
+      "current_evidence": {
+        "guidance": "references/tools.md",
+        "entry": "scripts/proflow.py",
+        "status": "U3 exact layout gate"
+      },
+      "gap_and_fix": "原basename Word+本案模拟系统ZIP/CSV/video三项，外层无说明/图表，原件工作区不改",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "package-no-docs",
+      "source": "rules/material-sourcing.md",
+      "original_clauses": [
+        {
+          "start_line": 22,
+          "end_line": 22,
+          "original": "完成补齐后 `remaining_blocker` 为 null；生产接入、实测验证、泛化性能等未做事项放入 limitations，不能混为阻断原因。README清楚区分源数据、公开数据、模拟输入和实际计算结果，说明假设、复现命令及未验证范围，并随成品交付。Word新增分析结合原文上下文，用“在上述条件下计算得到”等准确措辞，不宣称新增试验或测量；网页、图内及视频使用中性业务名称，仍遵守web-visible-copy.md，不显示模拟/虚拟等标签，也不改称真实采集或已接设备。"
+        }
+      ],
+      "decision": "partial-explicit-override",
+      "current_evidence": {
+        "guidance": "references/system-data.md",
+        "entry": "scripts/package_policy.py",
+        "status": "U7 explicit exclusion and semantic scan"
+      },
+      "gap_and_fix": "ZIP不放README/使用说明/制作来源构造说明/原件解析/模拟性质；内部事实完整保留，必要署名法律保留",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "cleanup-order",
+      "source": "rules/worker-environment.md",
+      "original_clauses": [
+        {
+          "start_line": 59,
+          "end_line": 59,
+          "original": "- 触发点是本案按当前用户授权交付范围完成最终独立验收、成品落盘及当前文件哈希核验；worker退出、一次录制结束、健康检查通过或历史pass均不能代替交付。由原批次负责人在本案收尾时及时处理，不等全批结束，不为此定时巡检或暂停/重启父执行器。"
+        }
+      ],
+      "decision": "partial-explicit-override",
+      "current_evidence": {
+        "guidance": "references/processes.md",
+        "entry": "scripts/process_guard.py",
+        "status": "U8 after recording/online before clean"
+      },
+      "gap_and_fix": "用户明确时机覆盖交付后清理；仍核所有归属/无在途依赖/实际退出端口，不停其他项目",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "cleanup-safe",
+      "source": "rules/worker-environment.md",
+      "original_clauses": [
+        {
+          "start_line": 66,
+          "end_line": 66,
+          "original": "2026-10-02父执行器实现：可信录制前后保留真实Windows监听进程身份；交付后只自动回收命令行含本案完整绝对路径、全部监听端口属于本案、健康版本一致且身份未变的listener。停止时持有同一Windows进程句柄并再核对创建时间和实时命令行，防PID复用。不会沿进程树停止launcher、共享进程或拟名称/Hermes；这些仍需负责人单独证明归属。需继续在线时在本案`.runtime/keep-online.json`保留标记。回执写在批次`maintenance/delivery-cleanup/<case_id>.json`，不写入已验收的案件证据树，不破坏审查哈希。身份不足或停止失败设置cleanup_pending，后续普通重读不反复尝试；由负责人依据新证据处理。该机制不扫描/清理历史批次。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/processes.md",
+        "entry": "scripts/process_guard.py",
+        "status": "exact same-handle termination"
+      },
+      "gap_and_fix": "PID创建/完整command/树/监听健康；不通用名杀，Get-Content/rg路径文本不算后台，失败保留pending",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "cache-policy",
+      "source": "AGENTS.md",
+      "original_clauses": [
+        {
+          "start_line": 17,
+          "end_line": 17,
+          "original": "- TEMP/TMP/TMPDIR 仅在当前进程设为 `D:\\codex+\\temp`，每案隔离临时目录位于其下；各工具缓存位于 `D:\\codex+\\cache`。依赖、凭据、数据库、会话及成果不当作可删缓存。保留已有目录链接，不修改系统或其他应用的 TEMP/TMP，不为清理停止进程。"
+        }
+      ],
+      "decision": "preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/common.py",
+        "status": "Enter-Environment and parent cache audit"
+      },
+      "gap_and_fix": "仅进程D盘TEMP/cache，结束查本次C盘增量；备份核验才删确认缓存，保留链接/依赖/凭据/DB/session",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "migration-authority",
+      "source": "skill/SKILL.md",
+      "original_clauses": [
+        {
+          "start_line": 69,
+          "end_line": 69,
+          "original": "- 仅用户明确授权更替执行/迁移时，保全调用、状态、数据库与文件哈希，核实归属后在安全边界切换。`migrate`或 `workspace_copy.py` 用途及正常继承副本要求见环境规则，不清空重建或复用过期通过。"
+        }
+      ],
+      "decision": "conditional-preserved",
+      "current_evidence": {
+        "guidance": "references/execution.md",
+        "entry": "scripts/batch_control.py",
+        "status": "parent authorized copy/hash route"
+      },
+      "gap_and_fix": "迁移保全旧树/状态/调用/数据库，正常继承新副本逐文件核验，不rename猜ACL；原自动migrate未移植",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "publication-boundary",
+      "source": "docs/发布核验.md",
+      "original_clauses": [
+        {
+          "start_line": 31,
+          "end_line": 31,
+          "original": "这些是编排器回归和隔离服务/浏览器验证，没有启动、重启或重新验收实际批次，也没有调用付费模型；不表示所有案件已交付，不承诺解除工具安全策略拒绝或保证任意电脑都能同时录两路。"
+        }
+      ],
+      "decision": "conditional-preserved",
+      "current_evidence": {
+        "guidance": "references/inheritance.md",
+        "entry": "scripts/audit_inheritance.py",
+        "status": "scope/test evidence disclosure"
+      },
+      "gap_and_fix": "隔离测试不叫实际case端到端；本次不覆盖原skill/上传/自动知识维护，发布另需明确授权",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    },
+    {
+      "requirement": "default-output-root",
+      "source": "AGENTS.md",
+      "original_clauses": [
+        {
+          "start_line": 16,
+          "end_line": 16,
+          "original": "- 成果沿用用户指定的 `D:\\研发图表`，每批独立子目录。新案工作区为本目录 `cases`。当前 config 的 output_root 和本机路径适配覆盖通用文档中的“原料同级目录名1”。"
+        }
+      ],
+      "decision": "partial-explicit-override",
+      "current_evidence": {
+        "guidance": "references/tools.md",
+        "entry": "scripts/proflow.py",
+        "status": "U9 configured F root plus explicit output precedence"
+      },
+      "gap_and_fix": "原D成果根仅冻结历史；新版默认F:\\研发图表按批次/案件集中，F同卷.staging候选，明确用户工作区/其他路径优先且执行/交付目录隔离，不静默回D/桌面；D:\\codex+缓存不变，旧成果不自动搬移",
+      "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
+    }
+  ],
+  "user_overrides": [
+    "U1",
+    "U2",
+    "U3",
+    "U4",
+    "U5",
+    "U6",
+    "U7",
+    "U8",
+    "U9"
+  ],
+  "independent_review": "Only a separately recorded actual ultra proof establishes acceptance of this frozen version."
+}

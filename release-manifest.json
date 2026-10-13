@@ -1,0 +1,407 @@
+{
+  "schema": 1,
+  "release": "r8-20261013",
+  "files": [
+    {
+      "relative_path": ".gitattributes",
+      "sha256": "aa3bb165ba7437968fd9726183001f63a6334edf37dfdbe844f2e20c2fc0cfe6",
+      "size": 51
+    },
+    {
+      "relative_path": ".github/workflows/tests.yml",
+      "sha256": "b4a7deccb41969994ba8d0c357ad117c164460623ea246a837c9e5cfb9b78cb3",
+      "size": 2265
+    },
+    {
+      "relative_path": ".gitignore",
+      "sha256": "6cd4ec292c6861643bf5937fa4d2949dee8dcedce40661acc17ba7c960de5443",
+      "size": 89
+    },
+    {
+      "relative_path": "agents/openai.yaml",
+      "sha256": "646a346acc51e27cb4651978658433fd7af918785dc18f0a6a1680f23136773f",
+      "size": 504
+    },
+    {
+      "relative_path": "CI说明.md",
+      "sha256": "9ca0f7570408fb6ab0955658da1a31d8e0c3a991de024294f705a9f88da491a6",
+      "size": 2170
+    },
+    {
+      "relative_path": "Enter-Environment.ps1",
+      "sha256": "bf7bc61c2e2d18ef2430b35c71ab5d43682fb4b8fbbecb038e479803324cbaac",
+      "size": 1690
+    },
+    {
+      "relative_path": "local.config.example.json",
+      "sha256": "60bf0d4ff98ffef96d0ab20eadda074e2cf50f0f50165b6d2c5d9f12685d0075",
+      "size": 475
+    },
+    {
+      "relative_path": "proflow.ps1",
+      "sha256": "791f164393ce834bef5501902f62fcdbf1bbb9da82efab17f789814af2a754c7",
+      "size": 186
+    },
+    {
+      "relative_path": "README.md",
+      "sha256": "ffbac9067f76785a8529fd34b18591a67afcdbfacce841581fed016d3ac21255",
+      "size": 7020
+    },
+    {
+      "relative_path": "references/execution.md",
+      "sha256": "15e96a1c193983e8f8654aa04978252af0b6bb778db94faa882b73b056a6c021",
+      "size": 14930
+    },
+    {
+      "relative_path": "references/expedited-routing.md",
+      "sha256": "d3169743f50917fe7c6ba24ff63e478f04d1ae78e5ca1aa6b55d3385acf3aa72",
+      "size": 6587
+    },
+    {
+      "relative_path": "references/inheritance-coverage.json",
+      "sha256": "f70cf8a8bd99696277ec29d8f361c07bdb4d2b6b2e7adc47f7ff915cb0125ba2",
+      "size": 982136
+    },
+    {
+      "relative_path": "references/inheritance-decisions.json",
+      "sha256": "206e6cccedd49310ed010da5b80f3b7920748e8a02334579f1d8a6a6b070171b",
+      "size": 92196
+    },
+    {
+      "relative_path": "references/inheritance.md",
+      "sha256": "2f733c38d118f8d8133aed6c928d861f93a9d2cb32e680844bc399e24333da1f",
+      "size": 5643
+    },
+    {
+      "relative_path": "references/original-discovery-mapping.json",
+      "sha256": "1ffa355ec7fc20a0831ce0090e57b39f78c0373fb2ba3bfe97488b2a9c3840cf",
+      "size": 544
+    },
+    {
+      "relative_path": "references/original-sources.json",
+      "sha256": "b75f08b50e50b089f9c830cd928bcc02ac14289a85ed41f8b0b1cd6c03620372",
+      "size": 5923
+    },
+    {
+      "relative_path": "references/original/本机接手说明.md",
+      "sha256": "cbc41dae5a51aee84cb926ca06b5d639620ba8a738318fe0ba442cfff125b52e",
+      "size": 5657
+    },
+    {
+      "relative_path": "references/original/开始使用.md",
+      "sha256": "68666afcdc135a9a4a1cdb06e00265d9ce931a474c399dfba8a38e771e085772",
+      "size": 11283
+    },
+    {
+      "relative_path": "references/original/AGENTS.snapshot.txt",
+      "sha256": "799126b1c21ac7fb1500fdf874f4f761dd20ca8d7733c489214a92fab4cba578",
+      "size": 20606
+    },
+    {
+      "relative_path": "references/original/config.json",
+      "sha256": "4ccbd7b170d60e9cd82409a9148a718e5541b7b69defd89228aeedc5c61591ce",
+      "size": 3401
+    },
+    {
+      "relative_path": "references/original/docs/发布核验.md",
+      "sha256": "1c2403bd15a3dd11330df98ae03d1e3271c7eea4a27d4a678274836ab230c396",
+      "size": 7505
+    },
+    {
+      "relative_path": "references/original/docs/新电脑使用.md",
+      "sha256": "73ecff0131a5e2340f2b82ad80ba3c0e659ae6384395a5d5ec2a15ec9ee8f04e",
+      "size": 4424
+    },
+    {
+      "relative_path": "references/original/docs/architecture.md",
+      "sha256": "252d8a2783df8eb3a127bce0b7f256cb2c699d252f85605d4be6d0dc92605711",
+      "size": 2117
+    },
+    {
+      "relative_path": "references/original/docs/artifact-contract.md",
+      "sha256": "7c89c94bd01b1ea39d349a4d6b9cf52520211f00b056fe8d16b2c888e3f026bc",
+      "size": 16275
+    },
+    {
+      "relative_path": "references/original/docs/capture-plan.md",
+      "sha256": "62eddf9a7d83888652c189c2ce59d00cb60091ed955b8606e8f7680bcb14d861",
+      "size": 5519
+    },
+    {
+      "relative_path": "references/original/rules/case-design.md",
+      "sha256": "12617c41d86d01e3bfa93baf37521fd8b0a38b9086eed0c16390f396b3fc853d",
+      "size": 2125
+    },
+    {
+      "relative_path": "references/original/rules/chart-acceptance.md",
+      "sha256": "7d4c0208b7fd143cf3b0f27ae59367ab1d471d1ed002ba168dc7b72144232bca",
+      "size": 7465
+    },
+    {
+      "relative_path": "references/original/rules/chart-legend-scope.json",
+      "sha256": "d732be80d2f91102a1e1beeca007d214b18ffec2648cd4ee62910e0c1b56dc19",
+      "size": 426
+    },
+    {
+      "relative_path": "references/original/rules/chart-legend.md",
+      "sha256": "e634dc207aa74a05e89689b316269885b743814b1fbdf297e52f5ea8a75dc01f",
+      "size": 6023
+    },
+    {
+      "relative_path": "references/original/rules/chart-professional-scope.json",
+      "sha256": "013d020174c89f50418f3b45d7310a58bbf94e0aabf8eb7eb9789b46f7a3e954",
+      "size": 336
+    },
+    {
+      "relative_path": "references/original/rules/chart-professional.md",
+      "sha256": "f08d645f531560fe57742734cd5eb0ff061f714761553ec11f0b9132dd8d6a06",
+      "size": 4358
+    },
+    {
+      "relative_path": "references/original/rules/chart-quality.md",
+      "sha256": "7f1d55b02f28ba103613698ed42ab201e7562b174d4f208817015acab9205221",
+      "size": 8406
+    },
+    {
+      "relative_path": "references/original/rules/deliverable-first.md",
+      "sha256": "26d252c75901cb13ddcb512a64300682a9ffd6bd4fa0512e2d24d00ba426c8de",
+      "size": 10652
+    },
+    {
+      "relative_path": "references/original/rules/efficient-pipeline.md",
+      "sha256": "5a82f626f9d597e1d09f3aaf7db7be86a6b7649f29ae0bc64e6c83071ba953af",
+      "size": 3348
+    },
+    {
+      "relative_path": "references/original/rules/execution-efficiency.md",
+      "sha256": "b45d573232773ad5a31b72d1903410666a662b9317e19ce1750429d594620210",
+      "size": 12041
+    },
+    {
+      "relative_path": "references/original/rules/expedited-review.md",
+      "sha256": "9adf77f88281773a34a5445b6afc80700599cc99c61d7c37ebc035879d0a3677",
+      "size": 2131
+    },
+    {
+      "relative_path": "references/original/rules/material-sourcing.md",
+      "sha256": "d1ce34c60acd54a1ce657e8a61b27b689b595027f6f674fc69cdb5e8c639439b",
+      "size": 5834
+    },
+    {
+      "relative_path": "references/original/rules/rejected-chart-versions.json",
+      "sha256": "4768b2197bce554c0042100d19360a7a430201753845bfbcf55df02db2c343d3",
+      "size": 6833
+    },
+    {
+      "relative_path": "references/original/rules/requirements.md",
+      "sha256": "9ae3d000bcc509e346915655c8169b293adbd00a71a647a90bd5b5b3dd8c74c2",
+      "size": 18324
+    },
+    {
+      "relative_path": "references/original/rules/web-visible-copy.md",
+      "sha256": "a4f82a82d51c6ac67fde16157f3a725d11d908150767ec207fcf9758127270fa",
+      "size": 3095
+    },
+    {
+      "relative_path": "references/original/rules/worker-environment.md",
+      "sha256": "ec895e82ee46a2fc4acf08a11ef24da894408960be2c1ffe0d130822db37079e",
+      "size": 19158
+    },
+    {
+      "relative_path": "references/original/skill/SKILL.snapshot.txt",
+      "sha256": "2c537f5d02bbdad345d36f36c02560ff3220ca908329a1976a9646ab3cb068df",
+      "size": 12869
+    },
+    {
+      "relative_path": "references/processes.md",
+      "sha256": "b25d1eb739b294d96ddf2dd65e90e0d32251f406348c79704e8111d306dfa06c",
+      "size": 1619
+    },
+    {
+      "relative_path": "references/quality.md",
+      "sha256": "b1069e0989e7bd058746bb3b1b177092e0faa10e072cfba301be17e5bd2f74b6",
+      "size": 5546
+    },
+    {
+      "relative_path": "references/recording-concurrency.md",
+      "sha256": "9d8c3d4077511ff7d63617cd4f2d8591f4e66df0fd6d3b2426c88df48b448c1c",
+      "size": 6580
+    },
+    {
+      "relative_path": "references/recording.md",
+      "sha256": "0d1ea037bd9beaa5013f776fc661d81e259d5df06edbf2c85b2a2155f39b39c9",
+      "size": 5468
+    },
+    {
+      "relative_path": "references/system-data.md",
+      "sha256": "b571e4c4d39fe7ed6557574da1f61651be0ce3c5b9f080ae3097a5f16d0a69ae",
+      "size": 6786
+    },
+    {
+      "relative_path": "references/tools.md",
+      "sha256": "17536ceaa34fb0223f1315c1d720e594ee218fbd4fd0f0799f8dbe606a197795",
+      "size": 21658
+    },
+    {
+      "relative_path": "references/ui-policy.json",
+      "sha256": "62319ee1f50da3626ade5ac4f1a1debe843ce1db9acee285a8180da77636ebb6",
+      "size": 448
+    },
+    {
+      "relative_path": "requirements-ci.txt",
+      "sha256": "7a14fcbb72f178ac75a81a217ae6fdc0547be014b9cd42b2d9efd142089f3ec1",
+      "size": 179
+    },
+    {
+      "relative_path": "scripts/_video_evidence_core.py",
+      "sha256": "1ad543d3193cef7de0c25f9a2680ecdd5edc1afe0c418bc676c73f7e395fe309",
+      "size": 6850
+    },
+    {
+      "relative_path": "scripts/audit_inheritance.py",
+      "sha256": "d9737678d050d8fd63a52b35f98aa25ac805ac2d3639efdaeb1d027e9d1379c3",
+      "size": 34301
+    },
+    {
+      "relative_path": "scripts/batch_control.py",
+      "sha256": "64dc99c9c74683106a53e61a42435273aa29420405d25c3a17e0725da12e24ad",
+      "size": 54817
+    },
+    {
+      "relative_path": "scripts/common.py",
+      "sha256": "94a185d43d7f82946ec5cb362d269a0ad6010df2a0d5dda8b7f27667fde67791",
+      "size": 3697
+    },
+    {
+      "relative_path": "scripts/contracts.py",
+      "sha256": "21f29f6b72e9446d05221da59564b78cce70fa69c79787bad9ff97e4a321183b",
+      "size": 23990
+    },
+    {
+      "relative_path": "scripts/evidence_index.py",
+      "sha256": "f38efca3463c1525c927bfd48c9a730dce746537d291f4fa2933d011d99fa13f",
+      "size": 4164
+    },
+    {
+      "relative_path": "scripts/media_evidence.py",
+      "sha256": "4fc13dddc9e341558701927634910983fbf694ca5ee98d857a98aa891c2bcc46",
+      "size": 8722
+    },
+    {
+      "relative_path": "scripts/media_job.py",
+      "sha256": "c2c91ec53d83faa17468d5c4bbd7b9b89255937b06cd307e6c2779938505cf06",
+      "size": 12508
+    },
+    {
+      "relative_path": "scripts/package_policy.py",
+      "sha256": "93c45f92f5a3407d531d160599db56f5548bc25804b4d483c8647763aca5d55f",
+      "size": 6264
+    },
+    {
+      "relative_path": "scripts/process_guard.py",
+      "sha256": "daea4be198a1f137d0fa040a38b0c2971001e977d8fee22e619bde44cf6d7ad0",
+      "size": 10643
+    },
+    {
+      "relative_path": "scripts/proflow.py",
+      "sha256": "6b9f47a6d8bc1dcdb16b77d9ab989523063f40bd11bfa994e96931247dd47a36",
+      "size": 65489
+    },
+    {
+      "relative_path": "scripts/record.cjs",
+      "sha256": "0d36145b95c9cfac20929015d6636bf9559cc21293017186deb9579857b83f13",
+      "size": 22892
+    },
+    {
+      "relative_path": "scripts/source_intake.py",
+      "sha256": "b9c5c1825b4162ec286d21a4f3656abb356a10f6d96e61f5aefe7754aca5d8e5",
+      "size": 944
+    },
+    {
+      "relative_path": "SKILL.md",
+      "sha256": "5c4c4415d56c49e73d3238f088417fd5f05087713b865424d02667c644b85668",
+      "size": 16096
+    },
+    {
+      "relative_path": "skill/openai.compatibility.txt",
+      "sha256": "63f41b4cd82363f24d8f55c3585935bee1e288f00f29aa463bfdaa838b24842a",
+      "size": 383
+    },
+    {
+      "relative_path": "skill/README.md",
+      "sha256": "6bba7934d50d7fa3a87156859ceb2a4ba300eb25e54cd6cd3af914fac8bea3ff",
+      "size": 1900
+    },
+    {
+      "relative_path": "skill/SKILL.compatibility.txt",
+      "sha256": "34314d9682007db599541af506d8f66b529140d4cb20f0a773866af2d6153d9b",
+      "size": 1606
+    },
+    {
+      "relative_path": "tests/fixture_server.py",
+      "sha256": "07f1e6013050d3af507d79b6441c13847964750e64895a4116da42330f674403",
+      "size": 4573
+    },
+    {
+      "relative_path": "tests/fixtures/original-snapshot-baseline.json",
+      "sha256": "9e4d36a41fa9a551b4b1f8baf430559d5ecd75ac40af41e550b3af84affa2e7b",
+      "size": 3511
+    },
+    {
+      "relative_path": "tests/live_smoke.py",
+      "sha256": "7055160b45cddfaf88ffdcdadbcfdefd56ac2d199cfdf83135e63ce718bb1b7a",
+      "size": 4638
+    },
+    {
+      "relative_path": "tests/test_contracts.py",
+      "sha256": "f1611f9f12667afcf1ab884b8c779a2a44b91e7c7770c872d7afa2243536a9b1",
+      "size": 37655
+    },
+    {
+      "relative_path": "tests/test_defaults.py",
+      "sha256": "dc83ea6504caf1ce3a1027ac825d0336d4f3667b3a615bf37c3a01e947fc9935",
+      "size": 5378
+    },
+    {
+      "relative_path": "tests/test_expedited_route.py",
+      "sha256": "0d6f4b6bfb65da48a33ae6f645fb1e24d33ca42b3f5237b372387abdc6524f08",
+      "size": 26508
+    },
+    {
+      "relative_path": "tests/test_media_job.py",
+      "sha256": "27415d06eb9477f9ec2a343480410bc6df3c9ff343257462a0798e7083fb4b7b",
+      "size": 10532
+    },
+    {
+      "relative_path": "tests/test_package_policy.py",
+      "sha256": "5066906cf18148711a967d88c5901b84d59c9aad34fa02fd44ae9a66cefb20d9",
+      "size": 3384
+    },
+    {
+      "relative_path": "tests/test_product_flow.py",
+      "sha256": "186d2546cfa6613897f9c54aa858093ef5f17898fb9e02fe08a611046cfbd9fa",
+      "size": 9330
+    },
+    {
+      "relative_path": "tests/test_record.cjs",
+      "sha256": "284620f9d54a9c860cc2060b8bc63388dcd00d67d531d345a5efae78bfbcfba6",
+      "size": 7125
+    },
+    {
+      "relative_path": "tests/test_recording_concurrency.py",
+      "sha256": "1335a7e369931d4dea206858476a68f407ffb1c83c86ed11de0d8241f3bdf056",
+      "size": 18413
+    },
+    {
+      "relative_path": "tests/test_source_intake.py",
+      "sha256": "7686c3da03944b51d3f23e503b66773af7898a3d1645cacfb7286047a0917d68",
+      "size": 7084
+    },
+    {
+      "relative_path": "tests/test_workflow.py",
+      "sha256": "66bac56b637b8c22b45fb88026f89559daf957d8260934537450d61f690775a4",
+      "size": 23389
+    }
+  ],
+  "scope": "Published skill source and tests; this manifest does not hash itself."
+}

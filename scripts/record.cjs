@@ -1,0 +1,274 @@
+'use strict';
+// Continuous browser recording with declared UI actions and observed assertions.
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const { spawnSync } = require('node:child_process');
+const { performance } = require('node:perf_hooks');
+const uiPolicy=JSON.parse(fs.readFileSync(path.join(__dirname,'../references/ui-policy.json'),'utf8').replace(/^\uFEFF/,''));
+function auditUiText(value){
+  return [...uiPolicy.chinese.filter(term=>value.includes(term)),...uiPolicy.english_patterns.filter(pattern=>new RegExp(pattern,'i').test(value))];
+}
+const sha = data => crypto.createHash('sha256').update(data).digest('hex');
+const load = p => JSON.parse(fs.readFileSync(p,'utf8').replace(/^\uFEFF/,''));
+const save = (p,v) => fs.writeFileSync(p,JSON.stringify(v,null,2),'utf8');
+const pause = ms => new Promise(resolve => setTimeout(resolve,ms));
+
+function safeFile(root, relative) {
+  if (path.isAbsolute(relative) || relative.includes(':') || relative.split(/[\\/]/).includes('..')) throw Error('Unsafe relative input');
+  const full=path.resolve(root,relative), realRoot=fs.realpathSync(root), real=fs.realpathSync(full);
+  if(!real.startsWith(realRoot+path.sep) || !fs.statSync(real).isFile()) throw Error('Input outside workspace');
+  for(let p=full; p!==path.dirname(p);p=path.dirname(p)) if(fs.lstatSync(p).isSymbolicLink()) throw Error('Linked input rejected');
+  return full;
+}
+function localUrl(value) {
+  const u=new URL(value);
+  return ['http:','https:'].includes(u.protocol) && ['127.0.0.1','localhost','[::1]'].includes(u.hostname) && !u.username && !u.password;
+}
+function validatePlan(plan) {
+  if(!localUrl(plan.url)) throw Error('Recording URL must be local');
+  if(typeof plan.health_path!=='string'||!plan.health_path.startsWith('/')||plan.health_path.startsWith('//')||!plan.version) throw Error('Health path and frozen service version required');
+  if(!plan.ready || !Array.isArray(plan.steps) || plan.steps.length<6) throw Error('Ready selector and at least six actions required');
+  const duration=plan.duration_seconds ?? 60;
+  if(duration<55 || duration>75) throw Error('Duration must be 55–75 seconds');
+  if(!Array.isArray(plan.input_files) || !plan.input_files.length || new Set(plan.input_files).size!==plan.input_files.length) throw Error('Unique immutable input files required');
+  const actions=new Set(['click','fill','select','press','download']);let last=0;
+  for(const step of plan.steps) {
+    if(!Number.isFinite(step.at) || step.at<last || step.at<0 || step.at>=duration-1 || step.at-last>15) throw Error('Invalid or idle action timeline');
+    if(!actions.has(step.action) || !step.selector || !step.expect) throw Error('Unsupported action or missing observed assertion');
+    if(['fill','select','press'].includes(step.action) && typeof step.value!=='string') throw Error('Action value must be a string');
+    last=step.at;
+  }
+  if(duration-last>10 || new Set(plan.steps.map(s=>s.action)).size<3) throw Error('Need varied operations through the final ten seconds');
+  return duration;
+}
+function command(exe,args) {
+  const result=spawnSync(exe,args,{encoding:'utf8',windowsHide:true,maxBuffer:16*1024*1024});
+  if(result.error || result.status!==0) throw Error('Media tool failed: '+String(result.error || result.stderr).slice(-1600));
+  return result.stdout;
+}
+function batchBinding(workspace) {
+  const file=path.join(workspace,'.product-v2/batch-binding.json');
+  if(!fs.existsSync(file))return null;
+  const binding=load(file),manifestPath=path.join(binding.root,binding.batch_id,'manifest.json');
+  const manifest=load(manifestPath),registered=manifest.cases.find(c=>c.case_id===binding.case_id);
+  if(binding.contract!=='windows-job-v1'||manifest.media_lease_contract!=='windows-job-v1'||
+    sha(fs.readFileSync(manifestPath))!==binding.manifest_sha256||!registered||
+    fs.realpathSync(registered.workspace).toLowerCase()!==fs.realpathSync(workspace).toLowerCase())throw Error('Frozen batch/workspace media binding changed');
+  return binding;
+}
+function validateBatchPhase(workspace,phase,lease) {
+  if(lease&&phase==='full')throw Error('Batch media leases require capture or evidence phase');
+  leaseArgs(lease,workspace,phase);
+  const binding=batchBinding(workspace);
+  if(binding&&(!lease||phase==='full'))throw Error('Registered batch workspace requires its capture/evidence lease');
+  if(binding&&(fs.realpathSync(lease.root).toLowerCase()!==fs.realpathSync(binding.root).toLowerCase()||
+     lease.batchId!==binding.batch_id||lease.caseId!==binding.case_id))throw Error('Lease differs from frozen workspace binding');
+  return binding;
+}
+function leaseArgs(lease,workspace,phase='capture',runtimePid=null) {
+  if(!lease) return null;
+  if(!lease.root||!lease.batchId||!lease.caseId||!lease.token||!Number.isInteger(lease.ownerPid)||lease.ownerPid<1) throw Error('Complete batch media lease required');
+  if(!['capture','evidence'].includes(phase))throw Error('Batch media leases require capture or evidence phase');
+  const args=[path.join(__dirname,'batch_control.py'),phase==='evidence'?'verify-evidence':'verify-record','--root',lease.root,'--batch-id',lease.batchId,
+    '--case-id',lease.caseId,'--pid',String(lease.ownerPid),'--token',lease.token,'--value',workspace];
+  if(runtimePid!==null)args.push('--runtime-pid',String(runtimePid));return args;
+}
+function verifyLease(lease,workspace,phase='capture',runtimePid=null) {
+  const args=leaseArgs(lease,workspace,phase,runtimePid);if(!args)return null;
+  const result=JSON.parse(command(process.env.SCB_PRO_PYTHON,args));
+  if(!result.acquired)throw Error('Recording launch admission failed: '+result.reason);
+  return result;
+}
+function isolatedBrowserOptions(tempRoot,downloads) {
+  return {headless:true,downloadsPath:downloads,env:{...process.env,TEMP:tempRoot,TMP:tempRoot,TMPDIR:tempRoot}};
+}
+async function record(workspace, planPath, phase='full',lease=null) {
+  const binding=validateBatchPhase(workspace,phase,lease);
+  if(binding)verifyLease(lease,workspace,phase,process.pid);
+  workspace=fs.realpathSync(workspace);
+  const lock=path.join(workspace,'.product-v2/recording-stage.lock');
+  const fd=fs.openSync(lock,'wx');
+  fs.writeFileSync(fd,JSON.stringify({pid:process.pid,started:new Date().toISOString(),phase}));fs.closeSync(fd);
+  try {return await recordPhase(workspace,planPath,phase,lease);} finally {fs.unlinkSync(lock);}
+}
+async function recordPhase(workspace, planPath, phase='full',lease=null) {
+  if(!['full','capture','evidence'].includes(phase)) throw Error('Unknown recording phase');
+  workspace=fs.realpathSync(workspace);
+  if(phase==='evidence') return finishRecording(workspace,lease);
+  const run=load(path.join(workspace,'.product-v2/run.json')), plan=load(planPath), duration=validatePlan(plan);
+  if(run.workspace.toLowerCase()!==workspace.toLowerCase()) throw Error('Workspace identity differs');
+  const final=run.video;
+  if(fs.existsSync(final)) throw Error('Final video already exists; preserve it before making a new version');
+  const ffmpeg=process.env.SCB_PRO_FFMPEG, ffprobe=process.env.SCB_PRO_FFPROBE;
+  if(!ffmpeg || !ffprobe || !process.env.SCB_PRO_PLAYWRIGHT || !process.env.TEMP?.toLowerCase().startsWith('d:\\codex+\\')) throw Error('Load Enter-Environment.ps1 first');
+  const {chromium}=require(process.env.SCB_PRO_PLAYWRIGHT);
+  const dir=path.join(workspace,'.product-v2','recordings',Date.now()+'-'+crypto.randomUUID());fs.mkdirSync(dir,{recursive:true});
+  const browserTemp=path.join(process.env.TEMP,'scb-pro-browser',crypto.randomUUID());fs.mkdirSync(browserTemp,{recursive:true});
+  const downloads=path.join(browserTemp,'downloads');fs.mkdirSync(downloads);
+  save(path.join(workspace,'.product-v2/capture-pending.json'),{status:'capturing',path:path.join(dir,'capture.json'),sha256:null});
+  const inputs=Object.fromEntries(plan.input_files.map(rel=>[rel,sha(fs.readFileSync(safeFile(workspace,rel)))]));
+  const errors=[],events=[],texts=[];let browser,context,video,prelude,rawPath,capturedStartUtc,capturedEndUtc;
+  const origin=new URL(plan.url);
+  async function health(request) {
+    const response=await request.get(new URL(plan.health_path,origin.origin).href,{maxRedirects:0,timeout:10000});
+    if(!response.ok()) throw Error('Health endpoint failed');
+    const value=await response.json();
+    if(value.run_id!==run.run_id||value.version!==plan.version||String(value.workspace).toLowerCase()!==workspace.toLowerCase()||!Number.isInteger(value.pid)) throw Error('Health endpoint belongs to a different case/version');
+    const current=JSON.parse(command(process.env.SCB_PRO_PYTHON,[path.join(__dirname,'process_guard.py'),'inspect','--workspace',workspace]));
+    const registry=load(path.join(workspace,'.product-v2/processes.json'));
+    const live=current.owned.find(p=>p.pid===value.pid&&p.ports.includes(Number(origin.port||(origin.protocol==='https:'?443:80))));
+    const saved=registry.processes.find(p=>p.pid===value.pid);
+    if(!live||!saved||live.created_ticks!==saved.created_ticks||live.command_sha256!==saved.command_sha256) throw Error('No current registered listener identity for this case');
+    return {pid:live.pid,created_ticks:live.created_ticks,command_sha256:live.command_sha256,ports:live.ports};
+  }
+  let identity,launchAdmission;
+  const rawStart=performance.now();let captureStart=rawStart;
+  try {
+    launchAdmission=verifyLease(lease,workspace,'capture',batchBinding(workspace)?process.pid:null);
+    browser=await chromium.launch(isolatedBrowserOptions(browserTemp,downloads));
+    const storageState=plan.storage_state?safeFile(workspace,plan.storage_state):undefined;
+    context=await browser.newContext({viewport:{width:1920,height:1080},recordVideo:{dir,size:{width:1920,height:1080}},acceptDownloads:true,locale:'zh-CN',timezoneId:'Asia/Shanghai',storageState});
+    identity=await health(context.request);
+    const beforePage=performance.now();
+    const page=await context.newPage();video=page.video();
+    page.on('pageerror',err=>errors.push(String(err)));
+    page.on('console',msg=>{if(msg.type()==='error') errors.push(msg.text());});
+    page.on('response',response=>{if(response.status()>=400) errors.push('HTTP '+response.status()+' '+response.url());});
+    page.on('requestfailed',request=>errors.push('Request failed '+request.url()));
+    await page.goto(plan.url,{waitUntil:'networkidle',timeout:30000});
+    await page.locator(plan.ready).waitFor({state:'visible',timeout:15000});
+    // Cursor overlay follows real pointer events; it cannot change application state.
+    await page.evaluate(()=>{const pointer=document.createElement('div');pointer.id='operation-pointer';pointer.setAttribute('aria-hidden','true');pointer.style.cssText='position:fixed;left:0;top:0;width:18px;height:24px;z-index:2147483647;pointer-events:none;filter:drop-shadow(1px 2px 2px #5558);clip-path:polygon(0 0,0 92%,25% 70%,43% 100%,59% 91%,41% 61%,78% 61%);background:#162438;border:1px solid white;';document.body.append(pointer);document.addEventListener('mousemove',event=>{pointer.style.left=event.clientX+'px';pointer.style.top=event.clientY+'px';});});
+    let mouse={x:930,y:550};await page.mouse.move(mouse.x,mouse.y);
+    async function approach(locator){
+      await locator.waitFor({state:'visible'});let box=await locator.boundingBox();
+      for(let attempt=0;box&&(box.y+box.height/2<8||box.y+box.height/2>1072)&&attempt<12;attempt++){
+        await page.mouse.move(Math.max(8,Math.min(1912,box.x+box.width/2)),Math.max(80,Math.min(1000,box.y)));
+        await page.mouse.wheel(0,box.y<8?-220:220);await pause(110);box=await locator.boundingBox();
+      }
+      if(!box||box.y+box.height/2<0||box.y+box.height/2>1080)throw Error('Target remains outside viewport');
+      const x=box.x+box.width*.46,y=box.y+box.height*.53,start={...mouse},begin=performance.now();
+      let t=0;while(t<1){t=Math.min(1,(performance.now()-begin)/650);const u=t*t*(3-2*t);await page.mouse.move(start.x+(x-start.x)*u,start.y+(y-start.y)*u);if(t<1)await pause(16);}
+      mouse={x,y};await pause(130);
+    }
+    await pause(1000);
+    captureStart=performance.now();capturedStartUtc=new Date().toISOString();prelude=(captureStart-beforePage)/1000;
+    await page.evaluate(()=>{
+      window.__scbTiming={intervals:[],last:0};
+      const tick=t=>{const v=window.__scbTiming;if(!v)return;if(v.last)v.intervals.push(t-v.last);v.last=t;requestAnimationFrame(tick);};requestAnimationFrame(tick);
+    });
+    async function observe(label) {
+      if(!localUrl(page.url())) throw Error('Navigation left local application');
+      const text=await page.locator('body').innerText();
+      const hits=auditUiText(text);
+      if(hits.length) throw Error('Visible restricted words: '+hits.join(', '));
+      if(await page.locator('math,.katex,.MathJax').count()) throw Error('Visible mathematical rendering is outside the UI brief');
+      const screenshot=path.join(dir,label+'.png');await page.screenshot({path:screenshot});
+      const latin=(text.match(/[A-Za-z]{3,}/g)||[]).length;
+      texts.push({label,url:page.url(),text,english_tokens:latin,screenshot,sha256:sha(fs.readFileSync(screenshot))});
+      return screenshot;
+    }
+    await observe('start');
+    for(let i=0;i<plan.steps.length;i++) {
+      const step=plan.steps[i],remaining=step.at*1000-(performance.now()-captureStart);
+      if(remaining>0) await pause(remaining);
+      const started=(performance.now()-captureStart)/1000;
+      if(started-step.at>5) throw Error('Action schedule overran by more than five seconds');
+      const locator=page.locator(step.selector);let downloadProof;
+      await approach(locator);
+      if(step.action==='click') await page.mouse.click(mouse.x,mouse.y,{delay:85});
+      if(step.action==='fill') {await page.mouse.click(mouse.x,mouse.y,{delay:65});await locator.press('ControlOrMeta+A');await locator.pressSequentially(step.value,{delay:110});}
+      if(step.action==='select') await locator.selectOption(step.value);
+      if(step.action==='press') await locator.press(step.value);
+      if(step.action==='download') {
+        const promise=page.waitForEvent('download',{timeout:15000});await page.mouse.click(mouse.x,mouse.y,{delay:85});const download=await promise;
+        const name=path.basename(download.suggestedFilename());
+        const target=path.join(dir,`download-${i}-${name}`);await download.saveAs(target);
+        if(await download.failure()) throw Error('Browser download failed');
+        downloadProof={name,path:target,sha256:sha(fs.readFileSync(target))};
+      }
+      const expected=page.locator(step.expect);await expected.waitFor({state:'visible',timeout:10000});
+      if(step.text) await page.waitForFunction(({selector,text})=>document.querySelector(selector)?.innerText.includes(text),{selector:step.expect,text:step.text},{timeout:10000});
+      events.push({index:i,action:step.action,scheduled:step.at,started,completed:(performance.now()-captureStart)/1000,screenshot:await observe('step-'+String(i+1).padStart(2,'0')),download:downloadProof});
+    }
+    const tail=duration*1000-(performance.now()-captureStart);
+    if(tail<0) throw Error('Actual actions exceed recording duration');
+    await pause(tail);capturedEndUtc=new Date().toISOString();await observe('end');
+    const timing=await page.evaluate(()=>{const v=window.__scbTiming;delete window.__scbTiming;return v;});
+    save(path.join(dir,'browser-timing.json'),{note:'Main thread animation timing supplements encoded source timestamps; it does not measure every captured compositor frame.',...timing});
+    // A short recorded tail prevents requesting frames beyond the source end.
+    await pause(750);
+    const afterIdentity=await health(context.request);
+    if(JSON.stringify(afterIdentity)!==JSON.stringify(identity)) throw Error('Service identity changed during recording');
+    await context.close();context=null;rawPath=await video.path();
+  } finally {
+    if(context) await context.close().catch(()=>{});
+    if(browser) await browser.close().catch(()=>{});
+    if(video&&!rawPath)rawPath=await video.path().catch(()=>undefined);
+    save(path.join(dir,'observed.json'),{events,texts,errors,input_files:inputs,prelude_seconds:prelude,raw_video:rawPath,browser_temp:browserTemp,launch_admission:launchAdmission,captured_start_utc:capturedStartUtc,captured_end_utc:capturedEndUtc});
+  }
+  if(errors.length) throw Error('Browser errors: '+errors.join('; ').slice(0,1600));
+  for(const [rel,hash] of Object.entries(inputs)) if(sha(fs.readFileSync(safeFile(workspace,rel)))!==hash) throw Error('Application input changed: '+rel);
+  const capture={schema_version:1,status:'captured',passed:false,workspace,run_id:run.run_id,final,dir,rawPath,raw_sha256:sha(fs.readFileSync(rawPath)),prelude,duration,inputs,identity,events,texts,errors,downloads,browser_temp:browserTemp,launch_admission:launchAdmission,captured_start_utc:capturedStartUtc,captured_end_utc:capturedEndUtc};
+  save(path.join(dir,'capture.json'),capture);
+  save(path.join(workspace,'.product-v2/capture-pending.json'),{path:path.join(dir,'capture.json'),sha256:sha(fs.readFileSync(path.join(dir,'capture.json')))});
+  if(phase==='capture') return {status:'captured',visual_review_required:true,evidence_pending:true,capture:path.join(dir,'capture.json'),raw_video:rawPath,operations:events.length};
+  return finishRecording(workspace);
+}
+function finishRecording(workspace,lease=null) {
+  const binding=validateBatchPhase(workspace,'evidence',lease);
+  if(binding)verifyLease(lease,workspace,'evidence',process.pid);
+  const pending=load(path.join(workspace,'.product-v2/capture-pending.json'));
+  const capturePath=safeFile(workspace,path.relative(workspace,pending.path));
+  if(sha(fs.readFileSync(capturePath))!==pending.sha256) throw Error('Capture receipt changed');
+  const c=load(capturePath),run=load(path.join(workspace,'.product-v2/run.json'));
+  const {final,dir,rawPath,prelude,duration,inputs,identity,events,texts}=c;
+  if(c.status!=='captured'||c.workspace!==workspace||c.run_id!==run.run_id||final!==run.video||c.errors.length) throw Error('Capture belongs to a different or failed run');
+  if(sha(fs.readFileSync(safeFile(workspace,path.relative(workspace,rawPath))))!==c.raw_sha256) throw Error('Original capture changed');
+  for(const [rel,hash] of Object.entries(inputs)) if(sha(fs.readFileSync(safeFile(workspace,rel)))!==hash) throw Error('Application input changed: '+rel);
+  const ffmpeg=process.env.SCB_PRO_FFMPEG,ffprobe=process.env.SCB_PRO_FFPROBE;
+  if(!ffmpeg||!ffprobe||!process.env.SCB_PRO_PYTHON) throw Error('Load Enter-Environment.ps1 first');
+  const existingReceipt=path.join(workspace,'.product-v2/recording.json');
+  if(fs.existsSync(final)) {
+    const prior=fs.existsSync(existingReceipt)?load(existingReceipt):{};
+    if(prior.capture_receipt_sha256!==pending.sha256||prior.sha256!==sha(fs.readFileSync(final))) throw Error('Unrelated final video exists');
+  }
+  const staged=path.join(dir,'final.mp4');
+  if(!fs.existsSync(final)) command(ffmpeg,['-y','-hide_banner','-loglevel','error','-threads','2','-filter_threads','2','-ss',String(prelude),'-i',rawPath,'-t',String(duration),'-an','-c:v','libx264','-threads','2','-preset','fast','-crf','20','-pix_fmt','yuv420p','-movflags','+faststart',staged]);
+  const encoded=fs.existsSync(final)?final:staged;
+  const metadata=JSON.parse(command(ffprobe,['-v','error','-show_entries','format=duration:stream=width,height,codec_name','-of','json',encoded]));
+  const seconds=Number(metadata.format.duration),stream=metadata.streams[0];
+  if(seconds<55||seconds>75||stream.width!==1920||stream.height!==1080) throw Error('Video geometry/duration check failed');
+  command(ffmpeg,['-v','error','-threads','2','-i',encoded,'-f','null','-']);
+  fs.mkdirSync(path.dirname(final),{recursive:true});if(!fs.existsSync(final)) fs.copyFileSync(staged,final,fs.constants.COPYFILE_EXCL);
+  const evidenceDir=path.join(dir,'controlled-video-'+crypto.randomUUID()),frames=path.join(evidenceDir,'frames');
+  const report={passed:true,duration:seconds,width:1920,height:1080,sha256:sha(fs.readFileSync(final)),video:final,raw_video:rawPath,prelude_seconds:prelude,input_files:inputs,service_identity:identity,events,texts,frames,visual_review_required:true,capture_receipt_sha256:pending.sha256,encoding_threads:2};
+  save(path.join(workspace,'.product-v2/recording.json'),report);
+  // Fixed evidence wrapper produces the complete sampled timeline, mapped
+  // contact sheets and original interaction frames. It never signs a review.
+  const mediaArgs=[path.join(__dirname,'media_evidence.py'),'generate','--workspace',workspace,'--video',final,'--recording',path.join(workspace,'.product-v2/recording.json'),'--output',evidenceDir];
+  if(binding)mediaArgs.push('--media-token',lease.token,'--owner-pid',String(lease.ownerPid),'--runtime-pid',String(process.pid));
+  const media=JSON.parse(command(process.env.SCB_PRO_PYTHON,mediaArgs));
+  save(path.join(workspace,'.product-v2/controlled-video.json'),media);
+  return {video:final,duration:seconds,operations:events.length,frames,controlled_video_evidence:media};
+}
+if(require.main===module) {
+  const args=process.argv.slice(2),value=name=>args.includes(name)?args[args.indexOf(name)+1]:undefined;
+  if(!args.includes('--workspace')||(!args.includes('--plan')&&value('--phase')!=='evidence')) {console.error('Expected --workspace and --plan (except evidence phase)');process.exitCode=2;}
+  else {
+    const names=['--batch-root','--batch-id','--case-id','--record-token','--media-token','--owner-pid'];
+    const lease=names.some(name=>args.includes(name))?{root:value('--batch-root'),batchId:value('--batch-id'),caseId:value('--case-id'),token:value('--media-token')||value('--record-token'),ownerPid:Number(value('--owner-pid'))}:null;
+    const phase=args.includes('--phase')?value('--phase'):'full';
+    try{
+      const binding=validateBatchPhase(value('--workspace'),phase,lease);
+      if(binding&&!process.env.SCB_PRO_MEDIA_JOB){
+        // Supervisor assigns the inner Node while suspended, before browser or
+        // encoder creation. An environment marker alone never proves membership.
+        const result=spawnSync(process.env.SCB_PRO_PYTHON,[path.join(__dirname,'media_job.py'),'--workspace',value('--workspace'),'--phase',phase,'--lease',JSON.stringify(lease),'--',...args],{stdio:'inherit',windowsHide:true});
+        if(result.error)throw result.error;process.exitCode=result.status??2;
+      }else record(value('--workspace'),value('--plan'),phase,lease).then(result=>console.log(JSON.stringify(result))).catch(error=>{console.error(String(error));process.exitCode=2;});
+    }catch(error){console.error(String(error));process.exitCode=2;}
+  }
+}
+module.exports={validatePlan,record,localUrl,auditUiText,finishRecording,leaseArgs,isolatedBrowserOptions,batchBinding,validateBatchPhase};
