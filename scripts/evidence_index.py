@@ -29,14 +29,23 @@ def review_input(workspace,index,destination):
     spec=read_json(index)
     from common import file_map
     run=read_json(inside(workspace,'.product-v2/run.json'))
+    from contracts import chart_policy,chart_records
+    policy=chart_policy(run)
     manifest=inside(workspace,'.product-v2/chart-manifest.json');charts=read_json(manifest)
-    for figure in charts['figures']:
+    figures=chart_records(charts,run) if policy is not None else charts['figures']
+    for figure in figures:
         if digest(inside(workspace,figure['png']))!=figure['sha256']:raise ValueError('Chart input changed')
     facts={'schema_version':1,'kind':'review-input-facts','workspace':str(workspace),
            'run_id':run['run_id'],'index':{'path':str(no_links(index)),'sha256':digest(index)},
            'evidence':spec['evidence'],'current_artifacts':file_map(no_links(run['output'])),
            'current_charts':{'manifest_sha256':digest(manifest),'figures':{str(f['figure_id']):f['sha256'] for f in charts['figures']}},
            'instruction':'Reviewer must inspect the required evidence and write independent conclusions, actual reviewed IDs and final proof hash. These bindings are not a review.'}
+    if policy is not None:
+        facts['current_charts']['chart_policy']=policy
+        facts['chart_review_requirements']={'every_current_png':True,
+            'quality_evidence':['meaning','data','legibility','layout','explanation'],
+            'visual_evidence':['no_title_header_evidence','no_schematic_evidence'],
+            'instruction':'Open every current PNG and Word context; verify no 示意 and no title/header. Explain source-relative value in meaning and before/red explanation/after context in explanation. Declared captions/labels are not pixel OCR.'}
     controlled=workspace/'.product-v2/controlled-video.json'
     if controlled.exists():
         media=read_json(controlled);timeline=no_links(media['timeline'])

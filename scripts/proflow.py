@@ -16,6 +16,7 @@ import zipfile
 from common import (TEXT_SUFFIXES, META_COLUMNS, digest, file_map, forbidden, inside,
                     no_links, normalized, read_json, state, write_json)
 from source_intake import source_figure_numbers
+from contracts import ANALYTICAL_CHART_POLICY, chart_policy
 
 ROOT = Path(__file__).resolve().parent.parent
 SYSTEM = '模拟系统'
@@ -80,6 +81,7 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
         raise ValueError('Untracked-base allowance is limited to explicit package revisions')
     if revision_of:
         base_workspace,base_output,base_run=state(revision_of)
+        chart_policy(base_run)
         base_receipt=inside(base_workspace,'.product-v2/final-receipt.json')
         prior=read_json(base_receipt)
         frozen_source=prior.get('source_docx_sha256') or base_run.get('source_docx_sha256')
@@ -93,6 +95,7 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
     record = workspace / '.product-v2/run.json'
     if record.exists():
         previous = read_json(record)
+        chart_policy(previous)
         if previous.get('schema_version') != 2:
             raise ValueError('Legacy run is frozen; prepare a separate revision workspace and output')
         if (previous['output'] == str(output) and previous['title'] == title
@@ -121,6 +124,10 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
            'word_name':source_docx.name,'word':str(output/source_docx.name),
            'data_dir':str(output/SYSTEM/'数据'),'source_zip':str(output/SYSTEM/'项目源码.zip'),
            'video':str(output/SYSTEM/'演示视频.mp4'),'status':'prepared'}
+    if not base or revision_scope=='document':
+        run['chart_policy']=ANALYTICAL_CHART_POLICY
+    elif 'chart_policy' in base_run:
+        run['chart_policy']=base_run['chart_policy']
     # Historical finalized revisions keep their frozen numbering contract.
     if not base or base_run.get('chart_numbering_policy') == 'source-sequential-v1':
         run['chart_numbering_policy'] = 'source-sequential-v1'
@@ -138,14 +145,14 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
 最终视频：{run['video']}
 
 父会话必须使用实际spawn_agent工具(fork_turns=none, model=gpt-6.1-sol, reasoning_effort=high)分派建设和自检，完成后另行分派独立只读验收(fork_turns=none, model=gpt-6.1-sol, reasoning_effort=ultra)。未支持明确目标时停在未验收状态，不静默降级、不用当前会话替代、不称自动caseflow接入。保存真实call_id、返回的独立task_name和原会话JSONL路径；按references/tools.md绑定当前产物哈希。建设者只写建设和自检记录，不写独立pass。
-先从上述显式冻结的原技术Word盘点正文、原式、原图、实施例和输入约束；新案不依赖已有测试成品。同案同源哈希且已合格的图文、定义与代码才可复用，不能套用上一案件的业务、图或数据。原流程图、结构图和示意图全保留，不计入新增结果图数量；原件没有计算结果图也须按本案正文和真实计算生成2–6张独立有意义的黑白结果图。源正文和图题已占用的阿拉伯图号为{source_numbers}，新增结果图从图{max(source_numbers, default=0)+1}起连续编号；只有正文引用而无对应图题时先人工核对，仍保守占号，不改原文。逐图结合原技术实施例，读前文—新增红字—后文，详细自然讲清工况、读图、计算依据、可复核算例、结果原因和适用判断。有原式时自然引入相应关键符号并在首次出现就地简释，保留上下标、帽号和希腊字母；无公式只按实施例解释，不强塞数学，不凑字数。每图独立“请参考图N”，原文原式原图不动；仅新增图及图下图题放全部原文之后。PNG图内禁止顶部title/suptitle、表头、图N或说明框，轴与必要图例正常。PNG、图设计manifest、渲染及证据留工作区，不放成品根目录。
+先从上述显式冻结的原技术Word盘点正文、原式、原图、实施例和输入约束；新案不依赖已有测试成品。同案同源哈希且已合格的图文、定义与代码才可复用，不能套用上一案件的业务、图或数据。原流程图、结构图和示意图全保留，不计入新增结果图数量；源正文和图题已占用的阿拉伯图号为{source_numbers}，新增结果图从图{max(source_numbers, default=0)+1}起连续编号；只有正文引用而无对应图题时先人工核对，仍保守占号，不改原文。逐图结合原技术实施例，读前文—新增红字—后文，详细自然讲清工况、读图、计算依据、可复核算例、结果原因和适用判断。有原式时自然引入相应关键符号并在首次出现就地简释，保留上下标、帽号和希腊字母；无公式只按实施例解释，不强塞数学，不凑字数。每图独立“请参考图N”，原文原式原图不动；仅新增图及图下图题放全部原文之后。PNG图内禁止顶部title/suptitle、表头、图N或说明框，轴与必要图例正常。PNG、图设计manifest、渲染及证据留工作区，不放成品根目录。
 在原工作区对后端算法做尽可能深入的完善，补全领域约束、异常处理、持久化、批量处理和可验证业务闭环。Web 做成精细完整、内容丰富、中文为主、高交互且具备部署条件的业务系统；所有可见模块和按钮有效，不出现数学推导和过量英文。
 实际检索同类型开源项目及原始数据，核对许可、字段、单位和分布，用项目领域机理进行可复现扩充；数据量按实体、时间、频率和代表工况充分覆盖，不用复制或无约束随机数凑行数。保留内部出处、参数、种子、日志和限制，不冒充现场实测。
 图文完成后不录十秒版，先完成系统与数据，再实际操作最终网页录制约一分钟（55–75秒），展示筛选、详情、业务提交、结果、历史和导出等完整使用过程。连续真实浏览器录屏，不能拼图、循环或假响应。实际测试算法、接口、保存重启、浏览器、构建和压缩包解压后的启动。
 录制和在线验证结束后核实并关闭本案全部专属后台，保留Codex/MCP、共享服务及其他项目。之后仅把白名单重要CSV清洗到上述数据目录；每个CSV整列删除“生成数据”“数据来源”及明确同义元数据列，保留其他字段和值，数据目录仅CSV，不删原工作区数据或数据库。
 本项目交付代码、Web和数据内容不得出现：模拟、虚拟、仿真、物理仿真、参考、源文件、公式、正文。固定容器目录“模拟系统”按用户指定保留；原技术Word原样保留，许可证单独核对。禁词命中按语义修复，不能转义藏词或破坏算法。
 将实际可运行的项目源码压成上述ZIP，排除所有层级README及任何针对原技术文档的解析、抽取、原文映射和分析文件，同时排除原技术文档、过程证据、日志、缓存、依赖目录与凭据。使用明确打包白名单，不复制整个工作区；业务软件必需的导入解析模块保留。原工作区被排除内容仍保留。压缩包不得依赖被排除文件或旧绝对路径。
-成品根目录只能有上述原名Word和“模拟系统”文件夹；模拟系统内只能有项目源码.zip、演示视频.mp4、数据/*.csv。使用运行说明放源码ZIP已有运行说明.txt，不在外面交付图表、使用说明或其他文件。原Word名称即使包含禁词，只豁免这一冻结文件名和原Word，不扩大到代码、网页或数据。
+成品根目录只能有上述原名Word和“模拟系统”文件夹；模拟系统内只能有项目源码.zip、演示视频.mp4、数据/*.csv。使用/运行/安装/部署说明及制作/原件解析/数据构造来源说明留内部工作区，排除源码ZIP，不在外面交付图表、使用说明或其他文件。原Word名称即使包含禁词，只豁免这一冻结文件名和原Word，不扩大到代码、网页或数据。
 按技能运行清洗、打包、扫描、真实录制与进程收尾工具，建设自检后由独立ultra实际检查最终Word页、图表、关键视频帧和完整交付，再执行finalize；只报告有证据的完成状态。当前任务不覆盖原技能、不改旧批次、不上传GitHub、不擅自公网部署。
 '''
     if base:
@@ -163,10 +170,9 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
 结合源技术实施例实际读前文—红字—后文，逐图详细自然解释工况、读图、计算依据、可复核结果、原因和适用判断；有对应原式时自然引入关键符号并首次就地简释，保留上下标、帽号和希腊字母；无公式按实施例解释，不强塞数学、不凑字数。每图独立“请参考图N”，原文原式原图及位置保持不动，仅新增图和对应图下图题按图号放全部原文之后。新增PNG图内无顶部title/suptitle、表头、图N或说明框，正常轴和必要图例保留；核对最终PNG及Word实际尺寸图例/符号与数据一致。
 PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据都留本次修订工作区。按references/tools.md生成内部.product-v2/chart-manifest.json，核对Word嵌图同字节PNG、独立引用、图下caption和全页衔接，供独立ultra实际审核。
 旧系统按冻结system_files完整沿用：项目源码.zip、演示视频.mp4和全部数据CSV字节不变；旧源码、数据输入、六类执行日志、ZIP启动证据、录制及输入hash、数据出处和旧complete收据均冻结继承。旧软件的建设模型及执行身份保留历史事实，本轮high仅证明文档修订，不伪称旧软件由本轮high建设。无需新系统建设、重新取数或录制；原软件相关证据变化时此修订继承门禁拒绝通过，交负责人重新确定受影响范围。
-成品根目录仅上述原名Word和模拟系统，系统内仅项目源码.zip、演示视频.mp4、数据/*.csv，与旧系统hash完全一致。所有PNG、证据及说明在工作区；已有源码ZIP内运行说明随原包沿用。源Word完整basename即使含禁词仅豁免该Word，代码、Web和CSV豁免范围不扩大。
+成品根目录仅上述原名Word和模拟系统，系统内仅项目源码.zip、演示视频.mp4、数据/*.csv，与旧系统hash完全一致。所有PNG、证据及说明在工作区；此次Word-only修订软件字节继承原包；若用户还要求删ZIP说明必须另走package revision，不扩大本次范围。源Word完整basename即使含禁词仅豁免该Word，代码、Web和CSV豁免范围不扩大。
 在本次修订及旧工作区核对本案后台退出记录（process_guard stop，保留Codex/MCP及其他项目），执行scan；独立ultra实际核验当前Word全部页、PNG、正文衔接及未变系统继承证据。它写当前reviewed_files/visual_notes/limitations/reviewer_agent_id/decision/chart_snapshot/chart_reviews；完成后仅执行finalize-document-revision --workspace "{workspace}" --evidence "独立ultra当前review.json绝对路径"。保留旧finalized run、旧收据及旧交付，在本次新工作区另存document-revision收据，不重写历史通过。只报告实际证据支持的完成状态。
 '''
-    prompt=prompt.replace('使用运行说明放源码ZIP已有运行说明.txt','源码ZIP排除所有使用/运行/安装/部署说明和制作/原件解析/数据构造来源说明').replace('已有源码ZIP内运行说明随原包沿用。','此次Word-only修订软件字节继承原包；若用户还要求删ZIP说明必须另走package revision，不扩大本次范围。')
     if base and revision_scope=='package':
         prompt=f'''使用 $software-case-batch-pro 执行授权的源码包说明专用修订，scope=package-revision。
 本次工作区：{workspace}
@@ -180,6 +186,14 @@ PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据
 完整5fps视频接触页及frame_files映射、首尾和每交互前后0.2s原帧可对未变MP4解码补证据，无需重录；Word每页已有真实已阅按同hash继承，无需重新渲染。父保存短证据索引，独立ultra检查新ZIP、包启动实际log/结果/署名及完整继承链，声明本次实际打开与合法沿用范围，写review.json并final给精确proofhash。
 只执行finalize-package-revision --workspace "{workspace}" --evidence "独立ultra当前review.json"。出现任何应用代码/业务字符串、Word/PNG/视频/CSV字节变化，此专用gate拒绝；由负责人安排ultra定向返修和相应完整执行验证，不能强改hash或扩大继承。
 '''
+    if run.get('chart_policy')==ANALYTICAL_CHART_POLICY and (not base or revision_scope=='document'):
+        prompt+='''
+本次冻结chart_policy=analytical-v1：常规黑白图通常约2–3张，按独立分析价值增减，不是固定数；优先制作稍多的专业模型、热力、矩阵、轨迹、调度等图，总数无上限、不强制比例，始终以真实数据或可复核计算支持为先，不因数量造数据。完成新生图请求至少须有1张有效新增图；确无新分析价值时报告事实，不凑图、不宣称完成生成。仅有已有Word复用的请求另按其实际范围处理。
+新增图及图下caption均不得含“示意”。PNG内无顶部title/suptitle、表头、图N、解释墙或说明框；必要矩阵行列标签、轴、图例、色标及单位保留。原文原式原图包括原有“示意”均原样保留。
+在现chart-manifest每图登记question（本图回答的具体问题）、data_source（可定位原件/数据/计算证据的来源）、chart_type和labels（所有实际人工文字标签，不需抄自动数值刻度），不另建重复台账。独立review必须绑定当前PNG，逐图给meaning/data/legibility/layout/explanation具体非空依据、no_schematic=true及no_schematic_evidence；meaning说明相对原图的新增价值，explanation说明实施例前文—红字—后文衔接。实际打开PNG与Word上下文检查无“示意”、布局和数据，不能把manifest文字扫描称为图片文字识别。
+'''
+    elif base and revision_scope=='package':
+        prompt+='\n本次package revision沿用父chart_policy='+str(base_run.get('chart_policy','未标记历史2–6'))+'，不新增或重制图、不用新政策重写父通过。\n'
     prompt+=f'''\n以下均为以后每个授权案件的通用要求，不限于本次测试案：完整中文业务系统/领域算法和充分数据、原文原式原图保留、详细实施例红字和原式符号、图内无标题而Word图下有图题、约60秒连续平顺真实实操、真实独立审核、录后核归属关闭后台再清洗重要CSV、源码ZIP排除使用说明及制作/原件解析/来源构造说明和模拟性质文案。
 通用状态验收：任何业务状态操作后，按本项目实际可见项核对列表、详情、统计、摘要和日志属于同一对象/版本；刷新保持用户筛选、排序及合法当前分页，关闭详情抽屉后迟到异步请求不得重新打开，连续/逆向操作也核验。不硬编码某个测试案的业务字段或动作。
 新版默认正式成果根：{default_output_root()}；按批次/案件集中，候选也在同卷私有.staging以便整案原子发布。当前显式指定的候选仍是{output}；用户明确指定工作区成果或其他目录时遵循该次指定，不静默回D盘或桌面。历史成果不自动搬移，TEMP和工具缓存仍D:\\codex+。

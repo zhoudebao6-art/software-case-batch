@@ -80,16 +80,19 @@ PID 必须来自本次实际启动，每个专属进程逐项登记；录制器�
 
 新版默认正式根`F:\研发图表\批次\案件`；`prepare --output`仍必须显式提供，默认路线的私有候选为`F:\研发图表\.staging\本批-本案-唯一版本`，与正式根同卷。`local.config.json.output_root`和当前进程`SCB_PRO_OUTPUT_ROOT/SCB_OUTPUT_ROOT`明确该默认根，不静默回D盘/桌面。用户明确其他目录优先；工作区方案采用`总工作区/成品/...`，每案执行目录为`总工作区/cases/...`，两者隔离。旧成果和冻结原规范中的D路径保留历史，不自动迁移。
 
-`.product-v2/chart-manifest.json` 仅在工作区，记录新增2–6张不同PNG：
+`.product-v2/chart-manifest.json`仅在工作区，记录新增图的依据、设计与不同PNG：
+
+新`prepare`及文档修订冻结`run.chart_policy="analytical-v1"`：新增图至少1张，无数量上限；常规约两三张、专业分析优先均是选图倾向，不作配额。没有值得新增的信息则报告事实，不凑图、不用零图虚报完成。包修订继承父policy；未标policy的旧run继续旧2–6合同，未知policy拒绝，旧run/收据不重写。
+
+在同一个图manifest中说明每图问题/数据/图型/真实标签，完工补当前PNG hash即可，不新造计划台账。`labels`从绘图对象提取必要可见文本，覆盖轴/图例/矩阵行列/色标及短标记，无需人工抄全部自动数字刻度。
 
 ```json
 {"figures":[
-  {"figure_id":3,"png":"evidence/新增图3.png","sha256":"当前PNG的64位SHA256","caption":"图3 设备状态变化","title_policy":"none"},
-  {"figure_id":4,"png":"evidence/新增图4.png","sha256":"当前PNG的64位SHA256","caption":"图4 运行结果对比","title_policy":"none"}
+  {"figure_id":3,"png":"evidence/新增图3.png","sha256":"当前PNG的64位SHA256","caption":"图3 候选动作资格与投影偏差矩阵","title_policy":"none","question":"哪些较近候选被约束排除，何者最终采用","data_source":"本案实施例的有限候选、当前约束与原式计算；实际源位置及计算记录保存在工作区","chart_type":"离散资格矩阵与连续偏差矩阵","labels":["首动作","可行 / 排除","投影偏差","采用"]}
 ]}
 ```
 
-图号延续原文；每图不同结果，按图号递增，图内无顶部标题/表头/图N。脚本检查PNG签名及当前hash、图下唯一精确caption、前文独立“请参考图N”、Word实际drawing嵌入同字节PNG，原Word正文块/原媒体保留且新增图题在全部原文后。`title_policy` 是设计约束，不能当实际PNG视觉无标题的证明。保存源实施例锚点、原式映射、前后文、计算及解释设计证据供独立ultra实际审核。
+示例只展示字段，实际caption/labels/单位和源位置必须来自本案。新policy的`question/data_source/chart_type`为非空文本，`labels`为非空字符串数组；caption与labels禁“示意”。图号延续原文并递增，新增图不放顶部整体标题/表头/图N/长解释，必要轴/矩阵行列标签/色标/短图例保留。脚本检查PNG签名/hash、图下精确caption、独立“请参考图N”、实际drawing嵌入同字节PNG和原正文/原媒体保留。`title_policy`及labels声明不替代真实看图；用既有计算记录或manifest保留源锚点、原式、前后文和解释依据供独立审核。
 
 父会话实际调用如下工具阶段（不是PowerShell或自动caseflow命令）：
 
@@ -105,19 +108,19 @@ spawn_agent(task_name="本案独立验收", fork_turns="none", model="gpt-6.1-so
 {
   "schema_version":1,
   "stages":{
-    "build":{"session_log":"C:/Users/Administrator/.codex/sessions/.../父会话.jsonl","call_id":"实际建设call_id","agent_id":"/root/实际建设task_name","artifact_hashes":{"原名.docx":"SHA256","模拟系统/项目源码.zip":"SHA256","模拟系统/演示视频.mp4":"SHA256","模拟系统/数据/记录.csv":"SHA256"},"chart_snapshot":{"manifest_sha256":"SHA256","figures":{"3":"PNG_SHA256","4":"PNG_SHA256"}}},
-    "review":{"session_log":"C:/Users/Administrator/.codex/sessions/.../父会话.jsonl","call_id":"实际独立验收call_id","agent_id":"/root/实际独立验收task_name","review_session_log":"C:/Users/Administrator/.codex/sessions/.../验收子会话.jsonl","artifact_hashes":{"原名.docx":"SHA256","模拟系统/项目源码.zip":"SHA256","模拟系统/演示视频.mp4":"SHA256","模拟系统/数据/记录.csv":"SHA256"},"chart_snapshot":{"manifest_sha256":"SHA256","figures":{"3":"PNG_SHA256","4":"PNG_SHA256"}}}
+    "build":{"session_log":"C:/Users/Administrator/.codex/sessions/.../父会话.jsonl","call_id":"实际建设call_id","agent_id":"/root/实际建设task_name","artifact_hashes":{"原名.docx":"SHA256","模拟系统/项目源码.zip":"SHA256","模拟系统/演示视频.mp4":"SHA256","模拟系统/数据/记录.csv":"SHA256"},"chart_snapshot":{"chart_policy":"analytical-v1","manifest_sha256":"SHA256","figures":{"3":"PNG_SHA256","4":"PNG_SHA256"}}},
+    "review":{"session_log":"C:/Users/Administrator/.codex/sessions/.../父会话.jsonl","call_id":"实际独立验收call_id","agent_id":"/root/实际独立验收task_name","review_session_log":"C:/Users/Administrator/.codex/sessions/.../验收子会话.jsonl","artifact_hashes":{"原名.docx":"SHA256","模拟系统/项目源码.zip":"SHA256","模拟系统/演示视频.mp4":"SHA256","模拟系统/数据/记录.csv":"SHA256"},"chart_snapshot":{"chart_policy":"analytical-v1","manifest_sha256":"SHA256","figures":{"3":"PNG_SHA256","4":"PNG_SHA256"}}}
   }
 }
 ```
 
-`artifact_hashes` 是完成该阶段时交付相对路径→hash，`chart_snapshot`来自该时点PNG。存在返修时`stages`增加按连续顺序`repair-1`、`repair-2`等，每条真实派发均sol/ultra，与建设/独立review不同身份，保留原high建设时的快照；最终返修及review必须绑定全部当前交付hash。不能把high建设改名作ultra返修或让reviewer写实现。字段`agent_id`使用真实canonical task_name，不杜撰。脚本从原session JSONL核验实际call/output/model/effort/fork，摘要、配置、工作区伪日志不能替代。原CLI自动调度未移植；父显式dispatch和批次资源工具提供实际等效路由。不能支持目标时保持未验收，不降级。
+`artifact_hashes`是完成该阶段时交付相对路径→hash，`chart_snapshot`取当前工具计算的完整对象；新policy包含上述`chart_policy`，未标旧run保持原shape不加键，不手拼快照。存在返修时`stages`增加按连续顺序`repair-1`、`repair-2`等，每条真实派发均sol/ultra，与建设/独立review不同身份，保留原high建设时快照；最终返修及review须绑定全部当前hash。不能将建设改名返修或让reviewer写实现。`agent_id`为真实canonical task_name。原session JSONL核实际call/output/model/effort/fork，摘要/配置/伪日志不能替代。CLI自动调度未移植；父显式dispatch及批次资源工具提供路由，不能支持目标时保持未验收。
 
 `.product-v2/data-provenance.json` 保留 `nature`（真实数据性质）、`sources`（实际入口/检索失败/许可/下载哈希和适配记录）和 `validation`（规模、边界、主外键及分布验证）；不放进交付目录或源码包。没有成功下载时 `sources` 如实写尝试与限制，不能伪造取得。
 
 建设者保存六类实际执行材料，独立ultra核验后写最后验收JSON：`checks` 恰含 `algorithm/api/persistence/browser/build/package_startup` 六类，每项含实际 `command`、`exit_code`、相对工作区的 `log` 和该日志 `sha256`。`package_startup` 必须从最终 ZIP 解压的新目录执行。另含 `source_zip_sha256`、`video_timeline_sha256`（父控完整5fps timeline）、`reviewed_files`（与scan全部成品路径→hash一致）、`visual_notes`（完整Word页/PNG/全部视频接触页、首尾及操作关键帧，区分实际打开和合法继承）、非空 `limitations`、`reviewer_agent_id`、`decision:"pass"`和chart_snapshot。父短证据索引通过evidence_index.py核实际已阅ID，不自动补签。建设者只提供事实，不写独立decision/pass。
 
-验收JSON的 `chart_reviews` 覆盖每个当前图，每项包含 `figure_id`、当前 `png_sha256`、`no_title_header:true`、具体 `no_title_header_evidence`；以及 `meaning/data/legibility/layout/explanation` 五项，各有 `passed:true` 和具体 `evidence`。explanation必须记录实际正文实施例位置、前文—红字—后文、解释深度、原式关键符号首次简释（有原式才检查符号）和Word实际页面。没有实际查看或存在问题不能填true/pass。
+验收JSON的`chart_reviews`覆盖每个当前图，每项含`figure_id`、当前`png_sha256`、`no_title_header:true`及具体`no_title_header_evidence`，沿用`meaning/data/legibility/layout/explanation`五项，每项有`passed`和`evidence`。新`analytical-v1`还含`no_schematic:true`及非空`no_schematic_evidence`，说明已实际查看新增图与新图题无“示意”；原图原文不适用该禁词。五项及无标题项证据均为非空具体文本：meaning说明相对原图新增价值，explanation记录实际实施例位置、前文—红字—后文衔接、解释深度、原式关键符号首次简释（有原式才查）和Word页。沿同一review写实际证据，不另设上下文台账。没有实际查看或存在问题不能填true/pass，建设者不代独立验收签字。
 
 独立ultra写完不可再改的验收JSON后，其**最终消息仅输出这个JSON对象**（SHA256实际读取文件计算）：
 
@@ -141,9 +144,9 @@ spawn_agent(task_name="本案独立验收", fork_turns="none", model="gpt-6.1-so
 
 默认普通独立审核sol/ultra。真实user明确指定当前案/批“加急”即选择 `original-expedited` 和实际Astra/low，不要求固定“原加急模式”口令；授权格式保留`{run_id,workspace,session_log,user_message_sha256,statement,scope_name}`，scope名必须为注册ID/唯一冻结名称，纯“这批加急”另须同实际user JSONL单一当前批标识的scope_context（绑定root/batch/manifest hash）。真实肯定消息及hash逐次核，快一点/支持吗/条件/示例/材料引用/否定不授权。`batch_control expedite`设全案waiting priority10；build/review争同共享宿主位时较高priority且可获本stage槽的候选先做，inactive/损坏run/invalid source/auth/preflight不阻塞普通。未来queue(review)/acquire自动按有效授权路由，已active普通审核保留原模型。新登记批次冻结review admission，父实际派发前`verify-review`取得不可变permit/nonce，实际spawn message、stages.review及review proof绑定同token/run/workspace与两项path/hash；final gate按取得的route核实际JSONL和proofhash，不依据最终state回写旧模型。详情与完整父调用次序见 [加急审核路由](expedited-routing.md)。建设high/返修ultra、不追加ultra复核、不跨批外溢和完整质量要求保持。
 
-## 文档专用修订
+## 已有完整成果的文档局部修订
 
-只有用户明确点名Word/图文修订且旧软件未变时，另建revision工作区和成品目录。`--revision-of`指向已实际发布的finalized工作区，冻结旧收据与全系统hash；旧run/旧收据不变。
+只有用户明确点名已有完整成果的Word/图文局部修订且旧软件未变时，另建revision工作区和成品目录，最终仍交付原名Word及继承的源码ZIP、CSV和视频全套成品。`--revision-of`指向已实际发布的finalized工作区，冻结旧收据与全系统hash；旧run/旧收据不变。
 
 ```powershell
 & $env:SCB_PRO_PYTHON '工具目录\proflow.py' prepare --workspace '新修订工作区' --output '新修订成品目录' --title '业务名称' --source-docx '原输入Word绝对路径.docx' --revision-of '旧工作区'
@@ -173,4 +176,8 @@ ZIP差异只允许移除明确排除的说明文档；业务members不得新增�
 
 ## 本机与发布
 
-`local.config.json` 是本机运行时路径，已复用现用 Python/Node/Playwright/FFmpeg；不提交仓库或携带凭据。本技能注册为 `software-case-batch-pro`，原名称不动。原上游地址为 https://github.com/zhoudebao6-art/software-case-batch ，本次核对 HEAD 为 `2d46ad180c4d057396082a0abb0be9b66acaaff7`。这次没有修改、覆盖或上传该仓库。用户认可后再单独规划如何将新版契约接入原自动批次编排器；不能只修改旧 video 配置就声称整套新版生效。
+`local.config.json` 仅保存本机运行时路径和配置；不提交仓库、不携带凭据。
+
+`software-case-batch-pro` 是完整技能；原名 `software-case-batch` 作为名称兼容入口时，必须完整读取 pro 及其要求的引用，共享同一交付合同，不维护或回退旧十秒/两页流程。
+
+本机安装按 `SKILL.md` 的用户授权、当前版本独立验收与逐哈希核验备份要求执行。外部发布按当前用户明确指定的目标及当前文件、版本哈希证据执行，实际状态记录在当次发布证据中；历史 HEAD、仓库地址或已完成/未完成事实不作为通用规则。

@@ -7,7 +7,7 @@ import unittest
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'scripts'))
-from common import digest, write_json
+from common import digest, read_json, write_json
 from contracts import chart_snapshot
 from proflow import prepare
 from source_intake import source_figure_numbers
@@ -72,7 +72,9 @@ class SourceIntakeTests(unittest.TestCase):
             png = self.work/f'result{n}.png'
             png.write_bytes(payload)
             figure = {'figure_id': n, 'png': png.name, 'sha256': digest(png),
-                      'caption': f'图{n} 当前计算结果', 'title_policy': 'none'}
+                      'caption': f'图{n} 当前计算结果', 'title_policy': 'none',
+                      'question': '本图回答独立边界问题', 'data_source': '原实施例与当前计算记录',
+                      'chart_type': 'heatmap', 'labels': ['时间', '工况', '计算量']}
             figures.append(figure)
             rels.append((f'new{n}', png.name))
             media[png.name] = payload
@@ -84,6 +86,57 @@ class SourceIntakeTests(unittest.TestCase):
             for name, payload in media.items():
                 package.writestr('word/media/'+name, payload)
 
+    def test_analytical_single_and_more_than_six_are_valid(self):
+        for numbers in ([4], list(range(4,12))):
+            with self.subTest(numbers=numbers):
+                self.candidate(numbers)
+                snapshot=chart_snapshot(self.work,self.word,self.run)
+                self.assertEqual(len(snapshot['figures']),len(numbers))
+                self.assertEqual(snapshot['chart_policy'],'analytical-v1')
+    def test_empty_chart_list_is_rejected_by_both_policies(self):
+        self.candidate([])
+        for legacy in (False,True):
+            run=dict(self.run)
+            if legacy:run.pop('chart_policy')
+            with self.subTest(legacy=legacy),self.assertRaisesRegex(ValueError,'At least one'):
+                chart_snapshot(self.work,self.word,run)
+    def test_legacy_count_limits_stay_frozen(self):
+        run=dict(self.run);run.pop('chart_policy')
+        for numbers in ([4],list(range(4,11))):
+            self.candidate(numbers)
+            with self.assertRaisesRegex(ValueError,'Two to six'):chart_snapshot(self.work,self.word,run)
+        self.candidate([4,5]);snapshot=chart_snapshot(self.work,self.word,run)
+        self.assertNotIn('chart_policy',snapshot)
+    def test_unknown_or_null_policy_cannot_relax_count_gate(self):
+        self.candidate([4])
+        for value in ('unknown',None,''):
+            run=dict(self.run);run['chart_policy']=value
+            with self.subTest(value=value),self.assertRaisesRegex(ValueError,'Unknown chart policy'):
+                chart_snapshot(self.work,self.word,run)
+    def test_added_caption_and_actual_labels_cannot_contain_schematic(self):
+        self.candidate([4]);path=self.work/'.product-v2/chart-manifest.json';original=read_json(path)
+        for field,value in [('caption','图4 当前计算示意'),('labels',['工况示意']),('labels',['示意'])]:
+            spec=__import__('copy').deepcopy(original);spec['figures'][0][field]=value;write_json(path,spec)
+            with self.subTest(field=field),self.assertRaisesRegex(ValueError,'must not contain 示意'):
+                chart_snapshot(self.work,self.word,self.run)
+    def test_analytical_manifest_requires_question_source_type_and_actual_labels(self):
+        self.candidate([4]);path=self.work/'.product-v2/chart-manifest.json';original=read_json(path)
+        for field,value in [('question',' '),('data_source',None),('chart_type',True),('labels',[]),('labels',[' ']),('labels','axis')]:
+            spec=__import__('copy').deepcopy(original);spec['figures'][0][field]=value;write_json(path,spec)
+            with self.subTest(field=field),self.assertRaisesRegex(ValueError,'Analytical chart requires'):
+                chart_snapshot(self.work,self.word,self.run)
+    def test_source_schematic_text_and_caption_are_preserved(self):
+        self.original_body=self.original_body.replace('当前实施例','当前示意实施例').replace('原流程图','原流程示意图')
+        self.source_package(self.original_body,self.old_media,self.old_rels)
+        self.run['source_docx_sha256']=digest(self.source);before=digest(self.source)
+        self.candidate([4]);self.assertEqual(len(chart_snapshot(self.work,self.word,self.run)['figures']),1)
+        self.assertEqual(digest(self.source),before)
+    def test_legacy_manifest_does_not_require_analytical_fields_or_new_wording(self):
+        self.candidate([4,5]);path=self.work/'.product-v2/chart-manifest.json';spec=read_json(path)
+        for figure in spec['figures']:
+            for key in ('question','data_source','chart_type','labels'):figure.pop(key)
+        write_json(path,spec);run=dict(self.run);run.pop('chart_policy')
+        self.assertEqual(len(chart_snapshot(self.work,self.word,run)['figures']),2)
     def test_new_source_without_result_charts_accepts_four_and_five(self):
         before = digest(self.source)
         self.candidate([4, 5])

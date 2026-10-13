@@ -13,6 +13,45 @@ NS = {'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
       'a':'http://schemas.openxmlformats.org/drawingml/2006/main',
       'r':'http://schemas.openxmlformats.org/officeDocument/2006/relationships'}
 
+ANALYTICAL_CHART_POLICY = 'analytical-v1'
+
+def chart_policy(run):
+    """An absent policy keeps the historical gate; unknown policies fail closed."""
+    policy=run.get('chart_policy')
+    if 'chart_policy' in run and policy!=ANALYTICAL_CHART_POLICY:
+        raise ValueError('Unknown chart policy; do not silently relax the frozen contract')
+    return policy
+
+def _nonempty_text(value):
+    return isinstance(value,str) and bool(value.strip())
+
+def chart_records(spec, run):
+    """Check declared chart facts, without claiming to recognize PNG text."""
+    policy=chart_policy(run)
+    figures=spec.get('figures',[])
+    if not isinstance(figures,list) or not figures:
+        raise ValueError('At least one distinct final chart record required')
+    if policy is None and not 2<=len(figures)<=6:
+        raise ValueError('Two to six distinct final chart records required by the historical policy')
+    ids=set()
+    for figure in figures:
+        if not isinstance(figure,dict):raise ValueError('Chart records must be objects')
+        number=figure.get('figure_id')
+        if not isinstance(number,int) or isinstance(number,bool) or number<1 or number in ids:
+            raise ValueError('Distinct positive figure_id required')
+        ids.add(number)
+        if policy==ANALYTICAL_CHART_POLICY:
+            for key in ('question','data_source','chart_type'):
+                if not _nonempty_text(figure.get(key)):
+                    raise ValueError('Analytical chart requires a concrete '+key)
+            labels=figure.get('labels')
+            if not isinstance(labels,list) or not labels or not all(_nonempty_text(label) for label in labels):
+                raise ValueError('Analytical chart requires actual explicit labels')
+            caption=figure.get('caption')
+            if not _nonempty_text(caption) or any('示意' in text for text in [caption]+labels):
+                raise ValueError('New analytical chart captions and labels must not contain 示意')
+    return figures
+
 def delivery_layout(output, run):
     """Exact user-facing names, including empty unexpected directories."""
     if run.get('schema_version') != 2 or not run.get('word_name'):
@@ -43,11 +82,9 @@ def chart_snapshot(workspace, word, run):
         raise ValueError('Frozen source Word identity changed')
     manifest=inside(workspace,'.product-v2/chart-manifest.json')
     spec=read_json(manifest)
-    figures=spec.get('figures',[])
+    figures=chart_records(spec,run)
     rejected_path=Path(__file__).resolve().parents[1]/'references/original/rules/rejected-chart-versions.json'
     rejected={r['sha256'] for r in read_json(rejected_path).get('versions',[])} if rejected_path.exists() else set()
-    if not isinstance(figures,list) or not 2<=len(figures)<=6:
-        raise ValueError('Two to six distinct final chart records required')
     if run.get('chart_numbering_policy') == 'source-sequential-v1':
         start = max(source_figure_numbers(source), default=0) + 1
         if [f.get('figure_id') for f in figures] != list(range(start, start+len(figures))):
@@ -125,7 +162,9 @@ def chart_snapshot(workspace, word, run):
                 cursor=at+1
             if positions and cursor>min(positions)-1:
                 raise ValueError('All added images and captions must follow all original body content')
-    return {'manifest_sha256':digest(manifest),'figures':{str(f['figure_id']):f['sha256'] for f in figures}}
+    snapshot={'manifest_sha256':digest(manifest),'figures':{str(f['figure_id']):f['sha256'] for f in figures}}
+    if chart_policy(run) is not None:snapshot['chart_policy']=run['chart_policy']
+    return snapshot
 
 def _dispatch_events(path, call_id):
     path=no_links(path)
@@ -248,6 +287,10 @@ def expedited_authorization(workspace,record):
 
 def model_review(workspace, proof, files, charts, evidence_path):
     """Verify actual implementation and admitted independent review dispatch."""
+    run=read_json(inside(workspace,'.product-v2/run.json'))
+    analytical=chart_policy(run)==ANALYTICAL_CHART_POLICY
+    if analytical and charts.get('chart_policy')!=ANALYTICAL_CHART_POLICY:
+        raise ValueError('Review chart snapshot must bind the frozen analytical policy')
     spec=read_json(inside(workspace,'.product-v2/model-dispatch.json'))
     stages=spec.get('stages',{})
     if (spec.get('schema_version')!=1 or not {'build','review'}.issubset(stages)
@@ -367,4 +410,11 @@ def model_review(workspace, proof, files, charts, evidence_path):
             item=r.get(key,{})
             if item.get('passed') is not True or not item.get('evidence'):
                 raise ValueError('Independent chart review failed or missing: '+key)
+            if analytical and not _nonempty_text(item.get('evidence')):
+                raise ValueError('Analytical chart review requires actual quality evidence: '+key)
+        if analytical:
+            if not _nonempty_text(r.get('no_title_header_evidence')):
+                raise ValueError('Analytical chart review requires actual no-title-header evidence')
+            if r.get('no_schematic') is not True or not _nonempty_text(r.get('no_schematic_evidence')):
+                raise ValueError('Actual PNG/Word no-示意 review required')
     return verified

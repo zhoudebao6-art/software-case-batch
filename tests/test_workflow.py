@@ -257,6 +257,26 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'overwrite'):review_input(work,index,facts)
         png.write_bytes(b'changed');
         with self.assertRaisesRegex(ValueError,'changed'):review_input(work,index,work/'new-facts.json')
+    def test_analytical_review_facts_carry_policy_and_actual_visual_requirements(self):
+        work=self.root/'work1';output=self.root/'analytical-output';output.mkdir()
+        png=work/'analytical.png';png.write_bytes(b'fixture PNG')
+        write_json(work/'.product-v2/run.json',{'run_id':'analytical','output':str(output),'chart_policy':'analytical-v1'})
+        figure={'figure_id':1,'png':png.name,'sha256':digest(png),'caption':'图1 调度轨迹',
+                'question':'延迟怎样影响调度','data_source':'input.csv和调度实际输出','chart_type':'schedule','labels':['时间','设备']}
+        chart_path=work/'.product-v2/chart-manifest.json';write_json(chart_path,{'figures':[figure]})
+        manifest=work/'analytical-evidence.json';write_json(manifest,{'files':[png.name]})
+        index=work/'analytical-index.json';create(work,manifest,index)
+        target=work/'analytical-facts.json';review_input(work,index,target);facts=read_json(target)
+        self.assertEqual(facts['current_charts']['chart_policy'],'analytical-v1')
+        self.assertIn('no_schematic_evidence',facts['chart_review_requirements']['visual_evidence'])
+        self.assertIn('before/red explanation/after',facts['chart_review_requirements']['instruction'])
+        for forbidden in ('decision','reviewer_agent_id','reviewed_evidence','chart_reviews'):self.assertNotIn(forbidden,facts)
+        figure['labels']=['示意'];write_json(chart_path,{'figures':[figure]})
+        with self.assertRaisesRegex(ValueError,'must not contain 示意'):review_input(work,index,work/'bad-facts.json')
+        figure['labels']=['时间'];write_json(chart_path,{'figures':[figure,figure]})
+        with self.assertRaisesRegex(ValueError,'Distinct positive figure_id'):review_input(work,index,work/'duplicate-facts.json')
+        write_json(work/'.product-v2/run.json',{'run_id':'analytical','output':str(output),'chart_policy':'unknown'})
+        with self.assertRaisesRegex(ValueError,'Unknown chart policy'):review_input(work,index,work/'unknown-facts.json')
     def test_full_source_index_and_effective_requirements_are_present(self):
         result=validate_audit();self.assertEqual(result['sources'],26);self.assertGreater(result['clauses'],900)
         self.assertGreater(len(DECISIONS),70)

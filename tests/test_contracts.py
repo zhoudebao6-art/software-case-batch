@@ -37,7 +37,7 @@ class ContractTests(unittest.TestCase):
         for n in (1,2):
             target=self.work/f'.product-v2/charts/chart{n}.png';target.parent.mkdir(parents=True,exist_ok=True)
             target.write_bytes(b'\x89PNG\r\n\x1a\n'+bytes([n]))
-            self.figures.append({'figure_id':n,'png':target.relative_to(self.work).as_posix(),'sha256':digest(target),'caption':f'图{n} 运行变化','title_policy':'none'})
+            self.figures.append({'figure_id':n,'png':target.relative_to(self.work).as_posix(),'sha256':digest(target),'caption':f'图{n} 运行变化','title_policy':'none','question':'本图验证运行边界','data_source':'原实施例文本与当前运行计算记录','chart_type':'trajectory','labels':['时间','运行量']})
         write_json(self.work/'.product-v2/chart-manifest.json',{'figures':self.figures})
         self.word=self.out/self.source.name;self.make_word()
         self.charts=chart_snapshot(self.work,self.word,self.run)
@@ -56,7 +56,7 @@ class ContractTests(unittest.TestCase):
         self.events=events;self.save_dispatch()
         self.proof={'reviewer_agent_id':'/root/review','decision':'pass','chart_snapshot':self.charts,'chart_reviews':[]}
         for f in self.figures:
-            review={'figure_id':f['figure_id'],'png_sha256':f['sha256'],'no_title_header':True,'no_title_header_evidence':'PNG与Word实际顶部没有标题'}
+            review={'figure_id':f['figure_id'],'png_sha256':f['sha256'],'no_title_header':True,'no_title_header_evidence':'PNG与Word实际顶部没有标题','no_schematic':True,'no_schematic_evidence':'打开PNG及Word图题检查，无示意文字'}
             for key in ('meaning','data','legibility','layout','explanation'):review[key]={'passed':True,'evidence':'isolated contract fixture'}
             self.proof['chart_reviews'].append(review)
         self.proof_path=self.work/'.product-v2/review.json';self.save_proof()
@@ -120,6 +120,48 @@ class ContractTests(unittest.TestCase):
     def test_no_header_actual_review_is_required(self):
         self.proof['chart_reviews'][0]['no_title_header']=False;self.save_proof()
         with self.assertRaises(ValueError):self.verify_models()
+    def test_analytical_review_requires_every_current_chart(self):
+        self.proof['chart_reviews'].pop();self.save_proof()
+        with self.assertRaisesRegex(ValueError,'every current chart'):self.verify_models()
+    def test_analytical_review_cannot_duplicate_or_use_stale_png(self):
+        original=copy.deepcopy(self.proof['chart_reviews'])
+        self.proof['chart_reviews'][1]=copy.deepcopy(original[0]);self.save_proof()
+        with self.assertRaisesRegex(ValueError,'every current chart'):self.verify_models()
+        self.proof['chart_reviews']=original
+        self.proof['chart_reviews'][0]['png_sha256']='stale';self.save_proof()
+        with self.assertRaisesRegex(ValueError,'Actual PNG'):self.verify_models()
+    def test_analytical_no_schematic_requires_visual_evidence(self):
+        review=self.proof['chart_reviews'][0]
+        for key,value in [('no_schematic',False),('no_schematic_evidence','   '),('no_schematic_evidence',True)]:
+            with self.subTest(key=key,value=value):
+                old=review[key];review[key]=value;self.save_proof()
+                with self.assertRaisesRegex(ValueError,'no-示意'):self.verify_models()
+                review[key]=old
+    def test_analytical_five_quality_checks_require_nonempty_text(self):
+        for key in ('meaning','data','legibility','layout','explanation'):
+            for value in ('   ',True,['declared']):
+                with self.subTest(key=key,value=value):
+                    item=self.proof['chart_reviews'][0][key];old=item['evidence'];item['evidence']=value;self.save_proof()
+                    with self.assertRaisesRegex(ValueError,'actual quality evidence'):self.verify_models()
+                    item['evidence']=old
+    def test_analytical_no_header_evidence_requires_nonempty_text(self):
+        self.proof['chart_reviews'][0]['no_title_header_evidence']='   ';self.save_proof()
+        with self.assertRaisesRegex(ValueError,'no-title-header evidence'):self.verify_models()
+    def test_analytical_review_snapshot_must_include_policy(self):
+        charts=copy.deepcopy(self.charts);charts.pop('chart_policy')
+        with patch('contracts.SESSION_ROOT',self.sessions),self.assertRaisesRegex(ValueError,'frozen analytical policy'):
+            model_review(self.work,self.proof,self.files,charts,self.proof_path)
+    def test_unknown_frozen_review_policy_fails_closed(self):
+        self.run['chart_policy']='future';write_json(self.work/'.product-v2/run.json',self.run)
+        with self.assertRaisesRegex(ValueError,'Unknown chart policy'):self.verify_models()
+    def test_legacy_review_does_not_gain_new_required_fields(self):
+        self.run.pop('chart_policy');write_json(self.work/'.product-v2/run.json',self.run)
+        self.charts=chart_snapshot(self.work,self.word,self.run)
+        self.proof['chart_snapshot']=self.charts
+        for record in self.dispatch['stages'].values():record['chart_snapshot']=self.charts
+        for review in self.proof['chart_reviews']:
+            review.pop('no_schematic');review.pop('no_schematic_evidence')
+        self.save_dispatch();self.save_proof();self.assertIn('review',self.verify_models())
     def test_distinct_real_dispatch_records_pass_gate_fixture(self):
         self.assertEqual(self.verify_models()['review']['agent_id'],'/root/review')
     def test_missing_model_record_rejected(self):
@@ -333,6 +375,56 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn('实际检索同类型开源项目及原始数据',prompt)
         self.assertNotIn('再实际操作最终网页录制约一分钟',prompt)
         self.assertNotIn('再执行finalize；',prompt)
+    def test_new_and_document_revision_freeze_analytical_policy(self):
+        self.assertEqual(self.run['chart_policy'],'analytical-v1')
+        base,_,_=self.revision_fixture();new=self.root/'policy-document';new.mkdir()
+        result=prepare(new,self.root/'policy-document-output','设备运行控制',self.source,base)
+        self.assertEqual(result['chart_policy'],'analytical-v1')
+        prompt=(new/'.product-v2/深化命令词.txt').read_text(encoding='utf8')
+        for text in ('chart_policy=analytical-v1','总数无上限','不因数量造数据','no_schematic_evidence'):
+            self.assertIn(text,prompt)
+    def test_package_revision_inherits_parent_chart_policy_exactly(self):
+        base,_,_=self.revision_fixture();path=base/'.product-v2/run.json';original=read_json(path)
+        for suffix,policy in [('legacy',None),('analytical','analytical-v1')]:
+            prior=dict(original)
+            if policy:prior['chart_policy']=policy
+            write_json(path,prior);new=self.root/('package-policy-'+suffix);new.mkdir()
+            result=prepare(new,self.root/('package-output-'+suffix),'设备运行控制',self.source,base,revision_scope='package')
+            self.assertEqual(result.get('chart_policy'),policy)
+            if policy is None:self.assertNotIn('chart_policy',result)
+    def test_package_policy_preserves_parent_chart_snapshot_shape_and_hashes(self):
+        base,base_out,_=self.revision_fixture()
+        shutil.copytree(self.work/'.product-v2/charts',base/'.product-v2/charts')
+        shutil.copyfile(self.work/'.product-v2/chart-manifest.json',base/'.product-v2/chart-manifest.json')
+        for suffix,policy in [('legacy',None),('analytical','analytical-v1')]:
+            prior={'schema_version':2,'workspace':str(base),'output':str(base_out),'title':'父案',
+                   'source_docx':str(self.source),'source_docx_sha256':digest(self.source),'word_name':self.source.name,
+                   'chart_numbering_policy':'source-sequential-v1'}
+            if policy:prior['chart_policy']=policy
+            write_json(base/'.product-v2/run.json',prior)
+            old=chart_snapshot(base,base_out/self.source.name,prior)
+            new=self.root/('snapshot-package-'+suffix);new.mkdir();out=self.root/('snapshot-output-'+suffix)
+            result=prepare(new,out,'设备运行控制',self.source,base,revision_scope='package')
+            shutil.copytree(self.work/'.product-v2/charts',new/'.product-v2/charts')
+            shutil.copyfile(self.work/'.product-v2/chart-manifest.json',new/'.product-v2/chart-manifest.json')
+            shutil.copyfile(base_out/self.source.name,out/self.source.name)
+            self.assertEqual(chart_snapshot(new,out/self.source.name,result),old)
+    def test_prepare_preserves_existing_unmarked_run_and_prompt(self):
+        self.run.pop('chart_policy');path=self.work/'.product-v2/run.json';write_json(path,self.run)
+        prompt=self.work/'.product-v2/深化命令词.txt';before=(digest(path),digest(prompt))
+        result=prepare(self.work,self.out,'设备运行控制',self.source)
+        self.assertNotIn('chart_policy',result);self.assertEqual((digest(path),digest(prompt)),before)
+    def test_unknown_parent_policy_is_not_silently_adopted(self):
+        base,_,_=self.revision_fixture();path=base/'.product-v2/run.json';prior=read_json(path)
+        prior['chart_policy']='unknown';write_json(path,prior);new=self.root/'unknown-parent';new.mkdir()
+        with self.assertRaisesRegex(ValueError,'Unknown chart policy'):
+            prepare(new,self.root/'unknown-output','设备运行控制',self.source,base,revision_scope='package')
+    def test_new_prompt_has_new_chart_rules_and_internal_only_instructions(self):
+        prompt=(self.work/'.product-v2/深化命令词.txt').read_text(encoding='utf8')
+        for text in ('chart_policy=analytical-v1','通常约2–3张','总数无上限','至少须有1张','no_schematic_evidence','留内部工作区，排除源码ZIP'):
+            self.assertIn(text,prompt)
+        for text in ('生成2–6张','使用运行说明放源码ZIP已有运行说明.txt'):
+            self.assertNotIn(text,prompt)
     def test_new_case_prompt_keeps_full_construction_contract(self):
         prompt=(self.work/'.product-v2/深化命令词.txt').read_text(encoding='utf8')
         self.assertIn('在原工作区对后端算法做尽可能深入的完善',prompt)
