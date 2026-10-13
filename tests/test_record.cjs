@@ -79,7 +79,7 @@ function readinessFixture(){
   }
   if(name==='node:child_process')return {spawnSync:(exe,args)=>{
    assert.equal(exe,'fixture-python');assert.equal(path.basename(args[0]),'process_guard.py');assert.equal(args[1],'inspect');
-   assert.equal(args[args.indexOf('--workspace')+1],root);state.commands.push(args);return {status:0,stdout:JSON.stringify({owned:state.owned})};
+   assert.equal(args[args.indexOf('--workspace')+1],root);state.commands.push(args);return {status:0,stdout:state.inspectRaw??JSON.stringify({owned:state.owned})};
   }};
   return require(name);
  };
@@ -114,10 +114,52 @@ test('read-only readiness returns current neutral hashes and listener facts with
   assert.equal(facts.status,'ready');assert.equal(facts.capture_performed,false);assert.equal(facts.visual_review,'not performed');
   assert.equal(facts.run_sha256,f.hash(f.runPath));assert.equal(facts.plan_sha256,f.hash(f.planPath));
   assert.deepEqual(facts.input_files,{'app.py':f.hash(f.path.join(f.root,'app.py'))});
-  assert.equal(facts.storage_state.sha256,f.hash(f.path.join(f.control,'browser-state.json')));assert.deepEqual(facts.service_identity,f.listener);
+  assert.equal(facts.storage_state.sha256,f.hash(f.path.join(f.control,'browser-state.json')));assert.deepEqual(facts.service_identity,{...f.listener,created_ticks:String(f.listener.created_ticks)});
   assert.equal(JSON.stringify(facts).includes(f.secret),false);assert.equal('passed' in facts,false);assert.deepEqual(f.snapshot(),before);
   assert.equal(f.state.browserLoads,0);assert.equal(f.state.browserLaunches,0);assert.equal(f.state.commands.length,1);
   delete f.plan.storage_state;f.save(f.planPath,f.plan);assert.equal((await f.api.checkReady(f.root,f.planPath)).storage_state,null);
+ }finally{f.close();}
+});
+test('readiness keeps Python integer creation ticks above 2^53 exact and normalizes integer and string registries',async()=>{
+ const f=readinessFixture(),ticks='134363897283128250';
+ const raw=(value,token)=>JSON.stringify(value).replace('"created_ticks":1000','"created_ticks":'+token);
+ try{
+  assert.ok(BigInt(ticks)>BigInt(Number.MAX_SAFE_INTEGER));
+  for(const [live,saved] of [[ticks,ticks],[ticks,JSON.stringify(ticks)],[JSON.stringify(ticks),ticks]]){
+   // Emit numeric JSON literals directly, as Python does, before Node can round them.
+   f.state.inspectRaw=raw({owned:[f.listener]},live);
+   f.fs.writeFileSync(f.registryPath,raw({workspace:f.root,processes:[f.listener]},saved));
+   const before=f.snapshot(),facts=await f.api.checkReady(f.root,f.planPath),encoded=JSON.stringify(facts);
+   assert.equal(facts.service_identity.created_ticks,ticks);assert.equal(JSON.parse(encoded).service_identity.created_ticks,ticks);
+   assert.ok(encoded.includes('"created_ticks":"'+ticks+'"'));assert.deepEqual(f.snapshot(),before);
+  }
+  assert.equal(f.state.browserLoads,0);assert.equal(f.state.browserLaunches,0);
+ }finally{f.close();}
+});
+test('adjacent creation ticks that collapse to one Number reject readiness and capture before browser creation',async()=>{
+ const f=readinessFixture(),ticks='134363897283128250',adjacent='134363897283128251';
+ const raw=(value,token)=>JSON.stringify(value).replace('"created_ticks":1000','"created_ticks":'+token);
+ try{
+  assert.notEqual(BigInt(ticks),BigInt(adjacent));assert.equal(Number(ticks),Number(adjacent));
+  for(const [live,saved] of [[ticks,adjacent],[adjacent,ticks],[ticks,JSON.stringify(adjacent)]]){
+   f.state.inspectRaw=raw({owned:[f.listener]},live);
+   f.fs.writeFileSync(f.registryPath,raw({workspace:f.root,processes:[f.listener]},saved));const before=f.snapshot();
+   await assert.rejects(f.api.checkReady(f.root,f.planPath),/registered listener identity/);
+   await assert.rejects(f.api.record(f.root,f.planPath,'capture'),/registered listener identity/);
+   assert.deepEqual(f.snapshot(),before);assert.equal(f.state.browserLoads,0);assert.equal(f.state.browserLaunches,0);
+  }
+ }finally{f.close();}
+});
+test('creation identity rejects noncanonical or absent ticks instead of accepting equal invalid values',async()=>{
+ const f=readinessFixture(),raw=(value,token)=>JSON.stringify(value).replace('"created_ticks":1000','"created_ticks":'+token);
+ try{
+  for(const token of ['0','-1','1000.0','1e3','null','""','"01000"']){
+   f.state.inspectRaw=raw({owned:[f.listener]},token);f.fs.writeFileSync(f.registryPath,raw({workspace:f.root,processes:[f.listener]},token));
+   const before=f.snapshot();await assert.rejects(f.api.checkReady(f.root,f.planPath),/exact decimal integer|registered listener identity/);assert.deepEqual(f.snapshot(),before);
+  }
+  const absent={...f.listener};delete absent.created_ticks;f.state.inspectRaw=JSON.stringify({owned:[absent]});f.registry([absent]);
+  await assert.rejects(f.api.checkReady(f.root,f.planPath),/registered listener identity/);
+  assert.equal(f.state.browserLoads,0);assert.equal(f.state.browserLaunches,0);
  }finally{f.close();}
 });
 test('readiness and capture share rejection of unregistered, changed and wrong-case listener or health facts before browser creation',async()=>{
@@ -355,4 +397,33 @@ test('same-capture retry validates existing evidence and preserves receipt bytes
   for(const [key,value] of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}
   assert.equal(path.dirname(fs.realpathSync(root)),fs.realpathSync(os.tmpdir()));fs.rmSync(root,{recursive:true,force:true});
  }
+});
+test('evidence completion preserves exact creation ticks from a legacy numeric capture receipt (mock media commands)',()=>{
+ const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto'),vm=require('node:vm');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'scb-ticks-evidence-')),control=path.join(root,'.product-v2');fs.mkdirSync(control);
+ const ticks='134363897283128250',hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'),save=(p,v)=>fs.writeFileSync(p,JSON.stringify(v));
+ const script=path.resolve(__dirname,'../scripts/record.cjs'),commands=[];
+ const mediaRequire=name=>name==='node:child_process'?{spawnSync:(exe,args)=>{
+  commands.push({exe,args});
+  if(exe==='fixture-encoder'){fs.writeFileSync(args.at(-1),'fixture encoded bytes; not a decoding claim');return {status:0,stdout:''};}
+  if(exe==='fixture-probe')return {status:0,stdout:JSON.stringify({format:{duration:'60'},streams:[{width:1920,height:1080}]})};
+  assert.equal(exe,'fixture-validator');assert.equal(path.basename(args[0]),'media_evidence.py');assert.equal(args[1],'generate');
+  const report=JSON.parse(fs.readFileSync(args[args.indexOf('--recording')+1],'utf8'));assert.equal(report.service_identity.created_ticks,ticks);
+  return {status:0,stdout:'{}'};
+ }}:require(name);
+ const sandbox={require:mediaRequire,module:{exports:{}},__dirname:path.dirname(script),
+  process:{pid:process.pid,env:{...process.env,SCB_PRO_PYTHON:'fixture-validator',SCB_PRO_FFMPEG:'fixture-encoder',SCB_PRO_FFPROBE:'fixture-probe'}},
+  console,setTimeout,clearTimeout,AbortController};
+ vm.runInNewContext(fs.readFileSync(script,'utf8'),sandbox,{filename:script});
+ try{
+  const raw=path.join(root,'raw.webm'),input=path.join(root,'app.js'),final=path.join(root,'final.mp4'),capture=path.join(root,'capture.json');
+  fs.writeFileSync(raw,'fixture raw');fs.writeFileSync(input,'frozen input');save(path.join(control,'run.json'),{workspace:root,run_id:'fixture',video:final});
+  const facts={status:'captured',workspace:root,run_id:'fixture',final,dir:root,rawPath:raw,raw_sha256:hash(raw),errors:[],inputs:{'app.js':hash(input)},
+   prelude:0,duration:60,events:[],texts:[],identity:{pid:41001,created_ticks:1000,command_sha256:'verified-command-hash',ports:[8123]}};
+  fs.writeFileSync(capture,JSON.stringify(facts).replace('"created_ticks":1000','"created_ticks":'+ticks));
+  const captureHash=hash(capture);save(path.join(control,'capture-pending.json'),{path:capture,sha256:captureHash});
+  sandbox.module.exports.finishRecording(root);
+  assert.equal(hash(capture),captureHash);assert.equal(JSON.parse(fs.readFileSync(path.join(control,'recording.json'),'utf8')).service_identity.created_ticks,ticks);
+  assert.deepEqual(commands.map(x=>x.exe),['fixture-encoder','fixture-probe','fixture-validator']);
+ }finally{assert.equal(path.dirname(fs.realpathSync(root)),fs.realpathSync(os.tmpdir()));fs.rmSync(root,{recursive:true,force:true});}
 });

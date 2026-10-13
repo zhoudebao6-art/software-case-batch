@@ -10,7 +10,17 @@ function auditUiText(value){
   return [...uiPolicy.chinese.filter(term=>value.includes(term)),...uiPolicy.english_patterns.filter(pattern=>new RegExp(pattern,'i').test(value))];
 }
 const sha = data => crypto.createHash('sha256').update(data).digest('hex');
-const load = p => JSON.parse(fs.readFileSync(p,'utf8').replace(/^\uFEFF/,''));
+function parseIdentityJson(text) {
+  return JSON.parse(text.replace(/^\uFEFF/,''),(key,value,context)=>{
+    if(key!=='created_ticks')return value;
+    // Use the source token, never a rounded Number, for Python/Windows FILETIME.
+    // Missing source support fails closed instead of reconstructing lost digits.
+    const exact=typeof value==='number'?context?.source:value;
+    if(typeof exact!=='string'||!/^(0|[1-9]\d*)$/.test(exact))throw Error('Process creation ticks require an exact decimal integer');
+    return exact;
+  });
+}
+const load = p => parseIdentityJson(fs.readFileSync(p,'utf8'));
 const save = (p,v) => fs.writeFileSync(p,JSON.stringify(v,null,2),'utf8');
 const pause = (ms,signal) => new Promise((resolve,reject)=>{
   const finish=()=>{signal?.removeEventListener('abort',abort);resolve();};
@@ -172,7 +182,7 @@ function leaseArgs(lease,workspace,phase='capture',runtimePid=null) {
 }
 function verifyLease(lease,workspace,phase='capture',runtimePid=null) {
   const args=leaseArgs(lease,workspace,phase,runtimePid);if(!args)return null;
-  const result=JSON.parse(command(process.env.SCB_PRO_PYTHON,args));
+  const result=parseIdentityJson(command(process.env.SCB_PRO_PYTHON,args));
   if(!result.acquired)throw Error('Recording launch admission failed: '+result.reason);
   return result;
 }
@@ -182,7 +192,7 @@ function isolatedBrowserOptions(tempRoot,downloads) {
 function recordingSetup(workspace,planPath) {
   workspace=fs.realpathSync(workspace);
   const runBytes=fs.readFileSync(path.join(workspace,'.product-v2/run.json')),planBytes=fs.readFileSync(planPath);
-  const parse=bytes=>JSON.parse(bytes.toString('utf8').replace(/^\uFEFF/,'')),run=parse(runBytes),plan=parse(planBytes);
+  const parse=bytes=>parseIdentityJson(bytes.toString('utf8')),run=parse(runBytes),plan=parse(planBytes);
   const estimatedDuration=validatePlan(plan),recordingPolicy=boundPolicy(plan,run);
   if(typeof run.workspace!=='string'||run.workspace.toLowerCase()!==workspace.toLowerCase()||
      typeof run.run_id!=='string'||!run.run_id.trim())throw Error('Workspace/run identity differs');
@@ -200,12 +210,12 @@ async function healthIdentity(workspace,run,plan,request=null) {
   const value=await response.json();
   if(value.run_id!==run.run_id||value.version!==plan.version||String(value.workspace).toLowerCase()!==workspace.toLowerCase()||
      !Number.isInteger(value.pid)||value.pid<1)throw Error('Health endpoint belongs to a different case/version');
-  const current=JSON.parse(command(process.env.SCB_PRO_PYTHON,[path.join(__dirname,'process_guard.py'),'inspect','--workspace',workspace]));
+  const current=parseIdentityJson(command(process.env.SCB_PRO_PYTHON,[path.join(__dirname,'process_guard.py'),'inspect','--workspace',workspace]));
   const registry=load(path.join(workspace,'.product-v2/processes.json'));
   if(typeof registry.workspace!=='string'||registry.workspace.toLowerCase()!==workspace.toLowerCase())throw Error('Registry workspace identity differs');
   const port=Number(origin.port||(origin.protocol==='https:'?443:80));
   const live=current.owned.find(p=>p.pid===value.pid&&p.ports.includes(port)),saved=registry.processes.find(p=>p.pid===value.pid);
-  if(!live||!saved||live.created_ticks!==saved.created_ticks||live.command_sha256!==saved.command_sha256)throw Error('No current registered listener identity for this case');
+  if(!live||!saved||typeof live.created_ticks!=='string'||! /^[1-9]\d*$/.test(live.created_ticks)||live.created_ticks!==saved.created_ticks||live.command_sha256!==saved.command_sha256)throw Error('No current registered listener identity for this case');
   return {pid:live.pid,created_ticks:live.created_ticks,command_sha256:live.command_sha256,ports:live.ports};
 }
 async function checkReady(workspace,planPath) {
