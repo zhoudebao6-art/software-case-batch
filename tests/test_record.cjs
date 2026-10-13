@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {validatePlan,downloadRequestGuard,localUrl,auditUiText,record,leaseArgs,isolatedBrowserOptions,validateBatchPhase,finishRecording,executeTimeline,boundPolicy,validateMeasuredDuration}=require('../scripts/record.cjs');
+const {validatePlan,downloadRequestGuard,localUrl,auditUiText,record,leaseArgs,isolatedBrowserOptions,validateBatchPhase,finishRecording,executeTimeline,boundPolicy,validateMeasuredDuration,performRecordedAction,movePointer}=require('../scripts/record.cjs');
 function valid(){return {url:'http://127.0.0.1:8123',ready:'#ready',health_path:'/api/health',version:'v1',input_files:['app.py'],steps:[
   {at:1,action:'fill',value:'x',selector:'#search',expect:'#search'},
   {at:10,action:'click',selector:'#query',expect:'#table'},
@@ -8,6 +8,55 @@ function valid(){return {url:'http://127.0.0.1:8123',ready:'#ready',health_path:
   {at:30,action:'select',value:'x',selector:'#status',expect:'#status'},
   {at:40,action:'click',selector:'#save',expect:'#saved'},
   {at:53,action:'download',selector:'#download',expect:'#saved'}]};}
+function pointerFixture({blocked=false,clickError=false,downloadError=false}={}) {
+ const counts={states:[],moves:0,clicks:0,disposed:0,waiters:0,begun:0,ended:0};
+ const target={click:async()=>{throw Error('Pointer-moving trial is forbidden during preparation');},
+  waitForElementState:async(state,options)=>{assert.ok(options.timeout>0);counts.states.push(state);if(blocked)throw Error('toast intercepts pointer events');},scrollIntoViewIfNeeded:async()=>{},
+  boundingBox:async()=>({x:90,y:90,width:100,height:40}),dispose:async()=>{counts.disposed++;}};
+ const page={locator:()=>({elementHandle:async()=>target,evaluate:async()=>''}),viewportSize:()=>({width:1280,height:720}),
+  mouse:{move:async()=>{counts.moves++;},click:async()=>{counts.clicks++;if(clickError)throw Error('Real mouse input failed');}},
+  waitForEvent:()=>{counts.waiters++;return new Promise((resolve,reject)=>setTimeout(()=>downloadError?reject(Error('No download event')):resolve({}),20));}};
+ const requestGuard={begin:()=>{counts.begun++;return 'attempt';},end:()=>{counts.ended++;},save:()=>{throw Error('Failed input cannot prove a download');}};
+ return {page,counts,requestGuard,mouse:{x:10,y:10}};
+}
+test('actionability rejection reports the target and prevents input or download listeners',async()=>{
+ for(const action of ['click','fill','download','select','press']) {
+  const f=pointerFixture({blocked:true});
+  await assert.rejects(performRecordedAction(f.page,{action,selector:'#under-toast',value:'x'},f.mouse,{requestGuard:f.requestGuard}),new RegExp('Cannot perform '+action+' on #under-toast: toast intercepts pointer events'));
+  assert.equal(f.counts.clicks,0);assert.equal(f.counts.waiters,0);assert.equal(f.counts.begun,0);assert.equal(f.counts.disposed,1);
+ }
+});
+test('a real mouse input failure is never retried as a second business action',async()=>{
+ const f=pointerFixture({clickError:true});
+ await assert.rejects(performRecordedAction(f.page,{action:'click',selector:'#submit'},f.mouse),/Cannot perform click on #submit: Real mouse input failed/);
+ assert.equal(f.counts.clicks,1);assert.deepEqual(f.counts.states,['visible','stable','enabled','visible','stable','enabled']);assert.ok(f.counts.moves>10);assert.equal(f.counts.disposed,1);
+});
+test('first and reverse pointer paths bound each move and retain timing even after a stalled browser call',async()=>{
+ const mouse={x:930,y:550},trace=[{...mouse,at:performance.now()}];let stalled=false;
+ const page={mouse:{move:async(x,y)=>{
+  if(!stalled&&Math.hypot(x-trace.at(-1).x,y-trace.at(-1).y)>1){stalled=true;await new Promise(resolve=>setTimeout(resolve,140));}
+  trace.push({x,y,at:performance.now()});
+ }}};
+ for(const point of [{x:173.6,y:123.85},{x:1800,y:940}]) {
+  const begin=trace.length-1,origin={...mouse},started=performance.now();await movePointer(page,mouse,point);
+  assert.ok(performance.now()-started>=630);assert.deepEqual(mouse,point);
+  for(let i=begin+1;i<trace.length;i++) {
+   const prev=trace[i-1],next=trace[i],distance=Math.hypot(next.x-prev.x,next.y-prev.y);
+   assert.ok(Number.isFinite(distance)&&distance<=64.000001,'native move must not jump to trial center or stale start');
+   assert.ok(next.at>=prev.at);if(distance>1)assert.ok(next.at-prev.at>=12,'meaningful movement retains paced timing');
+   assert.ok((next.x-prev.x)*(point.x-origin.x)>=-.001);assert.ok((next.y-prev.y)*(point.y-origin.y)>=-.001);
+  }
+ }
+ assert.equal(stalled,true);
+});
+test('failed mouse download consumes a later event rejection and ends its single guard attempt',async()=>{
+ const f=pointerFixture({clickError:true,downloadError:true}),unhandled=[];const listener=error=>unhandled.push(error);process.on('unhandledRejection',listener);
+ try {
+  await assert.rejects(performRecordedAction(f.page,{action:'download',selector:'#export'},f.mouse,{requestGuard:f.requestGuard}),/Real mouse input failed/);
+  await new Promise(resolve=>setTimeout(resolve,50));assert.deepEqual(unhandled,[]);
+  assert.equal(f.counts.clicks,1);assert.equal(f.counts.waiters,1);assert.equal(f.counts.begun,1);assert.equal(f.counts.ended,1);
+ } finally {process.removeListener('unhandledRejection',listener);}
+});
 test('default is a minute',()=>assert.equal(validatePlan(valid()),60));
 test('path preflight accepts workspace relative declarations without resolving files and storage state may be omitted',()=>{
  for(const factory of [valid,flexible]){

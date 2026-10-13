@@ -189,6 +189,96 @@ function verifyLease(lease,workspace,phase='capture',runtimePid=null) {
 function isolatedBrowserOptions(tempRoot,downloads) {
   return {headless:true,downloadsPath:downloads,env:{...process.env,TEMP:tempRoot,TMP:tempRoot,TMPDIR:tempRoot}};
 }
+async function movePointer(page,mouse,point,remaining=()=>{}) {
+  const start={...mouse},begin=performance.now();
+  while(Math.hypot(point.x-mouse.x,point.y-mouse.y)>.01) {
+    remaining();const t=Math.min(1,(performance.now()-begin)/650),u=t*t*(3-2*t);
+    const dx=start.x+(point.x-start.x)*u-mouse.x,dy=start.y+(point.y-start.y)*u-mouse.y;
+    // Bound each actual move even if a browser call or event-loop turn stalls.
+    const scale=Math.min(1,64/Math.hypot(dx,dy)),next={x:mouse.x+dx*scale,y:mouse.y+dy*scale};
+    await page.mouse.move(next.x,next.y);Object.assign(mouse,next);
+    if(Math.hypot(point.x-mouse.x,point.y-mouse.y)>.01)await pause(16);
+  }
+  await page.mouse.move(point.x,point.y);Object.assign(mouse,point);
+}
+async function withActionableTarget(page,locator,mouse,perform,{timeout=10000,editable=false}={}) {
+  const deadline=performance.now()+timeout;
+  const remaining=()=>{const ms=Math.ceil(deadline-performance.now());if(ms<=0)throw Error('Action target timeout: '+reason);return ms;};
+  let reason='target did not become interactive';
+  while(true) {
+    let target,ready=false;
+    try {
+      target=await locator.elementHandle({timeout:remaining()});
+      // State/scroll APIs do not move the pointer. A trial click does move it in
+      // Playwright 1.62, so actual endpoint receipt is checked by pure hit-test.
+      const waitStates=async()=>{
+        await target.waitForElementState('visible',{timeout:remaining()});
+        await target.waitForElementState('stable',{timeout:remaining()});
+        await target.waitForElementState('enabled',{timeout:remaining()});
+        if(editable)await target.waitForElementState('editable',{timeout:remaining()});
+      };
+      await waitStates();await target.scrollIntoViewIfNeeded({timeout:remaining()});
+        const box=await target.boundingBox(),viewport=page.viewportSize()??await page.evaluate(()=>({width:innerWidth,height:innerHeight}));
+        if(!box)reason='target has no visible bounds';
+        else {
+          const left=Math.max(0,box.x),top=Math.max(0,box.y),right=Math.min(viewport.width,box.x+box.width),bottom=Math.min(viewport.height,box.y+box.height);
+          if(right<=left||bottom<=top)reason='target remains outside viewport';
+          else {
+            const point={x:left+(right-left)*.46,y:top+(bottom-top)*.53};
+            const checkPoint=()=>locator.evaluate((current,{target,box,point})=>{
+              if(current!==target||!target.isConnected)return 'locator target changed during pointer movement';
+              const rect=target.getBoundingClientRect();
+              if(Math.abs(rect.x-box.x)>1||Math.abs(rect.y-box.y)>1||Math.abs(rect.width-box.width)>1||Math.abs(rect.height-box.height)>1)return 'target bounds changed during pointer movement';
+              let hit=target.ownerDocument.elementFromPoint(point.x,point.y);
+              while(hit?.shadowRoot){const inner=hit.shadowRoot.elementFromPoint(point.x,point.y);if(!inner||inner===hit)break;hit=inner;}
+              for(let node=hit;node;node=node.assignedSlot??node.parentNode??node.host)if(node===target)return '';
+              return 'pointer point is intercepted by '+(hit?hit.tagName.toLowerCase()+(hit.id?'#'+hit.id:''):'no element');
+            },{target,box,point},{timeout:remaining()});
+            reason=await checkPoint();
+            if(!reason) {
+              if(Math.hypot(point.x-mouse.x,point.y-mouse.y)>1){await movePointer(page,mouse,point,remaining);await pause(130);}
+              // Hover may change state, overlay, layout or the original node.
+              await waitStates();reason=await checkPoint();
+            }
+            if(!reason) {
+              remaining();ready=true;
+              // Never retry after real input: a partially completed operation
+              // must fail rather than submit or download a second time.
+              return await perform(target,point);
+            }
+          }
+        }
+    } catch(error) {
+      if(!ready&&error.name==='TimeoutError'&&reason!=='target did not become interactive')throw Error('Action target timeout: '+reason+'; '+error.message,{cause:error});
+      if(ready||!/not attached|detached|resolved to null/i.test(String(error)))throw error;
+      reason='target detached during pointer preparation';
+    } finally {if(target)await target.dispose().catch(()=>{});}
+    await pause(Math.min(50,remaining()));
+  }
+}
+async function performRecordedAction(page,step,mouse,{requestGuard,dir,index,timeout=10000}={}) {
+  try {
+    return await withActionableTarget(page,page.locator(step.selector),mouse,async(target,point)=>{
+      if(step.action==='click')await page.mouse.click(point.x,point.y,{delay:85});
+      if(step.action==='fill') {
+        await page.mouse.click(point.x,point.y,{delay:65});
+        if(!await target.evaluate(element=>element.matches(':focus')))throw Error('Real pointer click did not focus the editable target');
+        await target.press('ControlOrMeta+A');await target.type(step.value,{delay:110});
+      }
+      if(step.action==='select')await target.selectOption(step.value,{timeout});
+      if(step.action==='press')await target.press(step.value,{timeout});
+      if(step.action==='download') {
+        const attempt=requestGuard.begin();
+        try {
+          // Promise.all consumes both outcomes, including when mouse input fails.
+          const [download]=await Promise.all([page.waitForEvent('download',{timeout:15000}),page.mouse.click(point.x,point.y,{delay:85})]);
+          const name=path.basename(download.suggestedFilename()),targetPath=path.join(dir,`download-${index}-${name}`);
+          return await requestGuard.save(attempt,download,targetPath);
+        } finally {requestGuard.end(attempt);}
+      }
+    },{timeout,editable:step.action==='fill'});
+  } catch(error) {throw Error(`Cannot perform ${step.action} on ${step.selector}: ${error.message}`,{cause:error});}
+}
 function recordingSetup(workspace,planPath) {
   workspace=fs.realpathSync(workspace);
   const runBytes=fs.readFileSync(path.join(workspace,'.product-v2/run.json')),planBytes=fs.readFileSync(planPath);
@@ -277,7 +367,7 @@ async function recordPhase(workspace, planPath, phase='full',lease=null) {
   const browserTemp=path.join(process.env.TEMP,'scb-pro-browser',crypto.randomUUID());fs.mkdirSync(browserTemp,{recursive:true});
   const downloads=path.join(browserTemp,'downloads');fs.mkdirSync(downloads);
   save(path.join(workspace,'.product-v2/capture-pending.json'),{status:'capturing',path:path.join(dir,'capture.json'),sha256:null});
-  const errors=[],events=[],texts=[];let browser,context,video,prelude,rawPath,capturedStartUtc,capturedEndUtc,requestGuard;
+  const errors=[],events=[],texts=[];let browser,context,video,prelude,rawPath,capturedStartUtc,capturedEndUtc,requestGuard,failedStep;
   const rawStart=performance.now();let captureStart=rawStart;
   try {
     launchAdmission=verifyLease(lease,workspace,'capture',batchBinding(workspace)?process.pid:null);
@@ -298,18 +388,7 @@ async function recordPhase(workspace, planPath, phase='full',lease=null) {
     await page.locator(plan.ready).waitFor({state:'visible',timeout:15000});
     // Cursor overlay follows real pointer events; it cannot change application state.
     await page.evaluate(()=>{const pointer=document.createElement('div');pointer.id='operation-pointer';pointer.setAttribute('aria-hidden','true');pointer.style.cssText='position:fixed;left:0;top:0;width:18px;height:24px;z-index:2147483647;pointer-events:none;filter:drop-shadow(1px 2px 2px #5558);clip-path:polygon(0 0,0 92%,25% 70%,43% 100%,59% 91%,41% 61%,78% 61%);background:#162438;border:1px solid white;';document.body.append(pointer);document.addEventListener('mousemove',event=>{pointer.style.left=event.clientX+'px';pointer.style.top=event.clientY+'px';});});
-    let mouse={x:930,y:550};await page.mouse.move(mouse.x,mouse.y);
-    async function approach(locator){
-      await locator.waitFor({state:'visible'});let box=await locator.boundingBox();
-      for(let attempt=0;box&&(box.y+box.height/2<8||box.y+box.height/2>1072)&&attempt<12;attempt++){
-        await page.mouse.move(Math.max(8,Math.min(1912,box.x+box.width/2)),Math.max(80,Math.min(1000,box.y)));
-        await page.mouse.wheel(0,box.y<8?-220:220);await pause(110);box=await locator.boundingBox();
-      }
-      if(!box||box.y+box.height/2<0||box.y+box.height/2>1080)throw Error('Target remains outside viewport');
-      const x=box.x+box.width*.46,y=box.y+box.height*.53,start={...mouse},begin=performance.now();
-      let t=0;while(t<1){t=Math.min(1,(performance.now()-begin)/650);const u=t*t*(3-2*t);await page.mouse.move(start.x+(x-start.x)*u,start.y+(y-start.y)*u);if(t<1)await pause(16);}
-      mouse={x,y};await pause(130);
-    }
+    const mouse={x:930,y:550};await page.mouse.move(mouse.x,mouse.y);
     await pause(1000);
     captureStart=performance.now();capturedStartUtc=new Date().toISOString();prelude=(captureStart-beforePage)/1000;
     await page.evaluate(()=>{
@@ -330,24 +409,18 @@ async function recordPhase(workspace, planPath, phase='full',lease=null) {
     await observe('start');
     const flow=await executeTimeline(plan,async (step,i)=>{
       const started=(performance.now()-captureStart)/1000;
-      const locator=page.locator(step.selector);let downloadProof;
-      await approach(locator);
-      if(step.action==='click') await page.mouse.click(mouse.x,mouse.y,{delay:85});
-      if(step.action==='fill') {await page.mouse.click(mouse.x,mouse.y,{delay:65});await locator.press('ControlOrMeta+A');await locator.pressSequentially(step.value,{delay:110});}
-      if(step.action==='select') await locator.selectOption(step.value);
-      if(step.action==='press') await locator.press(step.value);
-      if(step.action==='download') {
-        const attempt=requestGuard.begin();
-        try {
-          const promise=page.waitForEvent('download',{timeout:15000});await page.mouse.click(mouse.x,mouse.y,{delay:85});const download=await promise;
-          const name=path.basename(download.suggestedFilename()),target=path.join(dir,`download-${i}-${name}`);
-          downloadProof=await requestGuard.save(attempt,download,target);
-        } finally {requestGuard.end(attempt);}
-      }
+      try {
+      const downloadProof=await performRecordedAction(page,step,mouse,{requestGuard,dir,index:i});
       const expected=page.locator(step.expect);await expected.waitFor({state:'visible',timeout:10000});
       if(step.text) await page.waitForFunction(({selector,text})=>document.querySelector(selector)?.innerText.includes(text),{selector:step.expect,text:step.text},{timeout:10000});
       const event={index:i,action:step.action,scheduled:step.at,started,completed:(performance.now()-captureStart)/1000,screenshot:await observe('step-'+String(i+1).padStart(2,'0')),download:downloadProof};
       events.push(event);return event;
+      } catch(error) {
+        const screenshot=path.join(dir,'failed-step-'+String(i+1).padStart(2,'0')+'.png');
+        failedStep={index:i,action:step.action,selector:step.selector,expect:step.expect,started,failed_at:(performance.now()-captureStart)/1000,error:String(error)};
+        try {await page.screenshot({path:screenshot});failedStep.screenshot=screenshot;failedStep.sha256=sha(fs.readFileSync(screenshot));}catch{}
+        errors.push(String(error));throw error;
+      }
     },async result=>{
       await page.locator(result.selector).waitFor({state:'visible',timeout:10000});
       if(result.text)await page.waitForFunction(({selector,text})=>document.querySelector(selector)?.innerText.includes(text),{selector:result.selector,text:result.text},{timeout:10000});
@@ -366,7 +439,7 @@ async function recordPhase(workspace, planPath, phase='full',lease=null) {
     if(browser) await browser.close().catch(()=>{});
     if(video&&!rawPath)rawPath=await video.path().catch(()=>undefined);
     if(requestGuard)errors.push(...requestGuard.errors());
-    save(path.join(dir,'observed.json'),{events,texts,errors,request_failures:requestGuard?.audit()??[],input_files:inputs,prelude_seconds:prelude,raw_video:rawPath,browser_temp:browserTemp,launch_admission:launchAdmission,captured_start_utc:capturedStartUtc,captured_end_utc:capturedEndUtc,
+    save(path.join(dir,'observed.json'),{events,texts,errors,failed_step:failedStep,request_failures:requestGuard?.audit()??[],input_files:inputs,prelude_seconds:prelude,raw_video:rawPath,browser_temp:browserTemp,launch_admission:launchAdmission,captured_start_utc:capturedStartUtc,captured_end_utc:capturedEndUtc,
       recording_policy_version:recordingPolicy,plan_sha256:planSha,estimated_duration_seconds:estimatedDuration,timeout_seconds:plan.timeout_seconds,final_result_completion:finalResultCompletion});
   }
   if(errors.length) throw Error('Browser errors: '+errors.join('; ').slice(0,1600));
@@ -455,4 +528,4 @@ if(require.main===module) {
     }catch(error){console.error(String(error));process.exitCode=2;}
   }
 }
-module.exports={validatePlan,checkReady,downloadRequestGuard,record,localUrl,auditUiText,finishRecording,leaseArgs,isolatedBrowserOptions,batchBinding,validateBatchPhase,executeTimeline,boundPolicy,validateMeasuredDuration};
+module.exports={validatePlan,checkReady,downloadRequestGuard,record,localUrl,auditUiText,finishRecording,leaseArgs,isolatedBrowserOptions,batchBinding,validateBatchPhase,executeTimeline,boundPolicy,validateMeasuredDuration,withActionableTarget,performRecordedAction,movePointer};
