@@ -269,6 +269,7 @@ class WeeklyArchiveWrapperTests(unittest.TestCase):
         self.assertIn('-Mode Apply', plan['arguments'])
         self.assertEqual(plan['day'], 'Sunday')
         self.assertEqual(plan['local_time'], '22:00')
+        self.assertRegex(plan['user_sid'], r'^S-\d+(?:-\d+)+$')
         generated = self.state_root / 'Register-WeeklyArchive.ps1'
         result = self.powershell(generated)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -298,6 +299,103 @@ class WeeklyArchiveWrapperTests(unittest.TestCase):
         result = self.powershell(None, command=command)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('will not be overwritten', result.stderr)
+
+    def existing_task_stub(self, user_id, mutation='', forbid_discovery=False):
+        script = str(self.state_root / 'Register-WeeklyArchive.ps1').replace("'", "''")
+        plan_path = str(self.state_root / 'weekly-task-plan.json').replace("'", "''")
+        user_id = user_id.replace("'", "''")
+        stub = """
+$ArchiveStubPlan=Get-Content -LiteralPath '__PLAN__' -Raw -Encoding UTF8 | ConvertFrom-Json
+$ArchiveStubUser='__USER__'
+function Get-ScheduledTask {
+    $ArchiveTask=[pscustomobject]@{
+        Actions=@([pscustomobject]@{Execute=$ArchiveStubPlan.execution;Arguments=$ArchiveStubPlan.arguments;WorkingDirectory=$ArchiveStubPlan.working_directory})
+        Triggers=@([pscustomobject]@{DaysOfWeek=1;WeeksInterval=1;StartBoundary=([datetime]::Today.AddHours(22)).ToString('s')})
+        Principal=[pscustomobject]@{UserId=$ArchiveStubUser;LogonType='Interactive';RunLevel='Limited'}
+        Settings=[pscustomobject]@{Hidden=$true;MultipleInstances='IgnoreNew';StartWhenAvailable=$true}
+    }
+    __MUTATION__
+    return $ArchiveTask
+}
+function Register-ScheduledTask { throw 'unexpected registration' }
+& '__SCRIPT__' -Register
+"""
+        if forbid_discovery:
+            mutation = "throw 'unexpected task discovery'"
+        command = stub.replace('__PLAN__', plan_path).replace('__USER__', user_id).replace('__MUTATION__', mutation).replace('__SCRIPT__', script)
+        return self.powershell(None, command=command)
+
+    def test_same_windows_sid_accepts_task_and_plan_account_aliases(self):
+        self.assertEqual(self.installer().returncode, 0)
+        plan_path = self.state_root / 'weekly-task-plan.json'
+        original = read_json(plan_path)
+        account_aliases = (original['user'], original['user'].rsplit('\\', 1)[-1], original['user_sid'])
+        for alias in account_aliases:
+            with self.subTest(existing_user=alias):
+                result = self.existing_task_stub(alias)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                observed = json.loads(result.stdout)
+                self.assertEqual(observed['status'], 'already_present')
+                self.assertFalse(observed['changed'])
+            with self.subTest(reviewed_user=alias):
+                plan = dict(original, user=alias)
+                write_json(plan_path, plan)
+                result = self.existing_task_stub(original['user'])
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(json.loads(result.stdout)['status'], 'already_present')
+                write_json(plan_path, original)
+        # Existing reviewed plans are verified by account translation without
+        # silently rewriting their old JSON or requiring newly added metadata.
+        legacy = dict(original)
+        del legacy['user_sid']
+        write_json(plan_path, legacy)
+        frozen = digest(plan_path)
+        result = self.existing_task_stub(account_aliases[1])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(digest(plan_path), frozen)
+
+    def test_different_or_unresolvable_existing_user_sid_is_never_adopted(self):
+        self.assertEqual(self.installer().returncode, 0)
+        for alias in ('S-1-5-18', 'archive-user-that-does-not-exist-4fc898d2', ''):
+            with self.subTest(existing_user=alias):
+                result = self.existing_task_stub(alias)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('will not be overwritten', result.stderr)
+                self.assertNotIn('unexpected registration', result.stderr)
+
+    def test_reviewed_user_sid_must_match_name_and_actual_current_identity(self):
+        self.assertEqual(self.installer().returncode, 0)
+        plan_path = self.state_root / 'weekly-task-plan.json'
+        original = read_json(plan_path)
+        cases = (
+            (dict(original, user='archive-user-that-does-not-exist-4fc898d2'), 'cannot be verified'),
+            (dict(original, user_sid=original['user']), 'valid literal Windows SID'),
+            (dict(original, user_sid=''), 'valid literal Windows SID'),
+            (dict(original, user_sid='S-1-99999999999999999999999'), 'valid literal Windows SID'),
+            (dict(original, user_sid='S-1-5-18'), 'reviewed user name and SID differ'),
+            (dict(original, user='S-1-5-18', user_sid='S-1-5-18'), 'registration user SID differs'),
+            ({key: value for key, value in dict(original, user='S-1-5-18').items() if key != 'user_sid'}, 'registration user SID differs'),
+        )
+        for plan, expected in cases:
+            with self.subTest(user=plan['user'], sid=plan.get('user_sid')):
+                write_json(plan_path, plan)
+                result = self.existing_task_stub(original['user'], forbid_discovery=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(expected, result.stderr)
+                self.assertNotIn('unexpected task discovery', result.stderr)
+                self.assertNotIn('unexpected registration', result.stderr)
+
+    def test_same_sid_still_requires_exact_task_paths_and_policy(self):
+        self.assertEqual(self.installer().returncode, 0)
+        plan = read_json(self.state_root / 'weekly-task-plan.json')
+        alias = plan['user'].rsplit('\\', 1)[-1]
+        for mutation in ("$ArchiveTask.Actions[0].Execute+='-unknown'", "$ArchiveTask.Settings.Hidden=$false",
+                         "$ArchiveTask.Principal.LogonType='Password'"):
+            with self.subTest(mutation=mutation):
+                result = self.existing_task_stub(alias, mutation)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('will not be overwritten', result.stderr)
+                self.assertNotIn('unexpected registration', result.stderr)
 
 
 if __name__ == '__main__':

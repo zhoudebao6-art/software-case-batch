@@ -46,7 +46,9 @@ for ($ArchiveLeft=0; $ArchiveLeft -lt $ArchiveRoots.Count; $ArchiveLeft++) {
         if ($ArchiveA -eq $ArchiveB -or $ArchiveA.StartsWith($ArchiveB+'\',[StringComparison]::OrdinalIgnoreCase) -or $ArchiveB.StartsWith($ArchiveA+'\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Archive, source, batch and state roots must be disjoint.' }
     }
 }
-$ArchiveUser=[Security.Principal.WindowsIdentity]::GetCurrent().Name
+$ArchiveCurrentIdentity=[Security.Principal.WindowsIdentity]::GetCurrent()
+$ArchiveUser=$ArchiveCurrentIdentity.Name
+$ArchiveUserSid=$ArchiveCurrentIdentity.User.Value
 if (-not $PowerShellPath) { $PowerShellPath=[Diagnostics.Process]::GetCurrentProcess().MainModule.FileName }
 if (-not [IO.Path]::IsPathRooted($PowerShellPath) -or $PowerShellPath -match '["\r\n\x00]') { throw 'An explicit PowerShell 7 executable path is required.' }
 $ArchivePowerShell=[IO.Path]::GetFullPath($PowerShellPath)
@@ -54,7 +56,7 @@ if (-not (Test-Path -LiteralPath $ArchivePowerShell -PathType Leaf) -or [IO.Path
 $ArchiveShellVersion=& $ArchivePowerShell -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.Major'
 if ($LASTEXITCODE -ne 0 -or [string]$ArchiveShellVersion -notmatch '^\s*[7-9][0-9]*\s*$') { throw 'The selected launcher must be PowerShell 7 or newer.' }
 $ArchiveArguments='-NoProfile -NonInteractive -WindowStyle Hidden -File "'+$ArchiveWrapper+'" -Mode Apply -SourceRoot "'+$SourceRoot+'" -DestinationRoot "'+$DestinationRoot+'" -BatchRoot "'+$BatchRoot+'" -StateRoot "'+$StateRoot+'" -EnvironmentPath "'+$EnvironmentPath+'" -PythonPath "'+$PythonPath+'"'
-$ArchivePlan=[ordered]@{ schema_version=1; task_name=$TaskName; task_path='\'; user=$ArchiveUser;
+$ArchivePlan=[ordered]@{ schema_version=1; task_name=$TaskName; task_path='\'; user=$ArchiveUser; user_sid=$ArchiveUserSid;
     logon_type='InteractiveToken'; run_level='Limited'; hidden=$true; day='Sunday'; local_time='22:00';
     start_when_available=$true; multiple_instances='IgnoreNew'; execution=$ArchivePowerShell;
     arguments=$ArchiveArguments; working_directory=(Split-Path $ArchiveWrapper -Parent);
@@ -69,14 +71,33 @@ param([switch]$Register)
 $ErrorActionPreference='Stop'
 $ArchivePlan=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'weekly-task-plan.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 if (-not $Register) { $ArchivePlan | ConvertTo-Json -Depth 6; return }
-$ArchiveIdentity=[Security.Principal.WindowsIdentity]::GetCurrent().Name
-if ($ArchiveIdentity -ne $ArchivePlan.user) { throw 'The registration identity differs from the reviewed current user.' }
+function Resolve-ArchiveUserSid([string]$Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) { throw 'The Windows user identity is missing.' }
+    $Value=$Value.Trim()
+    try {
+        if ($Value -match '^S-\d+(?:-\d+)+$') {
+            return [Security.Principal.SecurityIdentifier]::new($Value).Value
+        }
+        return [Security.Principal.NTAccount]::new($Value).Translate([Security.Principal.SecurityIdentifier]).Value
+    } catch { throw ('The Windows user SID cannot be verified: '+$Value) }
+}
+$ArchiveIdentity=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$ArchiveExpectedSid=Resolve-ArchiveUserSid $ArchivePlan.user
+# Older reviewed plans contain only user; new plans also freeze its verified SID.
+if ($ArchivePlan.PSObject.Properties.Name -contains 'user_sid') {
+    try { $ArchiveRecordedSid=[Security.Principal.SecurityIdentifier]::new([string]$ArchivePlan.user_sid).Value }
+    catch { throw 'The reviewed user_sid must be a valid literal Windows SID.' }
+    if ($ArchiveRecordedSid -ne $ArchiveExpectedSid) { throw 'The reviewed user name and SID differ.' }
+}
+if ($ArchiveIdentity -ne $ArchiveExpectedSid) { throw 'The registration user SID differs from the reviewed current user.' }
 if ($ArchivePlan.logon_type -ne 'InteractiveToken' -or $ArchivePlan.run_level -ne 'Limited' -or $ArchivePlan.day -ne 'Sunday' -or $ArchivePlan.local_time -ne '22:00' -or -not $ArchivePlan.hidden) { throw 'The reviewed archive task policy differs.' }
 $ArchiveExisting=Get-ScheduledTask -TaskPath $ArchivePlan.task_path -TaskName $ArchivePlan.task_name -ErrorAction SilentlyContinue
 if ($ArchiveExisting) {
     $ArchiveActions=@($ArchiveExisting.Actions)
     $ArchiveTriggers=@($ArchiveExisting.Triggers)
-    if ($ArchiveActions.Count -ne 1 -or $ArchiveActions[0].Execute -ne $ArchivePlan.execution -or $ArchiveActions[0].Arguments -ne $ArchivePlan.arguments -or $ArchiveActions[0].WorkingDirectory -ne $ArchivePlan.working_directory -or $ArchiveExisting.Principal.UserId -ne $ArchivePlan.user -or $ArchiveExisting.Principal.LogonType -ne 'Interactive' -or $ArchiveExisting.Principal.RunLevel -ne 'Limited' -or -not $ArchiveExisting.Settings.Hidden -or $ArchiveExisting.Settings.MultipleInstances -ne 'IgnoreNew' -or -not $ArchiveExisting.Settings.StartWhenAvailable -or $ArchiveTriggers.Count -ne 1 -or $ArchiveTriggers[0].DaysOfWeek -ne 1 -or $ArchiveTriggers[0].WeeksInterval -ne 1 -or ([datetime]$ArchiveTriggers[0].StartBoundary).TimeOfDay -ne ([timespan]::FromHours(22))) { throw 'An existing same-name task has different paths, user or policy; it will not be overwritten.' }
+    try { $ArchiveExistingSid=Resolve-ArchiveUserSid $ArchiveExisting.Principal.UserId }
+    catch { throw 'An existing same-name task user SID cannot be verified; it will not be overwritten.' }
+    if ($ArchiveActions.Count -ne 1 -or $ArchiveActions[0].Execute -ne $ArchivePlan.execution -or $ArchiveActions[0].Arguments -ne $ArchivePlan.arguments -or $ArchiveActions[0].WorkingDirectory -ne $ArchivePlan.working_directory -or $ArchiveExistingSid -ne $ArchiveExpectedSid -or $ArchiveExisting.Principal.LogonType -ne 'Interactive' -or $ArchiveExisting.Principal.RunLevel -ne 'Limited' -or -not $ArchiveExisting.Settings.Hidden -or $ArchiveExisting.Settings.MultipleInstances -ne 'IgnoreNew' -or -not $ArchiveExisting.Settings.StartWhenAvailable -or $ArchiveTriggers.Count -ne 1 -or $ArchiveTriggers[0].DaysOfWeek -ne 1 -or $ArchiveTriggers[0].WeeksInterval -ne 1 -or ([datetime]$ArchiveTriggers[0].StartBoundary).TimeOfDay -ne ([timespan]::FromHours(22))) { throw 'An existing same-name task has different paths, user or policy; it will not be overwritten.' }
     [pscustomobject]@{ status='already_present'; task_name=$ArchivePlan.task_name; changed=$false } | ConvertTo-Json
     return
 }
