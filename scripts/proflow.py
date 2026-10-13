@@ -214,6 +214,8 @@ PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据
         prompt+='''\n建设开始在现有data-plan制定足量数据：对现有不足版本先统计清洗后主要明细有效规模，以约2倍作为扩容起点，按业务粒度和性能说明调整，维表不机械翻倍；新案按领域对象、时间跨度及关键事件覆盖安排。使用批量可复现计算，不复制换号凑行。导出文件名、表头、备注和单元格不得有真实或编造的地名、公司名称、人名，统一稳定编号，保持跨表与Web下载一致。原始来源、性质和映射只留内部，不伪称实测。先用data_preflight实际检查规模、引用和专名，再清洗输出并核对初始化、分页和导出；沿现有数据清洗记录绑定当前文件哈希，见references/system-data.md。\n'''
     if not base:
         prompt+='\n建设自检先读references/system-data.md的源依赖业务边界要求，在原有映射与六类检查中记录原定义→具体接受/拒绝断言→最终同引擎派生结果重算；先验证适用边界再做依赖图文和录制，不以结构校验或成功状态代替业务正确，不新增台账或模型阶段。\n'
+    if not base or revision_scope=='package':
+        prompt+='''\n建设自检及最终源码ZIP解压验证沿既有检查核验部署生命周期：PowerShell输出CIM/JSON前在子进程内明确[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false)，Python读取明确encoding='utf-8',errors='strict'并检查returncode；编码异常或非零退出如实失败，保留stdout/stderr，不用替换解码或吞错。启动返回后先保有Popen、PID、创建时间和本案entry归属再做探查，finally中失败也精确清退已核归属子树，无法核准时记录cleanup_pending，保留Codex/MCP及其他项目，不放宽process_guard边界。启动/停止使用同一真实entry，按当前部署目录解析绝对路径，入口变更时同步；建设内实际跑启动→停止→端口释放并核PID退出，最终ZIP解压后核对同一入口及清退效果、绑定ZIP哈希。命令、日志和哈希沿原有检查保存，不新增模型阶段、审批或全量重复测试。\n'''
     (record.parent/'深化命令词.txt').write_text(prompt, encoding='utf-8')
     return run
 

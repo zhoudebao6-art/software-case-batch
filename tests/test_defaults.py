@@ -49,6 +49,11 @@ class DefaultPolicyTests(unittest.TestCase):
                          'labels（只登记真实非空可见标签', '缺项在建设内修齐',
                          '不新增模型、审批或渲染', '不替代逐图/全页视觉'):
                 self.assertIn(rule,prompt)
+            for rule in ('[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false)',
+                         "encoding='utf-8',errors='strict'并检查returncode",
+                         '先保有Popen、PID、创建时间和本案entry归属', 'finally中失败也精确清退',
+                         '启动/停止使用同一真实entry', '建设内实际跑启动→停止→端口释放'):
+                self.assertIn(rule,prompt)
             for rule in ('以后每个授权案件','列表、详情、统计、摘要和日志','筛选','分页','迟到异步请求','不硬编码','用户明确指定其他目录时优先遵循','缓存仍D:'):
                 if rule=='缓存仍D:':self.assertIn(r'工具缓存仍D:\codex+',prompt)
                 else:self.assertIn(rule,prompt)
