@@ -175,3 +175,13 @@ ZIP差异只允许移除明确排除的说明文档；业务members不得新增�
 已有原件统计结果可在同一manifest的`retained_results`登记`figure_id/source_member/sha256/analysis_role=baseline_result/palette=monochrome/result_reason/visual_review`，必须绑定原件实际图号和媒体字节。它不重新插图，不冒充新增图；独立proof的`retained_result_reviews`逐项写`figure_id/png_sha256/is_statistical_result/monochrome/evidence`。原流程图不能计数。
 
 新完整run冻结`recording_policy_version=flow-complete-v1`及`data_policy_version=neutral-expanded-v1`；文档/包修订继承父系统政策，不强迫历史视频重录。录制计划和校验详见recording.md；数据检查使用data_preflight，详见system-data.md。周归档详见archive.md。
+
+## 原生公式红字的PDF兼容渲染
+
+已验证的本机LibreOffice/Poppler可由公共入口调用，不依赖历史案件的私有控制目录：
+
+```powershell
+& $env:SCB_PRO_PYTHON '工具目录\render_native_math.py' --source '当前最终Word绝对路径.docx' --source-sha256 '当前实际SHA256' --output '新的逐页渲染绝对目录' --office-dir '已验证LibreOffice的program绝对目录' --pdftoppm '已验证pdftoppm.exe绝对路径' --worker-sha256 '同目录native_math_worker.py实际SHA256'
+```
+
+入口默认使用同目录`native_math_worker.py`；显式更换worker必须给对应hash。仅在独立profile与本次Popen的PID、创建时间、进程树和loopback listener归属吻合后连接UNO，worker连接及终止前再次核对归属，收尾只处理身份未变的自有Office。原Word与worker受保护只读，影子Word逐hash相同；整对象明确`FF0000`的OMML仅在PDF导出时给原生Formula加颜色包裹，正文不改、不保存Word。混色、对象数/公式正文不符、hash改变或外来listener均拒绝，失败保留日志和影子副本。实际PDF、逐页PNG及生命周期事实在输出`controlled-render.json`，视觉状态保持待实际查看；这条兼容路径不证明Word/WPS GUI显示或业务验收通过。

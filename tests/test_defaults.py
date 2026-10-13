@@ -44,6 +44,11 @@ class DefaultPolicyTests(unittest.TestCase):
             self.assertEqual(run['data_policy_version'],'neutral-expanded-v1')
             prompt=(work/'.product-v2/深化命令词.txt').read_text(encoding='utf8')
             self.assertIn(r'D:\研发图表',prompt);self.assertIn(str(output),prompt)
+            self.assertIn('原定义→具体接受/拒绝断言→最终同引擎派生结果重算',prompt)
+            for rule in ("high提交前实际运行contracts.chart_snapshot(workspace,Path(run['word']),run)",
+                         'labels（只登记真实非空可见标签', '缺项在建设内修齐',
+                         '不新增模型、审批或渲染', '不替代逐图/全页视觉'):
+                self.assertIn(rule,prompt)
             for rule in ('以后每个授权案件','列表、详情、统计、摘要和日志','筛选','分页','迟到异步请求','不硬编码','用户明确指定其他目录时优先遵循','缓存仍D:'):
                 if rule=='缓存仍D:':self.assertIn(r'工具缓存仍D:\codex+',prompt)
                 else:self.assertIn(rule,prompt)
@@ -51,7 +56,7 @@ class DefaultPolicyTests(unittest.TestCase):
         if os.name!='nt':self.skipTest('Windows environment loader')
         shell=shutil.which('pwsh.exe') or shutil.which('pwsh')
         if not shell:raise ValueError('The configured PowerShell 7 launcher must be available; do not bypass Windows PowerShell 5.1 policy')
-        script="$env:SCB_OUTPUT_ROOT='D:\\old-root'; . '"+str(ROOT/'Enter-Environment.ps1')+"'; [pscustomobject]@{pro=$env:SCB_PRO_OUTPUT_ROOT;legacy=$env:SCB_OUTPUT_ROOT;temp=$env:TEMP;tmp=$env:TMP;cache=$env:PIP_CACHE_DIR} | ConvertTo-Json -Compress"
+        script="[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); $env:SCB_OUTPUT_ROOT='D:\\old-root'; . '"+str(ROOT/'Enter-Environment.ps1')+"'; [pscustomobject]@{pro=$env:SCB_PRO_OUTPUT_ROOT;legacy=$env:SCB_OUTPUT_ROOT;temp=$env:TEMP;tmp=$env:TMP;cache=$env:PIP_CACHE_DIR} | ConvertTo-Json -Compress"
         result=subprocess.run([shell,'-NoProfile','-NonInteractive','-Command',script],capture_output=True,text=True,encoding='utf-8',check=True)
         if result.stderr.strip():self.fail('Environment loader reported an execution error: '+result.stderr)
         observed=json.loads(result.stdout.lstrip('\ufeff'))

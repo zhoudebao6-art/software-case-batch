@@ -159,6 +159,7 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
 在原工作区对后端算法做尽可能深入的完善，补全领域约束、异常处理、持久化、批量处理和可验证业务闭环。Web 做成精细完整、内容丰富、中文为主、高交互且具备部署条件的业务系统；所有可见模块和按钮有效，不出现数学推导和过量英文。
 实际检索同类型开源项目及原始数据，核对许可、字段、单位和分布，用项目领域机理进行可复现扩充；数据量按实体、时间、频率和代表工况充分覆盖，不用复制或无约束随机数凑行数。保留内部出处、参数、种子、日志和限制，不冒充现场实测。
 图文完成后不录十秒版，先完成系统与数据，再实际操作最终网页录制一分多钟，按本案有效操作与结果阅读自然结束，不固定60秒、不为凑时长空等、加速或截断。展示筛选、详情、业务提交、结果、历史和导出等完整使用过程。连续真实浏览器录屏，不能拼图、循环或假响应。实际测试算法、接口、保存重启、浏览器、构建和压缩包解压后的启动。
+录制就绪使用本案绝对.py启动文件登记launcher/listener，并确认process_guard inspect.owned含实际监听；high自检实际执行 & $env:SCB_PRO_NODE "{Path(__file__).with_name('record.cjs')}" --check-ready --workspace "{workspace}" --plan "{workspace/'.product-v2/record-plan.json'}"，只读核验计划、真实文件和服务/登记身份，检查通过后父再按既有槽/lease/Job进入capture。此检查不启动浏览器、不写录制状态、不代表录制或视觉通过，不替代真实登录及UI就绪实测，不新增模型或审批。
 录制和在线验证结束后核实并关闭本案全部专属后台，保留Codex/MCP、共享服务及其他项目。之后仅把白名单重要CSV清洗到上述数据目录；每个CSV整列删除“生成数据”“数据来源”及明确同义元数据列，保留其他字段和值，数据目录仅CSV，不删原工作区数据或数据库。
 本项目交付代码、Web和数据内容不得出现：模拟、虚拟、仿真、物理仿真、参考、源文件、公式、正文。固定容器目录“模拟系统”按用户指定保留；原技术Word原样保留，许可证单独核对。禁词命中按语义修复，不能转义藏词或破坏算法。
 将实际可运行的项目源码压成上述ZIP，排除所有层级README及任何针对原技术文档的解析、抽取、原文映射和分析文件，同时排除原技术文档、过程证据、日志、缓存、依赖目录与凭据。使用明确打包白名单，不复制整个工作区；业务软件必需的导入解析模块保留。原工作区被排除内容仍保留。压缩包不得依赖被排除文件或旧绝对路径。
@@ -200,7 +201,7 @@ PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据
         prompt+='''
 本次冻结chart_policy=analytical-v2：建设开始在现有图manifest安排通常4—6张有效分析图，内容需要可更多，总数无上限；保留1—2张黑白结果图，专业模型、热力、矩阵、轨迹、调度等分析图占多数。每张独立图按analysis_role=baseline_result或professional_analysis及palette=monochrome或color登记，不能把原流程图或同图面板凑成多张。始终以真实数据或可复核计算支持为先，不因数量造数据；资料不足如实登记待补，不以单张图宣称完成。每张图使用figure_preflight在实际Word宽度检查文字与线、转折、轴框及边界的冲突，high逐张实际看PNG与最终尺寸并将当前PNG哈希和具体证据写入build_selfcheck；通过后再入Word，不把已知排版缺陷交给验收者首次发现。建设内自检调整仍由high完成，交验后返修由ultra。
 新增图及图下caption均不得含“示意”。PNG内无顶部title/suptitle、表头、图N、解释墙或说明框；必要矩阵行列标签、轴、图例、色标及单位保留。原文原式原图包括原有“示意”均原样保留。
-在现chart-manifest每图登记question（本图回答的具体问题）、data_source（可定位原件/数据/计算证据的来源）、chart_type和labels（所有实际人工文字标签，不需抄自动数值刻度），不另建重复台账。独立review必须绑定当前PNG，逐图给meaning/data/legibility/layout/explanation具体非空依据、no_schematic=true及no_schematic_evidence；meaning说明相对原图的新增价值，explanation说明实施例前文—红字—后文衔接。实际打开PNG与Word上下文检查无“示意”、布局和数据，不能把manifest文字扫描称为图片文字识别。
+在现chart-manifest每图登记question（本图回答的具体问题）、data_source（可定位原件/数据/计算证据的来源）、chart_type和labels（只登记真实非空可见标签，不需抄自动数值刻度，不登记空轴标签或空字符串），不另建重复台账。high提交前实际运行contracts.chart_snapshot(workspace,Path(run['word']),run)，核对图清单与Word当前字节、嵌图和图题绑定；缺项在建设内修齐并重核。这是既有自检中的便宜结构核验，不新增模型、审批或渲染，不替代逐图/全页视觉。独立review必须绑定当前PNG，逐图给meaning/data/legibility/layout/explanation具体非空依据、no_schematic=true及no_schematic_evidence；meaning说明相对原图的新增价值，explanation说明实施例前文—红字—后文衔接。实际打开PNG与Word上下文检查无“示意”、布局和数据，不能把manifest文字扫描称为图片文字识别。
 '''
     elif base and revision_scope=='package':
         prompt+='\n本次package revision沿用父chart_policy='+str(base_run.get('chart_policy','未标记历史2–6'))+'，不新增或重制图、不用新政策重写父通过。\n'
@@ -211,6 +212,8 @@ PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据
 '''
     if run.get('data_policy_version')=='neutral-expanded-v1' and not base:
         prompt+='''\n建设开始在现有data-plan制定足量数据：对现有不足版本先统计清洗后主要明细有效规模，以约2倍作为扩容起点，按业务粒度和性能说明调整，维表不机械翻倍；新案按领域对象、时间跨度及关键事件覆盖安排。使用批量可复现计算，不复制换号凑行。导出文件名、表头、备注和单元格不得有真实或编造的地名、公司名称、人名，统一稳定编号，保持跨表与Web下载一致。原始来源、性质和映射只留内部，不伪称实测。先用data_preflight实际检查规模、引用和专名，再清洗输出并核对初始化、分页和导出；沿现有数据清洗记录绑定当前文件哈希，见references/system-data.md。\n'''
+    if not base:
+        prompt+='\n建设自检先读references/system-data.md的源依赖业务边界要求，在原有映射与六类检查中记录原定义→具体接受/拒绝断言→最终同引擎派生结果重算；先验证适用边界再做依赖图文和录制，不以结构校验或成功状态代替业务正确，不新增台账或模型阶段。\n'
     (record.parent/'深化命令词.txt').write_text(prompt, encoding='utf-8')
     return run
 

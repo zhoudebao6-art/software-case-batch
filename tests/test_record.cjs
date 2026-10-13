@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {validatePlan,localUrl,auditUiText,record,leaseArgs,isolatedBrowserOptions,validateBatchPhase,finishRecording,executeTimeline,boundPolicy,validateMeasuredDuration}=require('../scripts/record.cjs');
+const {validatePlan,downloadRequestGuard,localUrl,auditUiText,record,leaseArgs,isolatedBrowserOptions,validateBatchPhase,finishRecording,executeTimeline,boundPolicy,validateMeasuredDuration}=require('../scripts/record.cjs');
 function valid(){return {url:'http://127.0.0.1:8123',ready:'#ready',health_path:'/api/health',version:'v1',input_files:['app.py'],steps:[
   {at:1,action:'fill',value:'x',selector:'#search',expect:'#search'},
   {at:10,action:'click',selector:'#query',expect:'#table'},
@@ -9,6 +9,225 @@ function valid(){return {url:'http://127.0.0.1:8123',ready:'#ready',health_path:
   {at:40,action:'click',selector:'#save',expect:'#saved'},
   {at:53,action:'download',selector:'#download',expect:'#saved'}]};}
 test('default is a minute',()=>assert.equal(validatePlan(valid()),60));
+test('path preflight accepts workspace relative declarations without resolving files and storage state may be omitted',()=>{
+ for(const factory of [valid,flexible]){
+  const plan=factory(),duration=plan.estimated_duration_seconds??60;
+  plan.input_files=['app.py','web/assets/chart.v2.js','配置/当前 参数.json',String.raw`web\app.js`];
+  assert.equal(validatePlan(plan),duration);
+  plan.storage_state='.product-v2/browser-state.json';assert.equal(validatePlan(plan),duration);
+  plan.storage_state=String.raw`.product-v2\browser-state.json`;assert.equal(validatePlan(plan),duration);
+ }
+});
+test('path preflight rejects actual invalid declarations in every input and optional storage state',()=>{
+ const invalid=[String.raw`D:\case\.product-v2\browser-state.json`,'D:/case/browser-state.json','D:browser-state.json',
+  '/tmp/browser-state.json',String.raw`\\server\share\browser-state.json`,String.raw`\browser-state.json`,
+  '../browser-state.json','nested/../browser-state.json',String.raw`nested\..\browser-state.json`,
+  'state.json:stream','', ' \t',null,undefined,17,{},[]];
+ for(const factory of [valid,flexible])for(const value of invalid){
+  for(const input_files of [[value],['app.py',value]])assert.throws(()=>validatePlan({...factory(),input_files}),/Unsafe relative input/);
+  assert.throws(()=>validatePlan({...factory(),storage_state:value}),/Unsafe relative input/);
+ }
+});
+test('capture rejects invalid declared paths before Playwright load or browser launch and releases its lock',async()=>{
+ const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),vm=require('node:vm');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'scb-path-preflight-'));fs.mkdirSync(path.join(root,'.product-v2'));
+ const script=path.resolve(__dirname,'../scripts/record.cjs');let browserLoads=0,browserLaunches=0,commands=0;
+ const browserRequire=name=>{
+  if(name==='fixture-playwright'){
+   browserLoads++;return {chromium:{launch:async()=>{browserLaunches++;throw Error('Browser must not launch for invalid declared paths');}}};
+  }
+  if(name==='node:child_process')return {spawnSync:()=>{commands++;throw Error('No external process is needed for invalid declared paths');}};
+  return require(name);
+ };
+ const sandbox={require:browserRequire,module:{exports:{}},__dirname:path.dirname(script),
+  process:{env:{...process.env,SCB_PRO_PLAYWRIGHT:'fixture-playwright',SCB_PRO_FFMPEG:'fixture-encoder',SCB_PRO_FFPROBE:'fixture-probe'},pid:process.pid},
+  console,setTimeout,clearTimeout,AbortController,URL};
+ vm.runInNewContext(fs.readFileSync(script,'utf8'),sandbox,{filename:script});
+ try{
+  const run={workspace:root,run_id:'fixture',video:path.join(root,'final.mp4'),recording_policy_version:'flow-complete-v1'};
+  fs.writeFileSync(path.join(root,'.product-v2/run.json'),JSON.stringify(run));fs.writeFileSync(path.join(root,'app.py'),'frozen input');
+  const state=path.join(root,'.product-v2/browser-state.json');fs.writeFileSync(state,'{}');
+  const planPath=path.join(root,'.product-v2/record-plan.json');
+  for(const plan of [{...flexible(),storage_state:state},{...flexible(),input_files:['app.py','../outside.py']}]){
+   fs.writeFileSync(planPath,JSON.stringify(plan));
+   await assert.rejects(sandbox.module.exports.record(root,planPath,'capture'),/Unsafe relative input/);
+   assert.equal(browserLoads,0);assert.equal(browserLaunches,0);assert.equal(commands,0);
+   for(const name of ['recording-stage.lock','capture-pending.json','recordings'])assert.equal(fs.existsSync(path.join(root,'.product-v2',name)),false);
+   assert.equal(fs.existsSync(run.video),false);assert.equal(fs.readFileSync(state,'utf8'),'{}');
+  }
+ }finally{
+  assert.equal(path.dirname(fs.realpathSync(root)),fs.realpathSync(os.tmpdir()));fs.rmSync(root,{recursive:true,force:true});
+ }
+});
+function readinessFixture(){
+ const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),vm=require('node:vm'),crypto=require('node:crypto');
+ const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'scb-ready-test-'))),control=path.join(root,'.product-v2');fs.mkdirSync(control);
+ const save=(p,value)=>fs.writeFileSync(p,JSON.stringify(value)),hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+ const run={workspace:root,run_id:'readiness-fixture',video:path.join(root,'final.mp4'),recording_policy_version:'flow-complete-v1'};
+ const plan={...flexible(),storage_state:'.product-v2/browser-state.json'},planPath=path.join(control,'record-plan.json');
+ const listener={pid:41001,created_ticks:1000,command_sha256:'verified-command-hash',ports:[8123]};
+ const state={health:{run_id:run.run_id,workspace:root,version:plan.version,pid:listener.pid},owned:[{...listener}],
+  requests:[],commands:[],browserLoads:0,browserLaunches:0,httpOK:true,invalidJSON:false,fetchError:null};
+ const registryPath=path.join(control,'processes.json'),runPath=path.join(control,'run.json');
+ const registry=processes=>save(registryPath,{workspace:root,processes});registry([{...listener}]);
+ save(runPath,run);save(planPath,plan);fs.writeFileSync(path.join(root,'app.py'),'frozen application');
+ const secret='private-login-token-fixture';save(path.join(control,'browser-state.json'),{cookies:[{value:secret}],origins:[]});
+ const script=path.resolve(__dirname,'../scripts/record.cjs');
+ const checkedRequire=name=>{
+  if(name==='fixture-playwright'){
+   state.browserLoads++;return {chromium:{launch:async()=>{state.browserLaunches++;throw Error('Readiness rejection must precede browser launch');}}};
+  }
+  if(name==='node:child_process')return {spawnSync:(exe,args)=>{
+   assert.equal(exe,'fixture-python');assert.equal(path.basename(args[0]),'process_guard.py');assert.equal(args[1],'inspect');
+   assert.equal(args[args.indexOf('--workspace')+1],root);state.commands.push(args);return {status:0,stdout:JSON.stringify({owned:state.owned})};
+  }};
+  return require(name);
+ };
+ const sandbox={require:checkedRequire,module:{exports:{}},__dirname:path.dirname(script),
+  process:{pid:process.pid,env:{...process.env,SCB_PRO_PYTHON:'fixture-python',SCB_PRO_PLAYWRIGHT:'fixture-playwright',SCB_PRO_FFMPEG:'fixture-encoder',SCB_PRO_FFPROBE:'fixture-probe'}},
+  console,setTimeout,clearTimeout,AbortController,AbortSignal,URL,
+  fetch:async(url,options)=>{
+   assert.equal(url,'http://127.0.0.1:8123/api/health');assert.equal(options.method,'GET');assert.equal(options.redirect,'error');
+   assert.ok(options.signal instanceof AbortSignal);state.requests.push(url);
+   if(state.fetchError)throw state.fetchError;
+   return {ok:state.httpOK,json:async()=>{if(state.invalidJSON)throw new SyntaxError('Invalid health JSON fixture');return state.health;}};
+  }};
+ vm.runInNewContext(fs.readFileSync(script,'utf8'),sandbox,{filename:script});
+ const snapshot=()=>{
+  const result={},pending=[root];
+  while(pending.length){const folder=pending.pop();for(const entry of fs.readdirSync(folder,{withFileTypes:true})){
+   const full=path.join(folder,entry.name),relative=path.relative(root,full);
+   if(entry.isSymbolicLink())result[relative]='link:'+fs.readlinkSync(full);
+   else if(entry.isDirectory()){result[relative]='directory';pending.push(full);}else result[relative]=hash(full);
+  }}
+  return result;
+ };
+ return {fs,path,root,control,run,runPath,plan,planPath,listener,state,secret,save,hash,registry,registryPath,snapshot,api:sandbox.module.exports,
+  close:()=>{assert.equal(path.dirname(fs.realpathSync(root)),fs.realpathSync(os.tmpdir()));fs.rmSync(root,{recursive:true,force:true});}};
+}
+test('read-only readiness returns current neutral hashes and listener facts without acquiring a lock or exposing session contents',async()=>{
+ const f=readinessFixture();
+ try{
+  f.fs.writeFileSync(f.path.join(f.control,'recording-stage.lock'),'existing active lock');
+  f.fs.writeFileSync(f.run.video,'existing video bytes; not a media claim');
+  const before=f.snapshot(),facts=JSON.parse(JSON.stringify(await f.api.checkReady(f.root,f.planPath)));
+  assert.equal(facts.status,'ready');assert.equal(facts.capture_performed,false);assert.equal(facts.visual_review,'not performed');
+  assert.equal(facts.run_sha256,f.hash(f.runPath));assert.equal(facts.plan_sha256,f.hash(f.planPath));
+  assert.deepEqual(facts.input_files,{'app.py':f.hash(f.path.join(f.root,'app.py'))});
+  assert.equal(facts.storage_state.sha256,f.hash(f.path.join(f.control,'browser-state.json')));assert.deepEqual(facts.service_identity,f.listener);
+  assert.equal(JSON.stringify(facts).includes(f.secret),false);assert.equal('passed' in facts,false);assert.deepEqual(f.snapshot(),before);
+  assert.equal(f.state.browserLoads,0);assert.equal(f.state.browserLaunches,0);assert.equal(f.state.commands.length,1);
+  delete f.plan.storage_state;f.save(f.planPath,f.plan);assert.equal((await f.api.checkReady(f.root,f.planPath)).storage_state,null);
+ }finally{f.close();}
+});
+test('readiness and capture share rejection of unregistered, changed and wrong-case listener or health facts before browser creation',async()=>{
+ const f=readinessFixture();
+ try{
+  const original={...f.state.health},cases=[
+   ()=>{f.state.owned=[];},()=>f.registry([]),()=>{f.state.owned=[{...f.listener,created_ticks:1001}];},
+   ()=>{f.state.owned=[{...f.listener,command_sha256:'changed-command'}];},()=>{f.state.owned=[{...f.listener,ports:[9999]}];},
+   ()=>{f.state.health={...original,version:'wrong-version'};},()=>{f.state.health={...original,run_id:'wrong-run'};},
+   ()=>{f.state.health={...original,workspace:f.root+'-other'};},()=>{f.state.health={...original,pid:f.listener.pid+1};},
+   ()=>f.save(f.registryPath,{workspace:f.root+'-other',processes:[f.listener]})];
+  for(const change of cases){
+   f.state.health={...original};f.state.owned=[{...f.listener}];f.registry([{...f.listener}]);change();const before=f.snapshot();
+   await assert.rejects(f.api.checkReady(f.root,f.planPath),/different case\/version|registered listener|Registry workspace/);
+   await assert.rejects(f.api.record(f.root,f.planPath,'capture'),/different case\/version|registered listener|Registry workspace/);
+   assert.deepEqual(f.snapshot(),before);assert.equal(f.state.browserLoads,0);assert.equal(f.state.browserLaunches,0);
+  }
+ }finally{f.close();}
+});
+test('readiness rejects missing, directory, traversal and linked files before any health or browser request',async()=>{
+ const f=readinessFixture();
+ try{
+  const real=f.path.join(f.root,'linked-real');f.fs.mkdirSync(real);f.fs.writeFileSync(f.path.join(real,'input.py'),'linked fixture');
+  f.fs.symlinkSync(real,f.path.join(f.root,'linked'),'junction');
+  const cases=[{input_files:['missing.py']},{input_files:['.product-v2']},{input_files:['../outside.py']},
+   {input_files:['linked/input.py']},{storage_state:'.product-v2/missing-state.json'},
+   {storage_state:f.path.join(f.control,'browser-state.json')}];
+  for(const change of cases){
+   f.save(f.planPath,{...f.plan,...change});const before=f.snapshot();
+   await assert.rejects(f.api.checkReady(f.root,f.planPath),/ENOENT|Input outside workspace|Unsafe relative input|Linked input rejected/);
+   await assert.rejects(f.api.record(f.root,f.planPath,'capture'),/ENOENT|Input outside workspace|Unsafe relative input|Linked input rejected/);
+   assert.deepEqual(f.snapshot(),before);assert.equal(f.state.requests.length,0);assert.equal(f.state.commands.length,0);assert.equal(f.state.browserLoads,0);
+  }
+ }finally{f.close();}
+});
+test('readiness preserves frozen policy and run identity and refuses escaped health origins, redirects, network errors and malformed JSON',async()=>{
+ const f=readinessFixture();
+ try{
+  f.save(f.planPath,{...f.plan,recording_policy_version:'legacy-fixed-v1'});const beforePolicy=f.snapshot();
+  await assert.rejects(f.api.checkReady(f.root,f.planPath),/Legacy|legacy|frozen run/);assert.deepEqual(f.snapshot(),beforePolicy);
+  f.save(f.planPath,{...f.plan,health_path:'/\\external.invalid/health'});const beforeOrigin=f.snapshot();
+  await assert.rejects(f.api.checkReady(f.root,f.planPath),/recording origin/);assert.deepEqual(f.snapshot(),beforeOrigin);
+  f.save(f.planPath,f.plan);f.save(f.runPath,{...f.run,workspace:f.root+'-other'});const changedRun=f.snapshot();
+  await assert.rejects(f.api.checkReady(f.root,f.planPath),/Workspace\/run identity/);assert.deepEqual(f.snapshot(),changedRun);f.save(f.runPath,f.run);
+  for(const mode of ['redirect','network','timeout','json']){
+   f.state.httpOK=mode!=='redirect';f.state.invalidJSON=mode==='json';f.state.fetchError=mode==='network'?new Error('Fixture network failure'):mode==='timeout'?new Error('Fixture request timeout'):null;
+   const before=f.snapshot();await assert.rejects(f.api.checkReady(f.root,f.planPath),/Health endpoint failed|Fixture network failure|Fixture request timeout|Invalid health JSON/);assert.deepEqual(f.snapshot(),before);
+  }
+  assert.equal(f.state.browserLoads,0);assert.equal(f.state.browserLaunches,0);assert.equal(f.state.commands.length,0);
+ }finally{f.close();}
+});
+function downloadFixture(){
+ const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'scb-download-guard-')),frame={},page={mainFrame:()=>frame};
+ const url='http://127.0.0.1:8123/api/export',guard=downloadRequestGuard(page);
+ const request=(options={})=>({url:()=>options.url??url,isNavigationRequest:()=>options.navigation??true,
+  frame:()=>options.frame??frame,failure:()=>({errorText:options.error??'net::ERR_ABORTED'})});
+ const download=(options={})=>({url:()=>options.url??url,page:()=>options.page??page,suggestedFilename:()=> 'export.csv',
+  saveAs:async target=>{if(options.saveError)throw options.saveError;if(!options.missingFile)fs.writeFileSync(target,'id,value\nA001,42\n');},failure:async()=>options.failure??null});
+ return {root,frame,page,url,guard,request,download,fs,path,target:path.join(root,'download.csv'),
+  close:()=>{assert.equal(path.dirname(fs.realpathSync(root)),fs.realpathSync(os.tmpdir()));fs.rmSync(root,{recursive:true,force:true});}};
+}
+test('only the exact proven download navigation is exempt and failure-before-download evidence stays recorded',async()=>{
+ const f=downloadFixture();
+ try{
+  const earlier=f.request();f.guard.track(earlier);f.guard.failed(earlier);
+  const attempt=f.guard.begin(),matched=f.request();f.guard.track(matched);f.guard.failed(matched);
+  assert.equal(f.guard.errors().length,2);
+  const proof=await f.guard.save(attempt,f.download(),f.target);f.guard.end(attempt);
+  const later=f.request();f.guard.track(later);f.guard.failed(later);
+  assert.equal(f.guard.errors().length,2);const audit=f.guard.audit();
+  assert.deepEqual(audit.map(x=>x.classification),['blocking_request_failure','successful_download_navigation_abort','blocking_request_failure']);
+  assert.equal(audit[1].successful_download.sha256,proof.sha256);assert.equal(audit[1].request_id,proof.request_id);
+  assert.notEqual(audit[0].request_id,proof.request_id);assert.notEqual(audit[2].request_id,proof.request_id);
+  assert.equal(require('node:crypto').createHash('sha256').update(f.fs.readFileSync(f.target)).digest('hex'),proof.sha256);
+ }finally{f.close();}
+});
+test('other URLs, frames, request types, error codes or download pages remain blocking despite a saved file',async()=>{
+ for(const options of [{request:{url:'http://127.0.0.1:8123/other'}},{request:{frame:{}}},{request:{navigation:false}},
+                      {request:{error:'net::ERR_CONNECTION_RESET'}},{request:{error:'net::ERR_FAILED'}},{download:{page:{}}}]){
+  const f=downloadFixture();
+  try{const attempt=f.guard.begin(),request=f.request(options.request);f.guard.track(request);f.guard.failed(request);
+   await f.guard.save(attempt,f.download(options.download),f.target);f.guard.end(attempt);
+   assert.equal(f.guard.errors().length,1);assert.equal(f.guard.audit()[0].classification,'blocking_request_failure');
+  }finally{f.close();}
+ }
+});
+test('ambiguous same-URL navigation requests are both blocking even when one attachment is saved',async()=>{
+ const f=downloadFixture();
+ try{const attempt=f.guard.begin();for(let i=0;i<2;i++){const request=f.request();f.guard.track(request);f.guard.failed(request);}
+  const proof=await f.guard.save(attempt,f.download(),f.target);f.guard.end(attempt);
+  assert.equal(proof.request_id,null);assert.equal(f.guard.errors().length,2);
+  assert.ok(f.guard.audit().every(x=>x.classification==='blocking_request_failure'));
+ }finally{f.close();}
+});
+test('failed save, failed download, missing file and changed saved hash never authorize an aborted request',async()=>{
+ for(const options of [{saveError:new Error('Download connection failed')},{failure:'canceled'},{missingFile:true}]){
+  const f=downloadFixture();
+  try{const attempt=f.guard.begin(),request=f.request();f.guard.track(request);f.guard.failed(request);
+   await assert.rejects(f.guard.save(attempt,f.download(options),f.target),/Download connection failed|Browser download failed|ENOENT/);f.guard.end(attempt);
+   assert.equal(f.guard.errors().length,1);assert.equal(f.guard.audit()[0].successful_download,null);
+  }finally{f.close();}
+ }
+ const f=downloadFixture();
+ try{const attempt=f.guard.begin(),request=f.request();f.guard.track(request);f.guard.failed(request);
+  await f.guard.save(attempt,f.download(),f.target);f.guard.end(attempt);assert.equal(f.guard.errors().length,0);
+  f.fs.writeFileSync(f.target,'changed download');assert.equal(f.guard.errors().length,1);
+  f.fs.unlinkSync(f.target);assert.equal(f.guard.errors().length,1);
+ }finally{f.close();}
+});
 test('short legacy video is rejected',()=>assert.throws(()=>validatePlan({...valid(),duration_seconds:10})));
 test('external URL and credentials rejected',()=>{assert.equal(localUrl('https://example.com'),false);assert.equal(localUrl('http://x:y@localhost'),false);});
 test('idle padding is rejected',()=>{const p=valid();p.steps[1].at=19;assert.throws(()=>validatePlan(p));});

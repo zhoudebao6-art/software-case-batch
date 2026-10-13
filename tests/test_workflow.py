@@ -254,11 +254,14 @@ class WorkflowTests(unittest.TestCase):
         facts=work/'facts.json';review_input(work,index,facts);value=read_json(facts)
         for forbidden in ('decision','reviewer_agent_id','reviewed_evidence','chart_reviews'):self.assertNotIn(forbidden,value)
         self.assertEqual(value['current_artifacts'],{'result.csv':digest(output/'result.csv')})
+        self.assertIn('before expensive visual',value['review_sequence']['first'])
+        self.assertIn('full required',value['review_sequence']['for_pass'])
         with self.assertRaisesRegex(ValueError,'overwrite'):review_input(work,index,facts)
         png.write_bytes(b'changed');
         with self.assertRaisesRegex(ValueError,'changed'):review_input(work,index,work/'new-facts.json')
     def test_analytical_review_facts_carry_policy_and_actual_visual_requirements(self):
         work=self.root/'work1';output=self.root/'analytical-output';output.mkdir()
+        (output/'result.csv').write_text('value\n1\n')
         png=work/'analytical.png';png.write_bytes(b'fixture PNG')
         write_json(work/'.product-v2/run.json',{'run_id':'analytical','output':str(output),'chart_policy':'analytical-v1'})
         figure={'figure_id':1,'png':png.name,'sha256':digest(png),'caption':'图1 调度轨迹',
@@ -277,6 +280,34 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'Distinct positive figure_id'):review_input(work,index,work/'duplicate-facts.json')
         write_json(work/'.product-v2/run.json',{'run_id':'analytical','output':str(output),'chart_policy':'unknown'})
         with self.assertRaisesRegex(ValueError,'Unknown chart policy'):review_input(work,index,work/'unknown-facts.json')
+    def test_review_facts_reject_missing_or_empty_current_output(self):
+        work=self.root/'work1';log=work/'check.log';log.write_text('actual fixture log')
+        manifest=work/'evidence-files.json';write_json(manifest,{'files':[log.name]})
+        index=work/'index.json';create(work,manifest,index)
+        output=self.root/'not-created';facts=work/'facts.json'
+        write_json(work/'.product-v2/run.json',{'run_id':'missing','workspace':str(work),'output':str(output)})
+        with self.assertRaisesRegex(ValueError,'output is missing'):review_input(work,index,facts)
+        self.assertFalse(facts.exists());output.mkdir()
+        with self.assertRaisesRegex(ValueError,'output is empty'):review_input(work,index,facts)
+        self.assertFalse(facts.exists())
+    def test_review_facts_resolve_published_archive_without_rewriting_run(self):
+        import os
+        import archive_products as archive
+        import test_archive_products as fixtures
+        fixture=fixtures.ArchiveTests(methodName='runTest');fixture.setUp()
+        try:
+            self.assertEqual(archive.apply(*fixture.args)['retained'],[])
+            run_path=fixture.work/'.product-v2/run.json';run=read_json(run_path)
+            png=fixture.work/'figure.png';png.write_bytes(b'fixture PNG')
+            write_json(fixture.work/'.product-v2/chart-manifest.json',{'figures':[{'figure_id':1,'png':png.name,'sha256':digest(png)}]})
+            manifest=fixture.work/'evidence-files.json';write_json(manifest,{'files':[png.name]})
+            index=fixture.work/'index.json';create(fixture.work,manifest,index)
+            facts=fixture.work/'facts.json';prior=digest(run_path)
+            with patch.dict(os.environ,{'SCB_PRO_ARCHIVE_STATE_ROOT':str(fixture.state_root)}):review_input(fixture.work,index,facts)
+            self.assertEqual(read_json(facts)['current_artifacts'],fixture.files)
+            self.assertEqual(digest(run_path),prior)
+            self.assertFalse(fixture.source.exists())
+        finally:fixture.tearDown()
     def test_full_source_index_and_effective_requirements_are_present(self):
         result=validate_audit();self.assertEqual(result['sources'],26);self.assertGreater(result['clauses'],900)
         self.assertGreater(len(DECISIONS),70)

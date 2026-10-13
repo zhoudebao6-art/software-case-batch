@@ -2,7 +2,7 @@
 import argparse
 import json
 from pathlib import Path
-from common import digest,inside,no_links,read_json,write_json
+from common import digest,inside,no_links,product_location,read_json,write_json
 
 def create(workspace,manifest,destination):
     workspace=no_links(workspace);spec=read_json(manifest);files=spec.get('files',[])
@@ -29,6 +29,11 @@ def review_input(workspace,index,destination):
     spec=read_json(index)
     from common import file_map
     run=read_json(inside(workspace,'.product-v2/run.json'))
+    if run.get('workspace') and run['workspace']!=str(workspace):raise ValueError('Review run workspace identity differs')
+    output=product_location(workspace,run)
+    if not output.is_dir():raise ValueError('Current product output is missing; do not produce empty review facts')
+    artifacts=file_map(output)
+    if not artifacts:raise ValueError('Current product output is empty; do not request independent product review')
     from contracts import chart_policy,chart_records
     policy=chart_policy(run)
     manifest=inside(workspace,'.product-v2/chart-manifest.json');charts=read_json(manifest)
@@ -37,9 +42,12 @@ def review_input(workspace,index,destination):
         if digest(inside(workspace,figure['png']))!=figure['sha256']:raise ValueError('Chart input changed')
     facts={'schema_version':1,'kind':'review-input-facts','workspace':str(workspace),
            'run_id':run['run_id'],'index':{'path':str(no_links(index)),'sha256':digest(index)},
-           'evidence':spec['evidence'],'current_artifacts':file_map(no_links(run['output'])),
+           'evidence':spec['evidence'],'current_artifacts':artifacts,
            'current_charts':{'manifest_sha256':digest(manifest),'figures':{str(f['figure_id']):f['sha256'] for f in charts['figures']}},
            'instruction':'Reviewer must inspect the required evidence and write independent conclusions, actual reviewed IDs and final proof hash. These bindings are not a review.'}
+    facts['review_sequence']={'first':'Use the actual source mappings and algorithm/API/persistence evidence to check applicable acceptance/rejection boundaries and final-engine derived results in references/system-data.md before expensive visual coverage.',
+        'on_blocking_defect':'Report the concrete source-bound defect as revise and disclose unread evidence; never invent coverage.',
+        'for_pass':'Complete the full required source, document, chart, UI and video review; no visual scope or independent role is reduced.'}
     if policy is not None:
         facts['current_charts']['chart_policy']=policy
         facts['chart_review_requirements']={'every_current_png':True,
