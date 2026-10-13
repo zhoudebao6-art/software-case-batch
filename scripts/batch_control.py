@@ -551,8 +551,12 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
                 owned=[q for q in pool if q['batch_id']==batch_id and q['case_id']==case_id and q['status'] in {'waiting','active'}]
                 if owned:
                     raise ValueError('Case already owns or waits for a stage; release it before queueing the next capture/evidence phase')
+                # Windows clocks can return the same tick (or move backwards).
+                # Allocate a strictly increasing submission value under this
+                # shared lock; never rewrite existing or recovered ticket order.
+                submitted=max(time.time_ns(),1+max((q['submitted_ns'] for q in pool),default=0))
                 entry={'token':uuid.uuid4().hex,'batch_id':batch_id,'case_id':case_id,'stage':stage,'status':'waiting',
-                       'priority':state['cases'][case_id].get('priority',0),'submitted_ns':time.time_ns(),'owner':identity(pid)}
+                       'priority':state['cases'][case_id].get('priority',0),'submitted_ns':submitted,'owner':identity(pid)}
                 if route and route['authorization']:entry['authorization']=deepcopy(route['authorization'])
                 pool.append(entry);write_json(queue_path,pool);return entry
             matching=[q for q in pool if q['token']==token and q['batch_id']==batch_id]

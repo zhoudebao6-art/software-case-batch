@@ -186,6 +186,38 @@ class ExpeditedRouteTests(unittest.TestCase):
         conflict='当前批次 other；modern 不处理';conflict_event={'type':'response_item','payload':{'type':'message','role':'user','content':[{'type':'input_text','text':conflict}]}}
         (self.sessions/'c5-natural.jsonl').write_text(json.dumps(conflict_event)+'\n',encoding='utf-8');conflict_context={**context,'statement':conflict,'user_message_sha256':hashlib.sha256(conflict.encode()).hexdigest()}
         with self.assertRaisesRegex(ValueError,'real user message'):self.call('expedite','c5',authorization=self.natural_authorization('c5','这批加急','modern',conflict_context))
+    def test_whole_conditional_or_material_message_cannot_be_trimmed_to_a_command(self):
+        for statement in ('如果老板批准，c1加急','材料：c1加急','c1加急，前提是批准','待老板批准；c1 使用原加急模式'):
+            with self.subTest(statement=statement):
+                with self.assertRaisesRegex(ValueError,'whole simple positive'):self.call('expedite','c1',authorization=self.natural_authorization('c1',statement))
+        for actual in ('如果老板批准，c1加急','材料：c1加急','如果老板批准\nc1加急','其他要求\nc1加急'):
+            with self.subTest(actual=actual):
+                with self.assertRaisesRegex(ValueError,'real user message'):self.call('expedite','c1',authorization=self.natural_authorization('c1','c1加急',message_text=actual))
+    def test_cross_batch_same_case_scope_requires_actual_matching_context_or_qualification(self):
+        work=self.root/'other-work';work.mkdir();source=work/'source.docx';source.write_bytes(b'other batch source')
+        write_json(work/'.product-v2/run.json',{'workspace':str(work),'run_id':'other-run','title':'其他批唯一业务'})
+        cases=self.root/'other-cases.json';write_json(cases,{'cases':[{'case_id':'c1','workspace':str(work),'source_docx':str(source),'source_sha256':digest(source)}]})
+        batch.register(self.pool,'other',cases,'isolated second batch authorization',4,2);batch.claim(self.pool,'other',203)
+        call=lambda action,**kw:batch.mutate(self.pool,'other',203,action,'c1',**kw)
+        with self.assertRaisesRegex(ValueError,'Ambiguous case authorization'):self.call('expedite','c1',authorization=self.natural_authorization('c1','c1加急'))
+        context='当前批次 modern';event={'type':'response_item','payload':{'type':'message','role':'user','content':[{'type':'input_text','text':context}]}}
+        (self.sessions/'c1-natural.jsonl').write_text(json.dumps(event)+'\n',encoding='utf-8')
+        path=self.natural_authorization('c1','c1加急');self.call('expedite','c1',authorization=path)
+        self.assertEqual(read_json(self.pool/'modern/state.json')['cases']['c1']['expedited_authorization']['verified']['batch_binding']['batch_id'],'modern')
+        record=read_json(path);record.update(workspace=str(work),run_id='other-run');retargeted=self.root/'retargeted-other.json';write_json(retargeted,record)
+        with self.assertRaisesRegex(ValueError,'matching current-batch context'):call('expedite',authorization=retargeted)
+        self.assertNotIn('expedited_authorization',read_json(self.pool/'other/state.json')['cases']['c1'])
+        for scope,statement in (('other/c1','other/c1加急'),('其他批唯一业务','其他批唯一业务 使用原加急模式')):
+            log=self.sessions/(scope.replace('/','-')+'.jsonl');message={'type':'response_item','payload':{'type':'message','role':'user','content':[{'type':'input_text','text':statement}]}}
+            log.write_text(json.dumps(message)+'\n',encoding='utf-8');record.update(scope_name=scope,statement=statement,session_log=str(log),user_message_sha256=hashlib.sha256(statement.encode()).hexdigest());write_json(retargeted,record)
+            call('expedite',authorization=retargeted)
+            self.assertEqual(read_json(self.pool/'other/state.json')['cases']['c1']['priority'],10)
+    def test_bare_case_command_cannot_ignore_an_existing_different_batch_context(self):
+        context='当前批次 other';event={'type':'response_item','payload':{'type':'message','role':'user','content':[{'type':'input_text','text':context}]}}
+        (self.sessions/'c1-natural.jsonl').write_text(json.dumps(event)+'\n',encoding='utf-8')
+        with self.assertRaisesRegex(ValueError,'matching current-batch context'):self.call('expedite','c1',authorization=self.natural_authorization('c1','c1加急'))
+        self.call('expedite','c1',authorization=self.natural_authorization('c1','modern/c1加急','modern/c1'))
+        self.assertEqual(self.queue('c1')['stage'],'expedited')
 
 class AdmittedModelContractTests(unittest.TestCase):
     def setUp(self):

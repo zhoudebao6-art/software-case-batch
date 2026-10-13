@@ -60,6 +60,19 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(self.mutate('acquire',token=second['token'])['status'],'active')
         self.mutate('priority','c2',value=20)
         pool=read_json(self.pool/'queue.json');self.assertEqual(next(t for t in pool if t['token']==second['token'])['priority'],10)
+    def test_same_or_backward_clock_keeps_fifo_across_batches_without_rewriting_history(self):
+        self.preflight();other=self.second_batch();other('preflight',value=self.root/'preflight.json')
+        with patch('batch_control.time.time_ns',return_value=1000000000):
+            first=self.mutate('queue','c1',stage='build');second=other('queue','c2',stage='build')
+        with patch('batch_control.time.time_ns',return_value=999999999):third=other('queue','c3',stage='build')
+        submitted=[row['submitted_ns'] for row in (first,second,third)]
+        self.assertEqual(submitted,[1000000000,1000000001,1000000002])
+        self.assertFalse(other('acquire',token=second['token'])['acquired'])
+        self.assertEqual(self.mutate('acquire',token=first['token'])['status'],'active')
+        self.assertEqual(other('acquire',token=second['token'])['status'],'active')
+        self.mutate('release-slot',token=first['token'])
+        current={row['token']:row['submitted_ns'] for row in read_json(self.pool/'queue.json')}
+        self.assertEqual([current[row['token']] for row in (first,second,third)],submitted)
     def test_expedite_scope_requeues_waiting_review_but_does_not_touch_active(self):
         self.preflight();waiting=self.mutate('queue','c1',stage='review')
         with self.assertRaises(ValueError):self.mutate('expedite','c1')

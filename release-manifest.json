@@ -54,8 +54,8 @@
     },
     {
       "relative_path": "references/expedited-routing.md",
-      "sha256": "d3169743f50917fe7c6ba24ff63e478f04d1ae78e5ca1aa6b55d3385acf3aa72",
-      "size": 6587
+      "sha256": "255fe9d841b4c89e964cb080c432363d6dd27a49b165333b295964f6cba4b8c3",
+      "size": 7654
     },
     {
       "relative_path": "references/inheritance-coverage.json",
@@ -264,8 +264,8 @@
     },
     {
       "relative_path": "scripts/batch_control.py",
-      "sha256": "64dc99c9c74683106a53e61a42435273aa29420405d25c3a17e0725da12e24ad",
-      "size": 54817
+      "sha256": "0609b5c36655245f82c21344f7786cb76569ded00fc769d12ce750c09b2cb8a1",
+      "size": 55146
     },
     {
       "relative_path": "scripts/common.py",
@@ -274,8 +274,8 @@
     },
     {
       "relative_path": "scripts/contracts.py",
-      "sha256": "21f29f6b72e9446d05221da59564b78cce70fa69c79787bad9ff97e4a321183b",
-      "size": 23990
+      "sha256": "8cedcba55c78fdea7b8107d34587997115cf4affe4b5d3eb032c2685b64a335e",
+      "size": 25936
     },
     {
       "relative_path": "scripts/evidence_index.py",
@@ -364,13 +364,13 @@
     },
     {
       "relative_path": "tests/test_expedited_route.py",
-      "sha256": "0d6f4b6bfb65da48a33ae6f645fb1e24d33ca42b3f5237b372387abdc6524f08",
-      "size": 26508
+      "sha256": "0acfec1c3725f7cba1f1fbceffffd647ef8e97c8506be61847ed88e510b60c1b",
+      "size": 30524
     },
     {
       "relative_path": "tests/test_media_job.py",
-      "sha256": "27415d06eb9477f9ec2a343480410bc6df3c9ff343257462a0798e7083fb4b7b",
-      "size": 10532
+      "sha256": "c53e03fc1c97ea0d410642eee3c7ac0f2dc28a8c163d9909c67d840228cf5a83",
+      "size": 12065
     },
     {
       "relative_path": "tests/test_package_policy.py",
@@ -399,8 +399,8 @@
     },
     {
       "relative_path": "tests/test_workflow.py",
-      "sha256": "66bac56b637b8c22b45fb88026f89559daf957d8260934537450d61f690775a4",
-      "size": 23389
+      "sha256": "f844ab9349498f5d2b1d307db2fea6e75d355c4456251e7c593fe4a8e817fe7c",
+      "size": 24510
     }
   ],
   "scope": "Published skill source and tests; this manifest does not hash itself."

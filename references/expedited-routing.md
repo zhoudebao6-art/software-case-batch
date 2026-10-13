@@ -4,11 +4,15 @@
 
 用户的肯定授权必须来自真实父会话user消息，点名当前批/案，绑定当前run/workspace及消息hash。“原加急模式”不是必须口令；用户已定义加急就是Astra低思考，因此“c1加急”“加急c1”“modern 这批加急”等明确指定当前scope的肯定命令直接授权。单说快一点、支持加急吗、示例/材料引用/代码块、否定或条件句不选择Astra。授权JSON保留原字段：`run_id/workspace/session_log/user_message_sha256/statement/scope_name`。`scope_name`必须是当前注册case_id、batch_id、`batch_id/case_id`或登记时冻结的唯一案名映射；准备title和显式aliases只在本批唯一且不冒充其他案/批标识时纳入。两个案共享同title时必须用注册ID，改auth run/workspace不能把c1语句扩成c2或其他批；新批/案用户请求不自动外溢。批范围按冻结确认清单逐案登记，不扫描其他批/历史案件。授权文件或真实消息变更后，queue/acquire及付费前核验拒绝准入，保留票据和诊断，不静默回普通模型。
 
+授权只接受整条真实user消息中的单一简单肯定命令，不先裁掉条件、材料或其他前文再取末句。“如果老板批准，c1加急”“材料：c1加急”及从多行消息单取“c1加急”都拒绝；复杂说明请另发一条明确指令。同一共享root内不同案件工作区重复使用case_id或别名时，裸名称必须有此前真实、单一明确的“当前批次：batch_id”等当前批声明，否则直接用`batch_id/case_id`或batch_id指明范围。已有真实当前批上下文时，裸案名不能忽略它授权另一批；显式批限定命令可指明新范围。新合同验证结果同时绑定不可变workspace对应的root/batch/case/manifest身份，不能仅改run/workspace重套旧语句。旧manifest没有这些绑定能力，历史兼容不宣称新能力。
+
 纯“这批加急”需要额外`scope_context:{root,batch_id,manifest_sha256,statement,user_message_sha256}`，绑定同一真实user JSONL中此前最近的当前批上下文及当前冻结manifest。上下文必须整条只有单一、明确的声明，如“当前批次：modern”（也可“当前批次 modern”“本次批次 modern”“现在处理批次 modern”）；不能只因文本提到modern就推断它是当前批。“当前批次other；modern不处理”等冲突、多条或引述上下文拒绝，要求直接点名批次。context元数据不能替代实际user消息；缺真实当前批关联时不猜批次。scope_context的batch_id必须等于本manifest batch_id，scope_name也必须是该batch_id，不能把代指批次套给单案别名。
 
 `expedite`在同一控制事务把本案priority设为原设计的10，更新本案所有waiting票据的priority；waiting review改到expedited，保留token、submitted_ns及历史。未来`queue --stage review`自动解析本案当前授权，选择普通或加急route；waiting acquire再次核真实授权/path/hash、源与预检。active有效普通审核及其准入快照不重写、不打断，未来审核/复验采用新授权路线。calls/usage一直追加，不因切换、负责人恢复或重排归零。
 
 加急审核仍使用独立单槽，普通review最多3槽；所有MODEL stage（build/review/expedited）共享宿主worker容量，媒体不占新profile模型位。请求者仅为真正可运行、priority更高且自身stage槽有空位的候选让出下一个共享空位，所以已加急案的build也优先于低priority普通review；建设模型仍high，不能改Astra。候选须当前owner有效、未drain、案件未blocked/delivered、源hash/零模型预检/真实授权有效；新review合同还须当前prepared run_id/workspace有效，能够冻结admission。失活或证据已变候选保持历史但不能阻塞普通案；高priority候选自身stage已满时也不阻塞其他空闲模型位。同stage按priority、submitted_ns、token公平排序，同priority跨stage仍由实际父编排，不另加全局FIFO；已有active建设或审核不预占。录制、证据和媒体互斥逻辑保持原合同。
+
+新票在共享root持锁登记时分配严格递增的submitted_ns；宿主时钟同tick或倒退也不会把后提交票因随机UUID排到先票前。既有票、优先级调整、负责人恢复的submitted_ns保持原值。
 
 新登记schema2 manifest增加`review_admission_contract=frozen-review-route-v1`，不热改历史manifest。普通或加急review取得active槽后，控制器在本批`review-admissions`独占新建不可变准入：当前case/run、token、source/preflight、实际route/model/effort、owner和授权快照。加急授权按原字节保存专属snapshot并核原hash；后续案件授权变更不回写已开始有效调用身份。此准入是资源/路线事实，不能称已付费调用或独立通过。
 

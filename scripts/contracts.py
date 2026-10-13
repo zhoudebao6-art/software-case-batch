@@ -164,6 +164,23 @@ def _direct_user_lines(text):
         if not fenced and not material and not line.startswith('>'):result.append(line)
     return result
 
+def _simple_expedite_command(statement,scope_name):
+    """Accept a whole simple command, never a clause cut from other prose."""
+    name=re.escape(scope_name)
+    courtesy=r'(?:请|帮我|请帮我)?\s*'
+    modifiers=r'(?:(?:请|要|需要|都|全部|直接|马上)\s*)*'
+    action=r'(?:加急(?:一下|处理|办理|审核|验收)?|(?:启用|使用|采用|按)\s*(?:原加急模式|(?:gpt-6-)?Astra\s*(?:低思考|低|low)))'
+    named=courtesy+name+r'\s*(?:(?:这批|本批|该批|此批)(?:案件)?\s*)?'+modifiers+action
+    leading=courtesy+r'加急\s*'+name
+    return bool(scope_name and re.fullmatch(r'(?:'+named+'|'+leading+r')[。.!！]?',statement,re.I))
+
+def _exact_current_batch(text):
+    lines=_direct_user_lines(text)
+    if len(lines)!=1 or text.strip()!=lines[0]:return None
+    match=re.fullmatch(r'(?:当前批次|本次批次|现在处理批次)\s*[:：=]?\s*([^\s:：=。.]+)\s*[。.]?',lines[0])
+    value=match.group(1) if match else ''
+    return value if value and all(c.isalnum() or c in '-_' for c in value) else None
+
 def expedited_authorization(workspace,record):
     """Explicit original expedited-mode request in a real scoped user message."""
     run=read_json(inside(workspace,'.product-v2/run.json'))
@@ -174,20 +191,25 @@ def expedited_authorization(workspace,record):
         raise ValueError('Expedited authorization needs an actual parent user message, not a workspace assertion')
     statement=record.get('statement','');scope_name=record.get('scope_name','')
     implicit=bool(re.fullmatch(r'(?:这批|本批|该批|此批)(?:案件)?(?:请|要|需要|都|全部|直接|马上|\s)*加急(?:一下|处理|办理|审核|验收)?[。.!！]?',statement))
-    clauses=re.split(r'[,，;；。]',statement);targeted=[clause for clause in clauses if _scope_mentioned(clause,scope_name)]
-    text='；'.join(targeted) if targeted else statement
-    match=re.search(r'(?:启用|使用|采用|按).{0,8}(?:原加急模式|Astra.{0,8}(?:低|low))',text,re.I)
-    if not match:match=re.search(r'加急',text)
-    negative=r'(?:不(?:建议|应该|需要|希望|打算)?|禁止|不要|不得|无需|勿)(?:再|继续|尝试|考虑|准备|自动|直接|\s)*$'
-    conditional=r'如果|假如|倘若|若(?:是|以后|用户|本|此|该|需|要|这|当前|\s)|当.{0,20}时|待.{0,20}批准|例如|示例|条件|支持(?:此|原|使用|启用)|保留(?:原|此|使用)|以后|将来'
-    negative_command=r'(?:不要|别|禁止|不得|无需|勿|不(?:建议|应该|需要|希望|打算|要)?).{0,20}加急'
-    reference_or_question=r'支持|是否|能否|能不能|可以不可以|可不可以|什么(?:是|叫)|介绍|解释|材料(?:引用|原文|内容|名称)|原文|引用|示例|例如'
-    if (not match or re.search(negative,text[:match.start()]) or re.search(conditional,text) or
-        re.search(negative_command,text) or re.search(reference_or_question,text) or re.search(r'[?？]|(?:吗|么)\s*$',text)):
-        raise ValueError('Only an explicit positive original expedited-mode request selects Astra/low; speed alone does not')
-    if not scope_name or (not targeted and not implicit):
+    if not implicit and not _simple_expedite_command(statement,scope_name):
+        raise ValueError('Only a whole simple positive scoped expedited command selects Astra/low; conditional or material prose does not')
+    if not scope_name:
         raise ValueError('Actual expedited request must name its current authorized batch or case')
-    context=record.get('scope_context');found=False;last_batch_context=None
+    from batch_control import media_binding,batch,authorization_scope_names,REVIEW_ADMISSION_CONTRACT
+    binding=media_binding(workspace);target_batch=None;qualified=False;ambiguous=False
+    if binding:
+        _,manifest=batch(binding['root'],binding['batch_id'])
+        if manifest.get('review_admission_contract')==REVIEW_ADMISSION_CONTRACT:
+            target_batch=binding['batch_id']
+            qualified=scope_name in {target_batch,target_batch+'/'+binding['case_id']}
+            if not qualified:
+                for other_path in no_links(binding['root']).glob('*/manifest.json'):
+                    other=read_json(no_links(other_path))
+                    if other.get('batch_id')!=target_batch and any(
+                        str(no_links(case['workspace'])).casefold()!=str(no_links(workspace)).casefold() and
+                        scope_name in authorization_scope_names(other,case) for case in other.get('cases',[])):
+                        ambiguous=True;break
+    context=record.get('scope_context');found=False;last_batch_context=None;authorized_context=None
     if implicit and (not isinstance(context,dict) or context.get('batch_id')!=scope_name):
         raise ValueError('Implicit batch expedite needs the frozen real current-batch context')
     with path.open(encoding='utf-8') as stream:
@@ -197,8 +219,17 @@ def expedited_authorization(workspace,record):
             payload=event.get('payload',{})
             if event.get('type')!='response_item' or payload.get('type')!='message' or payload.get('role')!='user':continue
             actual='\n'.join(part.get('text','') for part in payload.get('content',[]));lines=_direct_user_lines(actual)
-            if hashlib.sha256(actual.encode()).hexdigest()==record.get('user_message_sha256') and statement in lines:
-                if not implicit:found=True
+            if (hashlib.sha256(actual.encode()).hexdigest()==record.get('user_message_sha256') and
+                len(lines)==1 and actual.strip()==statement and lines[0]==statement):
+                if not implicit:
+                    # Bare case IDs/aliases inherit an explicit actual batch
+                    # context. Reused names need that context or a batch-qualified
+                    # command; changing run/workspace cannot change its meaning.
+                    if target_batch and not qualified:
+                        current=_exact_current_batch(last_batch_context['text']) if last_batch_context else None
+                        if ((last_batch_context and current!=target_batch) or (ambiguous and current!=target_batch)):
+                            raise ValueError('Ambiguous case authorization requires an explicit matching current-batch context or batch-qualified scope')
+                    found=True;authorized_context=last_batch_context
                 elif (last_batch_context and last_batch_context['hash']==context.get('user_message_sha256') and
                       last_batch_context['text'].strip()==context.get('statement','').strip() and
                       len(last_batch_context['lines'])==1 and last_batch_context['lines'][0]==context.get('statement') and
@@ -209,6 +240,10 @@ def expedited_authorization(workspace,record):
     if not found:raise ValueError('Scoped positive expedited authorization not found in the real user message')
     result={'run_id':run['run_id'],'scope_name':scope_name,'user_message_sha256':record['user_message_sha256']}
     if implicit:result['scope_context_user_message_sha256']=context['user_message_sha256']
+    elif target_batch and not qualified and authorized_context:
+        result['scope_context_user_message_sha256']=authorized_context['hash']
+    if target_batch:
+        result['batch_binding']={key:binding[key] for key in ('root','batch_id','case_id','manifest_sha256')}
     return result
 
 def model_review(workspace, proof, files, charts, evidence_path):

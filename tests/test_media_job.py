@@ -32,6 +32,30 @@ class WindowsMediaJobTests(unittest.TestCase):
     def launch(self,job,args):
         result=launch_suspended(job,args,dict(os.environ));self.handles.append((result,job.k));return result
     def node(self):return os.environ['SCB_PRO_NODE']
+    def fixed_resource_environment(self):
+        """Fix only child Python resource samples; Job/Node APIs remain real."""
+        folder=self.root/'resource-samples';folder.mkdir()
+        (folder/'sitecustomize.py').write_text('''import ctypes, os
+from ctypes import wintypes
+os.cpu_count=lambda:32
+class Memory(ctypes.Structure):
+    _fields_=[('length',ctypes.c_ulong),('load',ctypes.c_ulong)]+[(name,ctypes.c_ulonglong) for name in ('total_phys','avail_phys','total_page','avail_page','total_virtual','avail_virtual','avail_extended')]
+def memory_sample(pointer):
+    value=ctypes.cast(pointer,ctypes.POINTER(Memory)).contents
+    value.avail_phys=value.avail_page=24000*1024*1024
+    return 1
+ticks=0
+def cpu_sample(idle,kernel,user):
+    global ticks
+    ticks+=10000000
+    for pointer,value in ((idle,ticks*9),(kernel,ticks*10),(user,0)):
+        result=ctypes.cast(pointer,ctypes.POINTER(wintypes.FILETIME)).contents
+        result.dwLowDateTime=value&0xffffffff;result.dwHighDateTime=value>>32
+    return 1
+ctypes.windll.kernel32.GlobalMemoryStatusEx=memory_sample
+ctypes.windll.kernel32.GetSystemTimes=cpu_sample
+''',encoding='utf-8')
+        return dict(os.environ,PYTHONPATH=str(folder)+(os.pathsep+os.environ['PYTHONPATH'] if os.environ.get('PYTHONPATH') else ''))
     def wait_for(self,condition,seconds=5):
         until=time.monotonic()+seconds
         while not condition():
@@ -104,9 +128,12 @@ class WindowsMediaJobTests(unittest.TestCase):
         plan=self.root/'invalid-plan.json';write_json(plan,{'url':'https://example.com'})
         ticket=batch.mutate(pool,'cli',os.getpid(),'queue','c',stage='record')
         with patch('batch_control.recording_resources',return_value={'acquired':True,'available_mb':24000,'required_mb':4096}):batch.mutate(pool,'cli',os.getpid(),'acquire',token=ticket['token'])
-        result=subprocess.run([self.node(),str(Path(__file__).resolve().parents[1]/'scripts/record.cjs'),'--workspace',str(work),'--phase','capture','--plan',str(plan),'--batch-root',str(pool),'--batch-id','cli','--case-id','c','--record-token',ticket['token'],'--owner-pid',str(os.getpid())],capture_output=True,text=True,timeout=30,creationflags=subprocess.CREATE_NO_WINDOW)
+        result=subprocess.run([self.node(),str(Path(__file__).resolve().parents[1]/'scripts/record.cjs'),'--workspace',str(work),'--phase','capture','--plan',str(plan),'--batch-root',str(pool),'--batch-id','cli','--case-id','c','--record-token',ticket['token'],'--owner-pid',str(os.getpid())],env=self.fixed_resource_environment(),capture_output=True,text=True,timeout=30,creationflags=subprocess.CREATE_NO_WINDOW)
         self.assertEqual(result.returncode,2,result.stdout+result.stderr);self.assertIn('Recording URL must be local',result.stderr)
         bound=read_json(pool/'queue.json')[0];self.assertIn('command_proof',bound['media_runtime'])
+        self.assertTrue(bound['launch_checks'])
+        for check in bound['launch_checks']:
+            self.assertEqual((check['available_mb'],check['logical_processors'],check['cpu_load_percent']),(24000,32,10))
         self.assertEqual(job_pids(job_name(pool,'cli',ticket['token'])),[])
         self.assertFalse((work/'.product-v2/recording-stage.lock').exists())
         self.assertEqual(batch.mutate(pool,'cli',os.getpid(),'release-slot',token=ticket['token'])['status'],'released')
