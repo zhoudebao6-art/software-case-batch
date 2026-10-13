@@ -41,7 +41,7 @@ jobs:
       - name: Create non-secret CI configuration
         run: |
           $TaskSettings = [ordered]@{
-            output_root = 'F:\研发图表'
+            output_root = 'D:\研发图表'
             python = (Get-Command python.exe).Source
             node = (Get-Command node.exe).Source
             playwright_module = 'not-used-by-unit-ci'

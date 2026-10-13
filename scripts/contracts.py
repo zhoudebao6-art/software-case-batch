@@ -11,19 +11,39 @@ from source_intake import source_figure_numbers
 SESSION_ROOT = Path.home()/'.codex/sessions'
 NS = {'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
       'a':'http://schemas.openxmlformats.org/drawingml/2006/main',
+      'wp':'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing',
       'r':'http://schemas.openxmlformats.org/officeDocument/2006/relationships'}
 
 ANALYTICAL_CHART_POLICY = 'analytical-v1'
+BUILD_CHART_POLICY = 'analytical-v2'
+ANALYTICAL_POLICIES = {ANALYTICAL_CHART_POLICY, BUILD_CHART_POLICY}
 
 def chart_policy(run):
     """An absent policy keeps the historical gate; unknown policies fail closed."""
     policy=run.get('chart_policy')
-    if 'chart_policy' in run and policy!=ANALYTICAL_CHART_POLICY:
+    if 'chart_policy' in run and policy not in ANALYTICAL_POLICIES:
         raise ValueError('Unknown chart policy; do not silently relax the frozen contract')
     return policy
 
 def _nonempty_text(value):
     return isinstance(value,str) and bool(value.strip())
+
+def check_word_chart_width(block, relations, media, sha, intended_mm):
+    """Require the actual inserted drawing to retain the visually checked width."""
+    widths=[]
+    for drawing in block.findall('.//w:drawing',NS):
+        matching=False
+        for blip in drawing.findall('.//a:blip',NS):
+            target=relations.get(blip.get('{'+NS['r']+'}embed'),'')
+            member='word/'+target if not target.startswith('/') else target.lstrip('/')
+            matching |= media.get(member)==sha
+        if matching:
+            extents=drawing.findall('.//wp:extent',NS)
+            if len(extents)!=1:raise ValueError('One actual Word drawing extent required for the checked PNG')
+            try:widths.append(int(extents[0].get('cx',''))/36000)
+            except ValueError:raise ValueError('Invalid Word drawing width')
+    if not widths or any(abs(width-intended_mm)>0.05 for width in widths):
+        raise ValueError('Actual Word insertion width changed after construction visual self-check')
 
 def chart_records(spec, run):
     """Check declared chart facts, without claiming to recognize PNG text."""
@@ -40,7 +60,7 @@ def chart_records(spec, run):
         if not isinstance(number,int) or isinstance(number,bool) or number<1 or number in ids:
             raise ValueError('Distinct positive figure_id required')
         ids.add(number)
-        if policy==ANALYTICAL_CHART_POLICY:
+        if policy in ANALYTICAL_POLICIES:
             for key in ('question','data_source','chart_type'):
                 if not _nonempty_text(figure.get(key)):
                     raise ValueError('Analytical chart requires a concrete '+key)
@@ -50,6 +70,40 @@ def chart_records(spec, run):
             caption=figure.get('caption')
             if not _nonempty_text(caption) or any('示意' in text for text in [caption]+labels):
                 raise ValueError('New analytical chart captions and labels must not contain 示意')
+        if policy==BUILD_CHART_POLICY:
+            if figure.get('analysis_role') not in {'baseline_result','professional_analysis'}:
+                raise ValueError('Declare each independent chart analysis_role during construction')
+            if figure.get('palette') not in {'monochrome','color'}:
+                raise ValueError('Declare chart palette, independently of its analytical role')
+            check=figure.get('build_selfcheck',{})
+            visual=check.get('visual_review',{})
+            if (check.get('geometry_status') not in {'pass','review_required'} or check.get('collisions')
+                    or check.get('png_sha256')!=figure.get('sha256')
+                    or visual.get('png_sha256')!=figure.get('sha256') or visual.get('inspected') is not True
+                    or not _nonempty_text(visual.get('evidence'))):
+                raise ValueError('Current PNG must pass construction collision checks and actual visual self-check before Word submission')
+            width=check.get('final_width_mm')
+            if isinstance(width,bool) or not isinstance(width,(int,float)) or not 0<width<=500 or visual.get('final_width_mm')!=width:
+                raise ValueError('Construction self-check must bind actual intended Word insertion width')
+    if policy==BUILD_CHART_POLICY:
+        retained=spec.get('retained_results',[])
+        if not isinstance(retained,list) or len(retained)>2:
+            raise ValueError('At most two explicitly verified existing monochrome result figures can count toward coverage')
+        for old in retained:
+            if (not isinstance(old,dict) or old.get('analysis_role')!='baseline_result' or old.get('palette')!='monochrome'
+                    or old.get('figure_id') in ids or not isinstance(old.get('figure_id'),int) or isinstance(old.get('figure_id'),bool)
+                    or old['figure_id']<1 or not _nonempty_text(old.get('result_reason'))):
+                raise ValueError('Retained results must identify actual original statistical results; original workflows do not count')
+            ids.add(old['figure_id'])
+            viewed=old.get('visual_review',{})
+            if viewed.get('inspected') is not True or viewed.get('png_sha256')!=old.get('sha256') or not _nonempty_text(viewed.get('evidence')):
+                raise ValueError('Actually inspect any original statistical result counted toward the figure mix')
+        baseline=[f for f in figures+retained if f.get('analysis_role')=='baseline_result']
+        professional=[f for f in figures if f.get('analysis_role')=='professional_analysis']
+        if len(figures)+len(retained)<4 or not 1<=len(baseline)<=2 or len(professional)*2<=len(figures)+len(retained):
+            raise ValueError('Four or more effective charts, one or two monochrome result charts and a professional-analysis majority required')
+        if any(f.get('palette')!='monochrome' for f in baseline):
+            raise ValueError('Baseline result charts must actually use a monochrome palette, checked visually independently')
     return figures
 
 def delivery_layout(output, run):
@@ -127,6 +181,8 @@ def chart_snapshot(workspace, word, run):
                 if media.get(member)==sha: matching=True
             if not matching:
                 raise ValueError('Word embedded chart bytes differ or caption is not immediately below image')
+            if run.get('chart_policy')==BUILD_CHART_POLICY:
+                check_word_chart_width(blocks[at-1],relations,media,sha,f['build_selfcheck']['final_width_mm'])
             positions.append(at)
             if not any('请参考图'+str(number) in text for text in paragraphs[:at-1]):
                 raise ValueError('Each chart requires an independent body reference before the appended image')
@@ -134,6 +190,12 @@ def chart_snapshot(workspace, word, run):
             raise ValueError('Appended chart captions must follow figure-number order')
         # An original drawing cannot be relabeled as a new result figure.
         with zipfile.ZipFile(source) as original:
+            for retained in spec.get('retained_results',[]) if run.get('chart_policy')==BUILD_CHART_POLICY else []:
+                member=retained.get('source_member','')
+                if (not member.startswith('word/media/') or member not in original.namelist()
+                        or hashlib.sha256(original.read(member)).hexdigest()!=retained.get('sha256')
+                        or retained.get('figure_id') not in source_figure_numbers(source)):
+                    raise ValueError('Retained statistical figure must bind original media bytes and original figure number')
             for member in original.namelist():
                 if member.startswith('word/') and member not in {'word/document.xml','word/_rels/document.xml.rels'}:
                     if member not in z.namelist() or original.read(member)!=z.read(member):
@@ -164,6 +226,8 @@ def chart_snapshot(workspace, word, run):
                 raise ValueError('All added images and captions must follow all original body content')
     snapshot={'manifest_sha256':digest(manifest),'figures':{str(f['figure_id']):f['sha256'] for f in figures}}
     if chart_policy(run) is not None:snapshot['chart_policy']=run['chart_policy']
+    if run.get('chart_policy')==BUILD_CHART_POLICY and spec.get('retained_results'):
+        snapshot['retained_results']={str(f['figure_id']):f['sha256'] for f in spec['retained_results']}
     return snapshot
 
 def _dispatch_events(path, call_id):
@@ -172,12 +236,12 @@ def _dispatch_events(path, call_id):
     if root not in path.parents or path.suffix.lower()!='.jsonl':
         raise ValueError('Dispatch must be verified against actual Codex session JSONL, not a hand-written workspace transcript')
     calls,outputs=[],[]
-    session_id=None
+    sessions=[]
     with path.open(encoding='utf-8') as stream:
         for line in stream:
             try: event=json.loads(line)
             except json.JSONDecodeError: continue  # active final partial line is not evidence
-            if event.get('type')=='session_meta': session_id=event.get('payload',{}).get('id')
+            if event.get('type')=='session_meta': sessions.append(event.get('payload',{}).get('id'))
             if event.get('type')!='response_item': continue
             payload=event.get('payload',{})
             if payload.get('call_id')!=call_id: continue
@@ -185,8 +249,64 @@ def _dispatch_events(path, call_id):
             if payload.get('type')=='function_call_output': outputs.append(event)
     if len(calls)!=1 or len(outputs)!=1:
         raise ValueError('One actual dispatch call and matching successful output required')
-    if not session_id: raise ValueError('Actual parent session identity required')
-    return calls[0],outputs[0],session_id
+    if len(sessions)!=1 or not isinstance(sessions[0],str) or not sessions[0]:
+        raise ValueError('One actual parent session identity required')
+    return calls[0],outputs[0],sessions[0]
+
+def _dispatch_timestamp_ns(value):
+    """Use recorded UTC chronology, never an unauthenticated cipher timestamp."""
+    from datetime import datetime,timezone
+    try:
+        moment=datetime.fromisoformat(value.replace('Z','+00:00'))
+        if moment.tzinfo is None:raise ValueError('Timezone missing')
+        delta=moment.astimezone(timezone.utc)-datetime(1970,1,1,tzinfo=timezone.utc)
+    except (AttributeError,TypeError,ValueError):
+        raise ValueError('Encrypted review requires actual timezone-aware dispatch/session/final timestamps')
+    return ((delta.days*86400+delta.seconds)*1000000+delta.microseconds)*1000
+
+def _encrypted_dispatch_message(message):
+    """Recognize the recorded desktop envelope without decrypting or authenticating it."""
+    if not isinstance(message,str) or not message.startswith('gAAAA'):return False
+    import base64
+    import binascii
+    try:
+        if not re.fullmatch(r'gAAAA[A-Za-z0-9_-]+={0,2}',message):raise ValueError('Envelope shape')
+        envelope=base64.b64decode(message,altchars=b'-_',validate=True)
+        if len(envelope)<73 or envelope[0]!=128 or (len(envelope)-57)%16:raise ValueError('Envelope shape')
+    except (binascii.Error,ValueError):
+        raise ValueError('Unsupported encrypted dispatch message envelope; do not bypass plaintext scope checks')
+    return True
+
+def _encrypted_review_binding(admission,permit,call,result,parent_id):
+    arguments=json.loads(call['payload']['arguments']);message=arguments.get('message')
+    if not _encrypted_dispatch_message(message):
+        raise ValueError('Desktop encrypted dispatch binding requires the actual supported cipher envelope')
+    acquired_ns=admission.get('acquired_ns');issued_ns=permit.get('issued_ns')
+    called_ns=_dispatch_timestamp_ns(call.get('timestamp'));returned_ns=_dispatch_timestamp_ns(result.get('timestamp'))
+    if (type(acquired_ns) is not int or type(issued_ns) is not int or
+            not 0<acquired_ns<=issued_ns<=called_ns<=returned_ns):
+        raise ValueError('Immutable admission and verified permit must precede the actual encrypted review dispatch')
+    return {'contract':'desktop-encrypted-spawn-v1','token':admission['token'],
+        'dispatch_nonce':permit['dispatch_nonce'],'run_id':admission['run_id'],
+        'workspace':admission['workspace'],'parent_session_id':parent_id,'call_id':call['payload']['call_id'],
+        'dispatch_message_sha256':hashlib.sha256(message.encode('utf-8')).hexdigest(),
+        'dispatch_event_sha256':hashlib.sha256(json.dumps([call,result],sort_keys=True,ensure_ascii=False).encode()).hexdigest()}
+
+def review_dispatch_binding(workspace,admission_reference,permit_reference,session_log,call_id):
+    """Read a frozen permit and real call/result; return binding data, never a signature."""
+    from batch_control import load_review_admission,load_review_dispatch_permit
+    admission=load_review_admission(workspace,admission_reference)
+    permit=load_review_dispatch_permit(workspace,admission_reference,permit_reference)
+    call,result,parent_id=_dispatch_events(session_log,call_id)
+    arguments=json.loads(call['payload']['arguments'])
+    if (call['payload'].get('name','').split('.')[-1]!='spawn_agent' or arguments.get('fork_turns')!='none'
+            or arguments.get('model')!=admission['model'] or arguments.get('reasoning_effort')!=admission['effort']):
+        raise ValueError('Binding needs the actual admitted model/effort spawn_agent call with fork_turns=none')
+    output=result['payload'].get('output')
+    if isinstance(output,str):output=json.loads(output)
+    if not isinstance(output,dict) or not output.get('task_name') or any(output.get(k) for k in ('error','isError','is_error')):
+        raise ValueError('Binding needs the actual matching successful dispatch result')
+    return _encrypted_review_binding(admission,permit,call,result,parent_id)
 
 def _scope_mentioned(text,name):
     prefix=r'(?:^|[\s,，;；:：()（）\[\]【】]|请|帮|给|把|将|对|让|当前|本次|现在|加急)'
@@ -288,8 +408,9 @@ def expedited_authorization(workspace,record):
 def model_review(workspace, proof, files, charts, evidence_path):
     """Verify actual implementation and admitted independent review dispatch."""
     run=read_json(inside(workspace,'.product-v2/run.json'))
-    analytical=chart_policy(run)==ANALYTICAL_CHART_POLICY
-    if analytical and charts.get('chart_policy')!=ANALYTICAL_CHART_POLICY:
+    policy=chart_policy(run)
+    analytical=policy in ANALYTICAL_POLICIES
+    if analytical and charts.get('chart_policy')!=policy:
         raise ValueError('Review chart snapshot must bind the frozen analytical policy')
     spec=read_json(inside(workspace,'.product-v2/model-dispatch.json'))
     stages=spec.get('stages',{})
@@ -323,7 +444,7 @@ def model_review(workspace, proof, files, charts, evidence_path):
         authorization=read_json(admission['authorization']['path']) if admission else spec.get('expedited_authorization',{})
         verified['expedited_authorization']=expedited_authorization(workspace,authorization)
         review_model,review_effort='gpt-6-astra','low'
-    review_parent=None
+    review_parent=None;encrypted_binding=None;review_window=None
     repairs=sorted((k for k in stages if k.startswith('repair-')),key=lambda k:int(k.split('-')[1]))
     if repairs!=['repair-'+str(i) for i in range(1,len(repairs)+1)]:
         raise ValueError('Repair dispatch sequence must be contiguous and retained')
@@ -342,8 +463,15 @@ def model_review(workspace, proof, files, charts, evidence_path):
         args=json.loads(payload['arguments'])
         if stage=='review' and admission:
             message=args.get('message','')
-            if (not isinstance(message,str) or admission['token'] not in message or dispatch_permit['dispatch_nonce'] not in message or admission['run_id'] not in message or
-                admission['workspace'].casefold() not in message.casefold()):
+            if _encrypted_dispatch_message(message):
+                called_ns=_dispatch_timestamp_ns(call.get('timestamp'));returned_ns=_dispatch_timestamp_ns(result.get('timestamp'))
+                review_window=(called_ns,returned_ns)
+                encrypted_binding=_encrypted_review_binding(admission,dispatch_permit,call,result,parent_id)
+                if proof.get('review_dispatch_binding')!=encrypted_binding or read_json(evidence_path)!=proof:
+                    raise ValueError('Encrypted review proof must bind the exact actual call, cipher digest and frozen admission/permit scope')
+                verified['review_dispatch_binding']=encrypted_binding
+            elif (not isinstance(message,str) or admission['token'] not in message or dispatch_permit['dispatch_nonce'] not in message or admission['run_id'] not in message or
+                  admission['workspace'].casefold() not in message.casefold()):
                 raise ValueError('Actual review dispatch message must name its admission token, verified permit nonce, run and workspace')
         expected_model=review_model if stage=='review' else 'gpt-6.1-sol'
         if args.get('fork_turns')!='none' or args.get('model')!=expected_model or args.get('reasoning_effort')!=effort:
@@ -354,7 +482,8 @@ def model_review(workspace, proof, files, charts, evidence_path):
             output=json.loads(output)
         # This desktop returns task_name, rather than an undocumented agent UUID.
         agent_id=output.get('task_name') if isinstance(output,dict) else None
-        if not agent_id or record.get('agent_id')!=agent_id or agent_id in agents.values():
+        if (not agent_id or record.get('agent_id')!=agent_id or agent_id in agents.values()
+                or any(output.get(k) for k in ('error','isError','is_error'))):
             raise ValueError('Distinct actual stage agent IDs required')
         agents[stage]=agent_id
         if (stage in {final_implementation,'review'}
@@ -373,6 +502,7 @@ def model_review(workspace, proof, files, charts, evidence_path):
     actual_model=False
     actual_identity=False
     actual_attestation=False
+    child_sessions=[]
     proof_hash=digest(evidence_path)
     with review_log.open(encoding='utf-8') as stream:
         for line in stream:
@@ -380,27 +510,48 @@ def model_review(workspace, proof, files, charts, evidence_path):
             except json.JSONDecodeError: continue
             payload=event.get('payload',{})
             if event.get('type')=='session_meta':
+                child_sessions.append(payload)
                 spawned=payload.get('source',{}).get('subagent',{}).get('thread_spawn',{}) if isinstance(payload.get('source'),dict) else {}
-                if spawned.get('agent_path')==agents['review'] and spawned.get('parent_thread_id')==review_parent: actual_identity=True
+                if spawned.get('agent_path')==agents['review'] and spawned.get('parent_thread_id')==review_parent:
+                    actual_identity=True
+                    if encrypted_binding:
+                        child_id=payload.get('id');created_ns=_dispatch_timestamp_ns(payload.get('timestamp',event.get('timestamp')))
+                        actual_identity=(isinstance(child_id,str) and bool(child_id) and child_id!=review_parent
+                                         and review_window[0]<=created_ns<=review_window[1])
             if event.get('type')=='turn_context':
                 actual_model=payload.get('model')==review_model and payload.get('effort')==review_effort
             final_message=(payload.get('phase')=='final_answer'
                            or ('phase' not in payload and payload.get('channel')=='final'))
             if event.get('type')=='response_item' and payload.get('type')=='message' and payload.get('role')=='assistant' and final_message:
                 actual_attestation=False  # Only the most recent actual final can sign this proof.
-                for part in payload.get('content',[]):
-                    # The memory policy can mandate one final XML citation block.
-                    # Strip only that exact trailing structure, never extract
-                    # arbitrary JSON from prose or intermediate messages.
-                    raw=part.get('text','')
-                    raw=re.sub(r'\s*<oai-mem-citation>\s*<citation_entries>[\s\S]*?</citation_entries>\s*<rollout_ids>[\s\S]*?</rollout_ids>\s*</oai-mem-citation>\s*$','',raw)
-                    try: attestation=json.loads(raw)
-                    except (json.JSONDecodeError,AttributeError): continue
-                    if (actual_model and attestation.get('reviewer_agent_id')==agents['review']
-                            and attestation.get('review_evidence_sha256')==proof_hash): actual_attestation=True
+                content=payload.get('content',[])
+                if not content or any(not isinstance(part.get('text'),str) or part.get('encrypted_content') for part in content):continue
+                # Parse the whole final message, never a JSON fragment beside
+                # conflicting prose. Only one exact trailing memory block is allowed.
+                raw=''.join(part['text'] for part in content)
+                raw=re.sub(r'\s*<oai-mem-citation>\s*<citation_entries>[\s\S]*?</citation_entries>\s*<rollout_ids>[\s\S]*?</rollout_ids>\s*</oai-mem-citation>\s*$','',raw)
+                try: attestation=json.loads(raw)
+                except (json.JSONDecodeError,AttributeError): continue
+                if (isinstance(attestation,dict) and actual_model and attestation.get('reviewer_agent_id')==agents['review']
+                        and attestation.get('review_evidence_sha256')==proof_hash):
+                    if encrypted_binding:
+                        actual_attestation=(attestation.get('review_dispatch_binding')==encrypted_binding
+                                            and _dispatch_timestamp_ns(event.get('timestamp'))>=review_window[1])
+                    else:actual_attestation=True
+    if encrypted_binding and len(child_sessions)!=1:actual_identity=False
     if not actual_identity or not actual_attestation:
-        raise ValueError('Independent reviewer final must attest the exact review JSON SHA256; builder cannot self-sign pass')
+        raise ValueError('Independent reviewer final must attest the exact review JSON SHA256 and any encrypted dispatch binding; builder cannot self-sign pass')
     reviews=proof.get('chart_reviews',[])
+    if policy==BUILD_CHART_POLICY:
+        retained_reviews=proof.get('retained_result_reviews',[])
+        expected=charts.get('retained_results',{})
+        if (not isinstance(retained_reviews,list) or len(retained_reviews)!=len(expected)
+                or {str(r.get('figure_id')) for r in retained_reviews}!=set(expected)):
+            raise ValueError('Independently verify every original statistical result used to satisfy the figure mix')
+        for item in retained_reviews:
+            if (item.get('png_sha256')!=expected[str(item['figure_id'])] or item.get('is_statistical_result') is not True
+                    or item.get('monochrome') is not True or not _nonempty_text(item.get('evidence'))):
+                raise ValueError('Original workflow figures cannot substitute for retained monochrome results')
     if len(reviews)!=len(charts['figures']) or {str(r.get('figure_id')) for r in reviews}!=set(charts['figures']):
         raise ValueError('Independent review must cover every current chart')
     for r in reviews:

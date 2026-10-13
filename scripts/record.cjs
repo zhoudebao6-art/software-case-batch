@@ -12,7 +12,54 @@ function auditUiText(value){
 const sha = data => crypto.createHash('sha256').update(data).digest('hex');
 const load = p => JSON.parse(fs.readFileSync(p,'utf8').replace(/^\uFEFF/,''));
 const save = (p,v) => fs.writeFileSync(p,JSON.stringify(v,null,2),'utf8');
-const pause = ms => new Promise(resolve => setTimeout(resolve,ms));
+const pause = (ms,signal) => new Promise((resolve,reject)=>{
+  const finish=()=>{signal?.removeEventListener('abort',abort);resolve();};
+  const timer=setTimeout(finish,ms),abort=()=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);reject(Error('Recording runtime timeout exceeded before flow completion'));};
+  signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
+});
+const LEGACY_POLICY='legacy-fixed-v1',FLOW_POLICY='flow-complete-v1';
+function policyVersion(value=LEGACY_POLICY) {
+  if(![LEGACY_POLICY,FLOW_POLICY].includes(value))throw Error('Unknown recording policy');
+  return value;
+}
+function boundPolicy(plan,run) {
+  const frozen=policyVersion(run.recording_policy_version),declared=policyVersion(plan.recording_policy_version);
+  if(frozen!==declared)throw Error('Recording policy differs from frozen run');
+  return frozen;
+}
+function validateMeasuredDuration(proof,runPolicy) {
+  const version=policyVersion(proof.recording_policy_version);
+  if(runPolicy!==undefined&&version!==policyVersion(runPolicy))throw Error('Recording policy differs from frozen run');
+  const seconds=proof.duration;
+  if(!Number.isFinite(seconds)||(version===LEGACY_POLICY?(seconds<55||seconds>75):seconds<=60))throw Error('Video duration violates frozen recording policy');
+  if(version===FLOW_POLICY) {
+    const end=proof.final_result_completion,events=proof.events??[];
+    if(!Number.isFinite(proof.estimated_duration_seconds)||proof.estimated_duration_seconds<=60||
+       !Number.isFinite(proof.timeout_seconds)||proof.timeout_seconds<=proof.estimated_duration_seconds||seconds>proof.timeout_seconds+.12||
+       !Number.isInteger(proof.planned_step_count)||proof.planned_step_count<6||proof.completed_step_count!==proof.planned_step_count||events.length!==proof.completed_step_count||new Set(events.map(e=>e.action)).size<3||
+       !end?.completed||!end.selector||!Number.isFinite(end.observed_at)||!Number.isFinite(end.completed_at)||
+       end.observed_at<(events.at(-1)?.reading_completed??events.at(-1)?.completed??Infinity)||end.completed_at<end.observed_at||
+       end.completed_at>seconds+.12||end.completed_at<seconds-.12||
+       !Number.isFinite(end.reading_seconds)||end.reading_seconds<=0||end.completed_at-end.observed_at<end.reading_seconds-.12||
+       typeof end.reading_reason!=='string'||!end.reading_reason.trim())throw Error('Completed operations and final business result reading evidence required');
+    let last=0;
+    for(const event of events) {
+      if(!Number.isFinite(event.started)||!Number.isFinite(event.completed)||event.started<last||event.completed<event.started||event.completed>seconds+.12)throw Error('Operation timing falls outside continuous capture');
+      last=event.completed;
+      if(event.reading_seconds) {
+        if(!Number.isFinite(event.reading_seconds)||event.reading_seconds<=0||!Number.isFinite(event.reading_started)||!Number.isFinite(event.reading_completed)||event.reading_started<event.completed||event.reading_completed-event.reading_started<event.reading_seconds-.12||event.reading_completed>seconds+.12||typeof event.reading_reason!=='string'||!event.reading_reason.trim())throw Error('Meaningful observed operation reading evidence required');
+        last=event.reading_completed;
+      }
+    }
+  }
+  return seconds;
+}
+function reading(value,required=false) {
+  const seconds=value.reading_seconds??0;
+  if(!Number.isFinite(seconds)||seconds<0||(required&&seconds<=0)||
+     (seconds>0&&(typeof value.reading_reason!=='string'||!value.reading_reason.trim())))throw Error('Meaningful result reading duration and reason required');
+  return seconds;
+}
 
 function safeFile(root, relative) {
   if (path.isAbsolute(relative) || relative.includes(':') || relative.split(/[\\/]/).includes('..')) throw Error('Unsafe relative input');
@@ -29,18 +76,60 @@ function validatePlan(plan) {
   if(!localUrl(plan.url)) throw Error('Recording URL must be local');
   if(typeof plan.health_path!=='string'||!plan.health_path.startsWith('/')||plan.health_path.startsWith('//')||!plan.version) throw Error('Health path and frozen service version required');
   if(!plan.ready || !Array.isArray(plan.steps) || plan.steps.length<6) throw Error('Ready selector and at least six actions required');
-  const duration=plan.duration_seconds ?? 60;
-  if(duration<55 || duration>75) throw Error('Duration must be 55–75 seconds');
+  const flexible=policyVersion(plan.recording_policy_version)===FLOW_POLICY;
+  const duration=flexible?plan.estimated_duration_seconds:(plan.duration_seconds ?? 60);
+  if(flexible) {
+    if('duration_seconds' in plan||!Number.isFinite(duration)||duration<=60)throw Error('Flow recording needs a one-minute-plus estimate, not a fixed duration');
+    if(!Number.isFinite(plan.timeout_seconds)||plan.timeout_seconds<=duration)throw Error('Runtime timeout must be separate and exceed the estimate');
+    if(!plan.final_result?.selector)throw Error('Final business result selector required');
+    reading(plan.final_result,true);
+  } else if(duration<55 || duration>75) throw Error('Legacy duration must be 55–75 seconds');
   if(!Array.isArray(plan.input_files) || !plan.input_files.length || new Set(plan.input_files).size!==plan.input_files.length) throw Error('Unique immutable input files required');
   const actions=new Set(['click','fill','select','press','download']);let last=0;
   for(const step of plan.steps) {
-    if(!Number.isFinite(step.at) || step.at<last || step.at<0 || step.at>=duration-1 || step.at-last>15) throw Error('Invalid or idle action timeline');
+    if(flexible) {
+      if(step.at!==undefined&&(!Number.isFinite(step.at)||step.at<last||step.at<0))throw Error('Invalid estimated action timeline');
+      reading(step);
+    } else if(!Number.isFinite(step.at) || step.at<last || step.at<0 || step.at>=duration-1 || step.at-last>15) throw Error('Invalid or idle action timeline');
     if(!actions.has(step.action) || !step.selector || !step.expect) throw Error('Unsupported action or missing observed assertion');
     if(['fill','select','press'].includes(step.action) && typeof step.value!=='string') throw Error('Action value must be a string');
-    last=step.at;
+    if(step.at!==undefined)last=step.at;
   }
-  if(duration-last>10 || new Set(plan.steps.map(s=>s.action)).size<3) throw Error('Need varied operations through the final ten seconds');
+  if((!flexible&&duration-last>10) || new Set(plan.steps.map(s=>s.action)).size<3) throw Error('Need varied real operations; legacy timeline must reach the final ten seconds');
   return duration;
+}
+async function executeTimeline(plan,perform,observeFinal,{now,wait=pause}={}) {
+  const flexible=policyVersion(plan.recording_policy_version)===FLOW_POLICY;
+  let timer,aborted=false;const controller=new AbortController();
+  const cancel=new Promise((_,reject)=>{
+    if(flexible)timer=setTimeout(()=>{aborted=true;controller.abort();reject(Error('Recording runtime timeout exceeded before flow completion'));},Math.max(0,plan.timeout_seconds-now())*1000);
+  });
+  const check=()=>{if(aborted||(flexible&&now()>plan.timeout_seconds))throw Error('Recording runtime timeout exceeded before flow completion');};
+  const sleep=async seconds=>{check();await Promise.race([wait(seconds*1000,controller.signal),cancel]);check();};
+  try {
+    for(let i=0;i<plan.steps.length;i++) {
+      check();const step=plan.steps[i];
+      if(!flexible) {
+        const remaining=step.at-now();if(remaining>0)await sleep(remaining);
+        if(now()-step.at>5)throw Error('Action schedule overran by more than five seconds');
+      }
+      const event=await Promise.race([perform(step,i),cancel]);check();
+      if(flexible&&reading(step)>0) {
+        event.reading_started=now();event.reading_seconds=step.reading_seconds;event.reading_reason=step.reading_reason;
+        await sleep(step.reading_seconds);event.reading_completed=now();
+      }
+    }
+    if(!flexible) {
+      const remaining=(plan.duration_seconds??60)-now();if(remaining<0)throw Error('Actual actions exceed legacy recording duration');
+      await sleep(remaining);return {duration:plan.duration_seconds??60};
+    }
+    check();await Promise.race([observeFinal(plan.final_result),cancel]);check();
+    const observed_at=now();await sleep(plan.final_result.reading_seconds);
+    await Promise.race([observeFinal(plan.final_result),cancel]);check();
+    const completed_at=now();
+    if(completed_at<=60)throw Error('Complete meaningful flow is shorter than one-minute-plus; revise the flow, never pad the capture');
+    return {duration:completed_at,final_result_completion:{...plan.final_result,observed_at,completed_at,completed:true}};
+  } finally {if(timer)clearTimeout(timer);}
 }
 function command(exe,args) {
   const result=spawnSync(exe,args,{encoding:'utf8',windowsHide:true,maxBuffer:16*1024*1024});
@@ -96,7 +185,9 @@ async function recordPhase(workspace, planPath, phase='full',lease=null) {
   if(!['full','capture','evidence'].includes(phase)) throw Error('Unknown recording phase');
   workspace=fs.realpathSync(workspace);
   if(phase==='evidence') return finishRecording(workspace,lease);
-  const run=load(path.join(workspace,'.product-v2/run.json')), plan=load(planPath), duration=validatePlan(plan);
+  const run=load(path.join(workspace,'.product-v2/run.json')), plan=load(planPath), estimatedDuration=validatePlan(plan);
+  const recordingPolicy=boundPolicy(plan,run),planSha=sha(fs.readFileSync(planPath));
+  let duration=estimatedDuration,finalResultCompletion;
   if(run.workspace.toLowerCase()!==workspace.toLowerCase()) throw Error('Workspace identity differs');
   const final=run.video;
   if(fs.existsSync(final)) throw Error('Final video already exists; preserve it before making a new version');
@@ -170,11 +261,8 @@ async function recordPhase(workspace, planPath, phase='full',lease=null) {
       return screenshot;
     }
     await observe('start');
-    for(let i=0;i<plan.steps.length;i++) {
-      const step=plan.steps[i],remaining=step.at*1000-(performance.now()-captureStart);
-      if(remaining>0) await pause(remaining);
+    const flow=await executeTimeline(plan,async (step,i)=>{
       const started=(performance.now()-captureStart)/1000;
-      if(started-step.at>5) throw Error('Action schedule overran by more than five seconds');
       const locator=page.locator(step.selector);let downloadProof;
       await approach(locator);
       if(step.action==='click') await page.mouse.click(mouse.x,mouse.y,{delay:85});
@@ -190,11 +278,14 @@ async function recordPhase(workspace, planPath, phase='full',lease=null) {
       }
       const expected=page.locator(step.expect);await expected.waitFor({state:'visible',timeout:10000});
       if(step.text) await page.waitForFunction(({selector,text})=>document.querySelector(selector)?.innerText.includes(text),{selector:step.expect,text:step.text},{timeout:10000});
-      events.push({index:i,action:step.action,scheduled:step.at,started,completed:(performance.now()-captureStart)/1000,screenshot:await observe('step-'+String(i+1).padStart(2,'0')),download:downloadProof});
-    }
-    const tail=duration*1000-(performance.now()-captureStart);
-    if(tail<0) throw Error('Actual actions exceed recording duration');
-    await pause(tail);capturedEndUtc=new Date().toISOString();await observe('end');
+      const event={index:i,action:step.action,scheduled:step.at,started,completed:(performance.now()-captureStart)/1000,screenshot:await observe('step-'+String(i+1).padStart(2,'0')),download:downloadProof};
+      events.push(event);return event;
+    },async result=>{
+      await page.locator(result.selector).waitFor({state:'visible',timeout:10000});
+      if(result.text)await page.waitForFunction(({selector,text})=>document.querySelector(selector)?.innerText.includes(text),{selector:result.selector,text:result.text},{timeout:10000});
+    },{now:()=>(performance.now()-captureStart)/1000});
+    duration=flow.duration;finalResultCompletion=flow.final_result_completion;
+    capturedEndUtc=new Date().toISOString();await observe('end');
     const timing=await page.evaluate(()=>{const v=window.__scbTiming;delete window.__scbTiming;return v;});
     save(path.join(dir,'browser-timing.json'),{note:'Main thread animation timing supplements encoded source timestamps; it does not measure every captured compositor frame.',...timing});
     // A short recorded tail prevents requesting frames beyond the source end.
@@ -206,11 +297,14 @@ async function recordPhase(workspace, planPath, phase='full',lease=null) {
     if(context) await context.close().catch(()=>{});
     if(browser) await browser.close().catch(()=>{});
     if(video&&!rawPath)rawPath=await video.path().catch(()=>undefined);
-    save(path.join(dir,'observed.json'),{events,texts,errors,input_files:inputs,prelude_seconds:prelude,raw_video:rawPath,browser_temp:browserTemp,launch_admission:launchAdmission,captured_start_utc:capturedStartUtc,captured_end_utc:capturedEndUtc});
+    save(path.join(dir,'observed.json'),{events,texts,errors,input_files:inputs,prelude_seconds:prelude,raw_video:rawPath,browser_temp:browserTemp,launch_admission:launchAdmission,captured_start_utc:capturedStartUtc,captured_end_utc:capturedEndUtc,
+      recording_policy_version:recordingPolicy,plan_sha256:planSha,estimated_duration_seconds:estimatedDuration,timeout_seconds:plan.timeout_seconds,final_result_completion:finalResultCompletion});
   }
   if(errors.length) throw Error('Browser errors: '+errors.join('; ').slice(0,1600));
   for(const [rel,hash] of Object.entries(inputs)) if(sha(fs.readFileSync(safeFile(workspace,rel)))!==hash) throw Error('Application input changed: '+rel);
-  const capture={schema_version:1,status:'captured',passed:false,workspace,run_id:run.run_id,final,dir,rawPath,raw_sha256:sha(fs.readFileSync(rawPath)),prelude,duration,inputs,identity,events,texts,errors,downloads,browser_temp:browserTemp,launch_admission:launchAdmission,captured_start_utc:capturedStartUtc,captured_end_utc:capturedEndUtc};
+  if(sha(fs.readFileSync(planPath))!==planSha)throw Error('Recording plan changed during capture');
+  const capture={schema_version:1,status:'captured',passed:false,workspace,run_id:run.run_id,final,dir,rawPath,raw_sha256:sha(fs.readFileSync(rawPath)),prelude,duration,inputs,identity,events,texts,errors,downloads,browser_temp:browserTemp,launch_admission:launchAdmission,captured_start_utc:capturedStartUtc,captured_end_utc:capturedEndUtc,
+    recording_policy_version:recordingPolicy,plan_sha256:planSha,estimated_duration_seconds:estimatedDuration,timeout_seconds:plan.timeout_seconds,planned_step_count:plan.steps.length,completed_step_count:events.length,final_result_completion:finalResultCompletion};
   save(path.join(dir,'capture.json'),capture);
   save(path.join(workspace,'.product-v2/capture-pending.json'),{path:path.join(dir,'capture.json'),sha256:sha(fs.readFileSync(path.join(dir,'capture.json')))});
   if(phase==='capture') return {status:'captured',visual_review_required:true,evidence_pending:true,capture:path.join(dir,'capture.json'),raw_video:rawPath,operations:events.length};
@@ -227,23 +321,40 @@ function finishRecording(workspace,lease=null) {
   if(c.status!=='captured'||c.workspace!==workspace||c.run_id!==run.run_id||final!==run.video||c.errors.length) throw Error('Capture belongs to a different or failed run');
   if(sha(fs.readFileSync(safeFile(workspace,path.relative(workspace,rawPath))))!==c.raw_sha256) throw Error('Original capture changed');
   for(const [rel,hash] of Object.entries(inputs)) if(sha(fs.readFileSync(safeFile(workspace,rel)))!==hash) throw Error('Application input changed: '+rel);
+  validateMeasuredDuration(c,policyVersion(run.recording_policy_version));
   const ffmpeg=process.env.SCB_PRO_FFMPEG,ffprobe=process.env.SCB_PRO_FFPROBE;
   if(!ffmpeg||!ffprobe||!process.env.SCB_PRO_PYTHON) throw Error('Load Enter-Environment.ps1 first');
   const existingReceipt=path.join(workspace,'.product-v2/recording.json');
   if(fs.existsSync(final)) {
     const prior=fs.existsSync(existingReceipt)?load(existingReceipt):{};
     if(prior.capture_receipt_sha256!==pending.sha256||prior.sha256!==sha(fs.readFileSync(final))) throw Error('Unrelated final video exists');
+    // A completed technical timeline is reusable only when its receipt, video
+    // and every frame still bind the same capture. Validation never approves
+    // visuals; the current independent review remains a separate gate.
+    const controlled=path.join(workspace,'.product-v2/controlled-video.json');
+    if(fs.existsSync(controlled)) {
+      const priorEvidence=load(controlled);
+      if(priorEvidence.timeline&&fs.existsSync(priorEvidence.timeline)&&sha(fs.readFileSync(priorEvidence.timeline))===priorEvidence.sha256) {
+        try {
+          validateMeasuredDuration(prior,policyVersion(run.recording_policy_version));
+          if(prior.width!==1920||prior.height!==1080)throw Error('Existing recording geometry differs');
+          JSON.parse(command(process.env.SCB_PRO_PYTHON,[path.join(__dirname,'media_evidence.py'),'validate','--workspace',workspace,'--video',final,'--recording',existingReceipt,'--timeline',priorEvidence.timeline]));
+          return {video:final,duration:prior.duration,operations:prior.events.length,frames:prior.frames,controlled_video_evidence:priorEvidence,reused_existing_evidence:true,visual_review_required:true};
+        } catch { /* Changed/failed technical evidence gets a new directory. */ }
+      }
+    }
   }
   const staged=path.join(dir,'final.mp4');
   if(!fs.existsSync(final)) command(ffmpeg,['-y','-hide_banner','-loglevel','error','-threads','2','-filter_threads','2','-ss',String(prelude),'-i',rawPath,'-t',String(duration),'-an','-c:v','libx264','-threads','2','-preset','fast','-crf','20','-pix_fmt','yuv420p','-movflags','+faststart',staged]);
   const encoded=fs.existsSync(final)?final:staged;
   const metadata=JSON.parse(command(ffprobe,['-v','error','-show_entries','format=duration:stream=width,height,codec_name','-of','json',encoded]));
   const seconds=Number(metadata.format.duration),stream=metadata.streams[0];
-  if(seconds<55||seconds>75||stream.width!==1920||stream.height!==1080) throw Error('Video geometry/duration check failed');
-  command(ffmpeg,['-v','error','-threads','2','-i',encoded,'-f','null','-']);
+  validateMeasuredDuration({...c,duration:seconds},policyVersion(run.recording_policy_version));
+  if(stream.width!==1920||stream.height!==1080) throw Error('Video geometry check failed');
   fs.mkdirSync(path.dirname(final),{recursive:true});if(!fs.existsSync(final)) fs.copyFileSync(staged,final,fs.constants.COPYFILE_EXCL);
   const evidenceDir=path.join(dir,'controlled-video-'+crypto.randomUUID()),frames=path.join(evidenceDir,'frames');
-  const report={passed:true,duration:seconds,width:1920,height:1080,sha256:sha(fs.readFileSync(final)),video:final,raw_video:rawPath,prelude_seconds:prelude,input_files:inputs,service_identity:identity,events,texts,frames,visual_review_required:true,capture_receipt_sha256:pending.sha256,encoding_threads:2};
+  const report={passed:true,duration:seconds,width:1920,height:1080,sha256:sha(fs.readFileSync(final)),video:final,raw_video:rawPath,prelude_seconds:prelude,input_files:inputs,service_identity:identity,events,texts,frames,visual_review_required:true,capture_receipt_sha256:pending.sha256,encoding_threads:2,
+    recording_policy_version:policyVersion(c.recording_policy_version),plan_sha256:c.plan_sha256,estimated_duration_seconds:c.estimated_duration_seconds,timeout_seconds:c.timeout_seconds,planned_step_count:c.planned_step_count,completed_step_count:c.completed_step_count,final_result_completion:c.final_result_completion};
   save(path.join(workspace,'.product-v2/recording.json'),report);
   // Fixed evidence wrapper produces the complete sampled timeline, mapped
   // contact sheets and original interaction frames. It never signs a review.
@@ -271,4 +382,4 @@ if(require.main===module) {
     }catch(error){console.error(String(error));process.exitCode=2;}
   }
 }
-module.exports={validatePlan,record,localUrl,auditUiText,finishRecording,leaseArgs,isolatedBrowserOptions,batchBinding,validateBatchPhase};
+module.exports={validatePlan,record,localUrl,auditUiText,finishRecording,leaseArgs,isolatedBrowserOptions,batchBinding,validateBatchPhase,executeTimeline,boundPolicy,validateMeasuredDuration};

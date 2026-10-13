@@ -21,7 +21,7 @@ $env:SCB_PRO_NODE = $TaskSettings.node
 $env:SCB_PRO_PLAYWRIGHT = $TaskSettings.playwright_module
 $env:SCB_PRO_FFMPEG = $TaskSettings.ffmpeg
 $env:SCB_PRO_FFPROBE = $TaskSettings.ffprobe
-$env:SCB_PRO_OUTPUT_ROOT = if ($TaskSettings.output_root) { [string]$TaskSettings.output_root } else { 'F:\研发图表' }
+$env:SCB_PRO_OUTPUT_ROOT = if ($TaskSettings.output_root) { [string]$TaskSettings.output_root } else { 'D:\研发图表' }
 if (-not [IO.Path]::IsPathRooted($env:SCB_PRO_OUTPUT_ROOT)) { throw 'output_root must be an explicit absolute directory; no fallback delivery location is allowed.' }
 $env:SCB_OUTPUT_ROOT = $env:SCB_PRO_OUTPUT_ROOT
 foreach ($TaskDirectory in @($env:TEMP,$env:MPLCONFIGDIR,$env:NODE_COMPILE_CACHE)) { New-Item -ItemType Directory -Path $TaskDirectory -Force | Out-Null }

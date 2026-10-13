@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {validatePlan,localUrl,auditUiText,record,leaseArgs,isolatedBrowserOptions,validateBatchPhase,finishRecording}=require('../scripts/record.cjs');
+const {validatePlan,localUrl,auditUiText,record,leaseArgs,isolatedBrowserOptions,validateBatchPhase,finishRecording,executeTimeline,boundPolicy,validateMeasuredDuration}=require('../scripts/record.cjs');
 function valid(){return {url:'http://127.0.0.1:8123',ready:'#ready',health_path:'/api/health',version:'v1',input_files:['app.py'],steps:[
   {at:1,action:'fill',value:'x',selector:'#search',expect:'#search'},
   {at:10,action:'click',selector:'#query',expect:'#table'},
@@ -65,4 +65,75 @@ test('registered workspace rejects omitted leases before every media entry and p
   assert.throws(()=>validateBatchPhase(work,'evidence',{root:pool,batchId:'other',caseId:'case',token:'token',ownerPid:101}),/frozen workspace binding/);
   const legacy=path.join(root,'legacy');fs.mkdirSync(legacy);assert.equal(validateBatchPhase(legacy,'full',null),null);
  }finally{assert.equal(path.dirname(fs.realpathSync(root)),fs.realpathSync(os.tmpdir()));fs.rmSync(root,{recursive:true,force:true});}
+});
+
+function flexible(){return {...valid(),recording_policy_version:'flow-complete-v1',estimated_duration_seconds:82,timeout_seconds:180,
+ final_result:{selector:'#result',reading_seconds:7,reading_reason:'阅读本次提交的处理结果与摘要'}};}
+test('new policy accepts different estimates above75 and has no fixed duration target',()=>{
+ for(const seconds of [69,89,130])assert.equal(validatePlan({...flexible(),estimated_duration_seconds:seconds}),seconds);
+ assert.throws(()=>validatePlan({...flexible(),duration_seconds:60}),/not a fixed duration/);
+ assert.throws(()=>validatePlan({...flexible(),timeout_seconds:82}),/separate/);
+ const p=flexible();p.steps.forEach(s=>delete s.at);assert.equal(validatePlan(p),82);
+});
+test('policy selection is frozen and unknown or mismatched plans reject',()=>{
+ assert.equal(boundPolicy(valid(),{}),'legacy-fixed-v1');
+ assert.throws(()=>boundPolicy(flexible(),{}),/frozen run/);
+ assert.throws(()=>boundPolicy(valid(),{recording_policy_version:'flow-complete-v1'}),/frozen run/);
+ assert.throws(()=>validatePlan({...flexible(),recording_policy_version:'surprise'}),/Unknown/);
+});
+test('reading requires observed result, positive final dwell and a meaningful purpose',()=>{
+ const p=flexible();delete p.final_result.selector;assert.throws(()=>validatePlan(p),/selector/);
+ for(const final_result of [{selector:'#result',reading_seconds:0},{selector:'#result',reading_seconds:5,reading_reason:''}])assert.throws(()=>validatePlan({...flexible(),final_result}),/Meaningful/);
+ const q=flexible();q.steps[0].reading_seconds=4;assert.throws(()=>validatePlan(q),/Meaningful/);
+});
+test('flow completes naturally after actual operations and result reading with no scheduling waits or padding',async()=>{
+ const plan=flexible(),waits=[],events=[];let seconds=0,views=0;
+ const result=await executeTimeline(plan,async (step,index)=>{const event={action:step.action,started:seconds};seconds+=20;event.completed=seconds;events.push(event);return event;},async()=>{views++;},{now:()=>seconds,wait:async ms=>{waits.push(ms);seconds+=ms/1000;}});
+ assert.equal(result.duration,127);assert.equal(views,2);assert.deepEqual(waits,[7000]);
+ assert.equal(validateMeasuredDuration({...result,events,recording_policy_version:plan.recording_policy_version,estimated_duration_seconds:82,timeout_seconds:180,planned_step_count:6,completed_step_count:6}),127);
+});
+test('operation reading is recorded separately from business completion and final reading',async()=>{
+ const plan=flexible();plan.steps[0].reading_seconds=3;plan.steps[0].reading_reason='检查筛选范围';let seconds=0;const events=[];
+ const result=await executeTimeline(plan,async step=>{const e={action:step.action,started:seconds};seconds+=10;e.completed=seconds;events.push(e);return e;},async()=>{}, {now:()=>seconds,wait:async ms=>{seconds+=ms/1000;}});
+ assert.equal(result.duration,70);assert.equal(events[0].reading_started,10);assert.equal(events[0].reading_completed,13);assert.equal(result.final_result_completion.observed_at,63);
+});
+test('too-short meaningful flow fails without adding an idle tail',async()=>{
+ let seconds=0;const waits=[];
+ await assert.rejects(executeTimeline(flexible(),async step=>{seconds+=2;return {};},async()=>{}, {now:()=>seconds,wait:async ms=>{waits.push(ms);seconds+=ms/1000;}}),/never pad/);
+ assert.deepEqual(waits,[7000]);
+});
+test('runtime timeout interrupts a hung action instead of treating timeout as target duration',async()=>{
+ await assert.rejects(executeTimeline({...flexible(),timeout_seconds:.02},()=>new Promise(()=>{}),async()=>{}, {now:()=>0}),/runtime timeout/);
+});
+test('legacy timeline still uses its frozen duration and never silently adopts flow policy',async()=>{
+ let seconds=0;const result=await executeTimeline(valid(),async()=>{seconds+=1;return {};},async()=>{throw Error('legacy must not use new final result');},{now:()=>seconds,wait:async ms=>{seconds+=ms/1000;}});
+ assert.equal(result.duration,60);assert.equal(seconds,60);assert.equal(validateMeasuredDuration({duration:60}),60);
+ assert.throws(()=>validateMeasuredDuration({duration:85}),/frozen recording policy/);
+});
+test('same-capture retry validates existing evidence and preserves receipt bytes without encoding or decoding again (mock media validator)',()=>{
+ const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto'),vm=require('node:vm');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'scb-reuse-test-'));fs.mkdirSync(path.join(root,'.product-v2'));
+ const hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'),save=(p,v)=>fs.writeFileSync(p,JSON.stringify(v));
+ const script=path.resolve(__dirname,'../scripts/record.cjs'),commands=[];
+ const mediaRequire=name=>name==='node:child_process'?{spawnSync:(exe,args)=>{commands.push(args);assert.equal(path.basename(args[0]),'media_evidence.py');assert.equal(args[1],'validate');return {status:0,stdout:'{}'};}}:require(name);
+ const sandbox={require:mediaRequire,module:{exports:{}},__dirname:path.dirname(script),process,console,setTimeout,clearTimeout,AbortController};
+ vm.runInNewContext(fs.readFileSync(script,'utf8'),sandbox,{filename:script});
+ const previous={SCB_PRO_PYTHON:process.env.SCB_PRO_PYTHON,SCB_PRO_FFMPEG:process.env.SCB_PRO_FFMPEG,SCB_PRO_FFPROBE:process.env.SCB_PRO_FFPROBE};
+ try{
+  process.env.SCB_PRO_PYTHON='fixture-validator';process.env.SCB_PRO_FFMPEG='fixture-encoder';process.env.SCB_PRO_FFPROBE='fixture-probe';
+  const raw=path.join(root,'raw.webm'),final=path.join(root,'final.mp4'),input=path.join(root,'app.js');
+  fs.writeFileSync(raw,'fixture raw');fs.writeFileSync(final,'fixture final; not a decoding claim');fs.writeFileSync(input,'frozen input');
+  const run={workspace:root,run_id:'fixture',video:final};save(path.join(root,'.product-v2/run.json'),run);
+  const capture=path.join(root,'capture.json');save(capture,{status:'captured',workspace:root,run_id:'fixture',final,dir:root,rawPath:raw,raw_sha256:hash(raw),errors:[],inputs:{'app.js':hash(input)},duration:60});
+  save(path.join(root,'.product-v2/capture-pending.json'),{path:capture,sha256:hash(capture)});
+  const receipt=path.join(root,'.product-v2/recording.json');save(receipt,{passed:true,capture_receipt_sha256:hash(capture),sha256:hash(final),duration:60,width:1920,height:1080,events:[{action:'click',started:1,completed:2}],frames:path.join(root,'frames')});
+  const timeline=path.join(root,'timeline.json');save(timeline,{fixture:true});save(path.join(root,'.product-v2/controlled-video.json'),{timeline,sha256:hash(timeline)});
+  const before=fs.readFileSync(receipt),result=sandbox.module.exports.finishRecording(root);
+  assert.equal(result.reused_existing_evidence,true);assert.equal(result.visual_review_required,true);assert.equal(commands.length,1);
+  assert.deepEqual(fs.readFileSync(receipt),before);assert.equal(commands[0][commands[0].indexOf('--recording')+1],receipt);
+  fs.writeFileSync(raw,'changed raw');assert.throws(()=>sandbox.module.exports.finishRecording(root),/Original capture changed/);assert.equal(commands.length,1);
+ }finally{
+  for(const [key,value] of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}
+  assert.equal(path.dirname(fs.realpathSync(root)),fs.realpathSync(os.tmpdir()));fs.rmSync(root,{recursive:true,force:true});
+ }
 });

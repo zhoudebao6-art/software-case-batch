@@ -1,6 +1,6 @@
 interface:
   display_name: "软通完整交付"
-  short_description: "完整中文业务系统、充分数据、一分钟真实操作视频和重要CSV交付"
-  default_prompt: "使用 $software-case-batch-pro，对我指定案件按全部通用要求以gpt-6.1-sol/high建设、另派ultra返修和独立ultra验收；默认F:\\研发图表，明确目录优先，保留冻结历史；本机原software-case-batch兼容入口执行同一完整流程。"
+  short_description: "完整中文业务系统、充分数据、一分多钟真实操作视频和重要CSV交付"
+  default_prompt: "使用 $software-case-batch-pro，对我指定案件按全部通用要求以gpt-6.1-sol/high建设、另派ultra返修和独立ultra验收；默认D:\\研发图表，明确目录优先，保留冻结历史；本机原software-case-batch兼容入口执行同一完整流程。"
 policy:
   allow_implicit_invocation: false

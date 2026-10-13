@@ -886,13 +886,13 @@
           "original": "- **每案至少两张有独立信息价值的图。图数与公式数不绑定。** 一条公式可不单独画图、可支撑多图，多条公式可合成一图；没有显式公式也要从有依据的业务过程和计算结果选出至少两图。公式仍须逐项实现/核验，不能为少画图漏实现。不要把子图、换图型的同一内容或同一PNG副本重复计数。"
         }
       ],
-      "decision": "preserved",
+      "decision": "partial-explicit-override",
       "current_evidence": {
         "guidance": "references/quality.md",
         "entry": "scripts/contracts.py",
-        "status": "2-6 count gate plus semantic review"
+        "status": "U12 analytical-v2 coverage and build-time geometry"
       },
-      "gap_and_fix": "有独立价值2–6专业黑白数据图、图数不绑定公式，原图不计，禁止0/1/卡片/真值表换皮",
+      "gap_and_fix": "新案通常4–6张有效分析图且可更多；1–2张黑白结果图、专业分析多数。保留原图不重复无价值图；原流程图不计，符合条件的原统计结果可计；建设时绑定当前PNG与实际Word宽度避让及目视，独立逐图验收不省略",
       "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
     },
     {
@@ -1123,9 +1123,9 @@
       "current_evidence": {
         "guidance": "references/recording.md",
         "entry": "scripts/record.cjs",
-        "status": "U2 55-75 actual recording"
+        "status": "U12 versioned flow-complete recording"
       },
-      "gap_and_fix": "改约60秒完整平顺真实使用；无短版，非静态拼图/循环/变速/假响应/改业务DOM",
+      "gap_and_fix": "新案一分多钟完整平顺真实使用，按有效操作与必要阅读自然结束；历史55–75秒合同不改；无短版、拼图、循环、变速、假响应或改业务DOM",
       "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
     },
     {
@@ -1467,7 +1467,7 @@
         "entry": "scripts/audit_inheritance.py",
         "status": "scope/test evidence disclosure"
       },
-      "gap_and_fix": "隔离测试不叫实际case端到端；本次不覆盖原skill/上传/自动知识维护，发布另需明确授权",
+      "gap_and_fix": "隔离测试不称实际案件端到端；安装与GitHub发布须用户授权，授权后核独立验收、公开文件边界与远端结果；不后台维护无关案件",
       "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
     },
     {
@@ -1484,9 +1484,9 @@
       "current_evidence": {
         "guidance": "references/tools.md",
         "entry": "scripts/proflow.py",
-        "status": "U9 configured F root plus explicit output precedence"
+        "status": "U12 D daily root and verified F weekly archive"
       },
-      "gap_and_fix": "原D成果根仅冻结历史；新版默认F:\\研发图表按批次/案件集中，F同卷.staging候选，明确用户工作区/其他路径优先且执行/交付目录隔离，不静默回D/桌面；D:\\codex+缓存不变，旧成果不自动搬移",
+      "gap_and_fix": "新案默认D:\\研发图表按批次/案件集中、D同卷.staging；明确用户其他路径优先。已完成批次周归档F:\\研发图表先复制核hash和记录定位，再清理未变化源。旧冻结案不追改，D:\\codex+缓存不变",
       "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
     }
   ],
@@ -1499,7 +1499,10 @@
     "U6",
     "U7",
     "U8",
-    "U9"
+    "U9",
+    "U10",
+    "U11",
+    "U12"
   ],
   "independent_review": "Only a separately recorded actual ultra proof establishes acceptance of this frozen version."
 }

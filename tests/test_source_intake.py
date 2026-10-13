@@ -49,6 +49,11 @@ class SourceIntakeTests(unittest.TestCase):
         self.original_body += ''.join(drawing(f'old{n}')+p(f'图{n} 原流程图') for n in (1, 2, 3))
         self.source_package(self.original_body, self.old_media, self.old_rels)
         self.run = prepare(self.work, self.output, '设备联动诊断', self.source)
+        # Preserve r9 numbering/source-protection fixtures independently of r10 mix checks.
+        self.run['chart_policy']='analytical-v1'
+        self.run.pop('recording_policy_version',None)
+        self.run.pop('data_policy_version',None)
+        write_json(self.work/'.product-v2/run.json',self.run)
         self.word = self.output/self.source.name
 
     def tearDown(self):

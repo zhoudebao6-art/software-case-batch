@@ -1,6 +1,6 @@
 # 新批次并发录制
 
-本次用户明确要求多开录制，故新版新登记批次可使用最多4路独立Chromium进程。历史manifest、原技能、原目录、冻结规范与r4证据不改。建设与审核模型、55–75秒时长、1920×1080、全部操作、画质及5fps完整证据保持原要求。此能力只提供确定性准入与真实浏览器隔离，父会话仍负责启动进程、等待完成、finally释放与独立视觉验收。
+本次用户明确要求多开录制，故新版新登记批次可使用最多4路独立Chromium进程。历史manifest、原技能、原目录、冻结规范与r4证据不改。建设与审核模型、1920×1080、全部操作、画质及5fps完整证据保持原要求。新案按 [一分多钟完整真实操作](recording.md) 冻结flow-complete-v1，完成业务流程和结果阅读后自然结束；实际时长大于60秒，不因正常超过75秒重录，超时保护独立。未声明新策略的历史冻结run仅保留原55–75秒口径。此能力只提供确定性准入与真实浏览器隔离，父会话仍负责启动进程、等待完成、finally释放与独立视觉验收。
 
 CLI `register` 默认 `--recording-limit auto`，也可显式设2/3/4。auto登记时按physical/commit较小余量和逻辑CPU数，冻结1–4路容量：首路4096MB、额外每路2048MB，每路4逻辑处理器并保留2个。低于首路门槛仍登记上限1，实际不足时等待；CPU忙属于短期等待，不通过热改manifest解除。登记保存实际资源样本，模型配置不改变。旧程序化 `register(..., recording_limit=None)` 仅保留旧schema1兼容语义；旧manifest读取时保持原2路和全部worker计数。新CLI及新父调用使用schema2。
 
@@ -24,4 +24,4 @@ CLI `register` 默认 `--recording-limit auto`，也可显式设2/3/4。auto登�
 
 `recover-owner`对active保留原token、stage、runtime及容量，追加原/新owner历史并转交新owner；只waiting可转orphaned。父退出不代表媒体退出，原active record/evidence持续阻止互斥新阶段。新owner可等待本次媒体自然结束，再`release-slot`；释放重新核Job无成员和原runtime确已退出，必要只清理匹配该已退出runtime PID的遗留本案stage lock。旧无Job媒体active恢复后须显式`release-slot --value 本案工作区内本次清退绑定.json`；绑定含workspace、batch_id、token及cleanup/registry两项实际path/sha256，分别指向当前`.product-v2/cleanup.json`与`processes.json`。cleanup必须在本次owner恢复后重新由原process_guard核完整专属登记树收尾，控制器再核所有登记PID/创建时间/命令行及子孙的新census，拒复用其他token/旧cleanup/改hash。缺真实归属证据保持active/cleanup_pending，由负责人补核专属树，不杀无归属进程、不伪写释放；不能仅凭录制receipt推断未知孤儿已退出。历史manifest、收据和过程证据字节保持不变。
 
-每组capture均完成并释放后才运行单槽evidence；等待证据会阻止新capture，任何live capture与编码/解码/抽帧互斥。FFmpeg仍2线程、CRF20、完整decode及5fps/全部交互帧，不能以并发优化减少检查。保存每路资源样本、等待耗时、rAF诊断和全部源帧证据；输出25fps或脚本测试通过不代表录制视觉流畅，真实1/2/3/4路同输入基准与独立只读ultra检查由父另行完成。
+每组capture均完成并释放后才运行单槽evidence；等待证据会阻止新capture，任何live capture与编码/解码/抽帧互斥。FFmpeg仍2线程、CRF20，一次完整源帧decode同时完成技术检查、5fps及全部交互原帧，再以短尾段取得真正末帧，不能以并发优化减少检查。保存每路资源样本、等待耗时、rAF诊断和全部时间线/交互原帧证据；输出25fps或脚本测试通过不代表录制视觉流畅，真实1/2/3/4路同输入基准与独立只读ultra检查由父另行完成。

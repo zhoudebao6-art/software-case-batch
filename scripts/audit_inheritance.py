@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 import shutil
 from common import digest,read_json,write_json
@@ -70,7 +71,7 @@ DECISIONS=[
  ('data-scale-clean','rules/material-sourcing.md','运行导入/生成','partial-explicit-override','system-data.md','proflow.py','U6 important CSV allowlist clean','加足领域规则数据，重要CSV白名单仅整列删生成/来源元数据，其他单元格顺序精度不改'),
  ('ui-copy','rules/web-visible-copy.md','全部网页及视频画面','preserved','system-data.md','package_policy.py','actual browser texts and semantic scan','保留原禁词含专利/权利要求及英文同义，扩大用户中文禁词，canvas/SVG图人工补录方法'),
  ('ui-audit','rules/web-visible-copy.md','真实浏览器逐路由','preserved','recording.md','record.cjs','observed DOM screenshot pairing','全部关键真实状态文字同截图hash，不源代码/预期替代，独立看真实视频/截图'),
- ('chart-value','rules/chart-quality.md','图数与公式数不绑定','preserved','quality.md','contracts.py','2-6 count gate plus semantic review','有独立价值2–6专业黑白数据图、图数不绑定公式，原图不计，禁止0/1/卡片/真值表换皮'),
+ ('chart-value', 'rules/chart-quality.md', '图数与公式数不绑定', 'partial-explicit-override', 'quality.md', 'contracts.py', 'U12 analytical-v2 coverage and build-time geometry', '新案通常4–6张有效分析图且可更多；1–2张黑白结果图、专业分析多数。保留原图不重复无价值图；原流程图不计，符合条件的原统计结果可计；建设时绑定当前PNG与实际Word宽度避让及目视，独立逐图验收不省略'),
  ('chart-scope','rules/chart-professional.md','既有批次','conditional-preserved','inheritance.md','audit_inheritance.py','frozen scope source and parent decisions','冻结professional/legend scope json和历史批ID，不自动返工其他历史；当前新案标准全保留'),
  ('chart-full-range','rules/chart-acceptance.md','数据充分，曲线完整','preserved','quality.md','contracts.py','actual independent normal-size review','完整代表周期/边界，真缺测断点、离散阶梯、真重合不偏移，不少点任意平滑造波动'),
  ('chart-legend','rules/chart-legend.md','每幅图、每个子图','preserved','quality.md','contracts.py','actual all PNG/Word five checks','每系列名称/数据/对象/工况/线型/点形/灰阶/纹理一致，真实绘图对象图例，错配必须返修'),
@@ -82,7 +83,7 @@ DECISIONS=[
  ('word-all-pages','rules/requirements.md','每一页打开检查','preserved','quality.md','contracts.py','parent final controlled render plus actual all-page review','最终修改后全页渲染逐页看；未变且真实已阅页hash合法继承，首次不能抽样'),
  ('chart-five','rules/chart-quality.md','meaning/data/legibility/layout/explanation','preserved','quality.md','contracts.py','strict actual review proof','各图五项具体证据，任一失败不pass；PNG/CSV/解释/Word上下文，缺图像能力不签'),
  ('rejected-versions','rules/chart-quality.md','用户明确否定','preserved','quality.md','contracts.py','frozen rejected hash gate plus review','用户否定版本/规则变更旧pass失效，冻结拒交hash，用户推进Word不等视觉认可'),
- ('record-minute','rules/requirements.md','每案约10秒','partial-explicit-override','recording.md','record.cjs','U2 55-75 actual recording','改约60秒完整平顺真实使用；无短版，非静态拼图/循环/变速/假响应/改业务DOM'),
+ ('record-minute', 'rules/requirements.md', '每案约10秒', 'partial-explicit-override', 'recording.md', 'record.cjs', 'U12 versioned flow-complete recording', '新案一分多钟完整平顺真实使用，按有效操作与必要阅读自然结束；历史55–75秒合同不改；无短版、拼图、循环、变速、假响应或改业务DOM'),
  ('record-health-inputs','docs/capture-plan.md','application_files列出','preserved','recording.md','record.cjs','current listener and immutable inputs gate','启动固定version/health/OS身份、实际依赖代码和页面业务数据/可见图hash，前后不变'),
  ('record-transition','docs/capture-plan.md','观察真实导航期间','preserved','recording.md','record.cjs','builder actual transition and reviewer','保留旧业务内容至新页ready，ready非空壳，截图及视频真实不改DOM隐藏加载'),
  ('record-controlled','rules/requirements.md','完整时间线每 0.2 秒','preserved','recording.md','media_evidence.py','full decode/5fps/contact/frame hash gate','修原新版10秒抽一帧遗漏；完整5fps映射+首尾/每交互前后0.2s原帧，正常阅读静止不直接失败'),
@@ -100,8 +101,8 @@ DECISIONS=[
  ('cleanup-safe','rules/worker-environment.md','持有同一Windows进程句柄','preserved','processes.md','process_guard.py','exact same-handle termination','PID创建/完整command/树/监听健康；不通用名杀，Get-Content/rg路径文本不算后台，失败保留pending'),
  ('cache-policy','AGENTS.md','TEMP/TMP/TMPDIR','preserved','execution.md','common.py','Enter-Environment and parent cache audit','仅进程D盘TEMP/cache，结束查本次C盘增量；备份核验才删确认缓存，保留链接/依赖/凭据/DB/session'),
  ('migration-authority','skill/SKILL.md','仅用户明确授权更替执行','conditional-preserved','execution.md','batch_control.py','parent authorized copy/hash route','迁移保全旧树/状态/调用/数据库，正常继承新副本逐文件核验，不rename猜ACL；原自动migrate未移植'),
- ('publication-boundary','docs/发布核验.md','没有启动、重启','conditional-preserved','inheritance.md','audit_inheritance.py','scope/test evidence disclosure','隔离测试不叫实际case端到端；本次不覆盖原skill/上传/自动知识维护，发布另需明确授权'),
- ('default-output-root','AGENTS.md','成果沿用用户指定的','partial-explicit-override','tools.md','proflow.py','U9 configured F root plus explicit output precedence','原D成果根仅冻结历史；新版默认F:\\研发图表按批次/案件集中，F同卷.staging候选，明确用户工作区/其他路径优先且执行/交付目录隔离，不静默回D/桌面；D:\\codex+缓存不变，旧成果不自动搬移'),
+ ('publication-boundary', 'docs/发布核验.md', '没有启动、重启', 'conditional-preserved', 'inheritance.md', 'audit_inheritance.py', 'scope/test evidence disclosure', '隔离测试不称实际案件端到端；安装与GitHub发布须用户授权，授权后核独立验收、公开文件边界与远端结果；不后台维护无关案件'),
+ ('default-output-root', 'AGENTS.md', '成果沿用用户指定的', 'partial-explicit-override', 'tools.md', 'proflow.py', 'U12 D daily root and verified F weekly archive', '新案默认D:\\研发图表按批次/案件集中、D同卷.staging；明确用户其他路径优先。已完成批次周归档F:\\研发图表先复制核hash和记录定位，再清理未变化源。旧冻结案不追改，D:\\codex+缓存不变'),
 ]
 
 def route(relative,line):
@@ -134,6 +135,10 @@ def disposition(relative,line):
       ('U9-general-requirements-and-output-root',('D:\\研发图表','D:/研发图表','output_root')),
     ):
         if any(n in line for n in needles):overrides.append(key)
+    if (re.search(r'2\s*[–—-]\s*6\s*张',line)
+            or 'U2-minute-recording' in overrides
+            or 'U9-general-requirements-and-output-root' in overrides):
+        overrides.append('U12-trial-feedback-and-daily-archive')
     # Names are changed only where delivery naming/content is prescribed, never
     # in unrelated archival or hashing clauses. Other duties in each row survive.
     if overrides:return 'partial-explicit-override',overrides,'Only the named user changes replace this row fragment; every other obligation in the quoted source remains.'
@@ -218,7 +223,7 @@ def refresh():
           'current_evidence':{'guidance':'references/'+guide,'entry':'scripts/'+entry,'status':mode},
           'gap_and_fix':repair,'verification':'Current applicable regression and independently recorded evidence; this table never self-signs pass.'})
     write_json(ROOT/'references/inheritance-decisions.json',{'schema_version':1,'audit_type':'human maintained effective requirement decisions',
-        'rows':decisions,'user_overrides':['U1','U2','U3','U4','U5','U6','U7','U8','U9'],
+        'rows':decisions,'user_overrides':['U1','U2','U3','U4','U5','U6','U7','U8','U9','U10','U11','U12'],
         'independent_review':'Only a separately recorded actual ultra proof establishes acceptance of this frozen version.'})
     return dict(validate(),effective_requirement_decisions=len(decisions))
 

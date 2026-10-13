@@ -29,6 +29,12 @@ class ContractTests(unittest.TestCase):
         self.source=self.work/'原公式技术说明（1）.docx'
         with zipfile.ZipFile(self.source,'w') as z:z.writestr('word/document.xml',doc(p('原实施例文本')))
         self.run=prepare(self.work,self.out,'设备运行控制',self.source)
+        # This suite's two-chart/60-second fixtures represent frozen r9 runs.
+        # New r10 construction behavior has separate behavioral coverage.
+        self.run['chart_policy']='analytical-v1'
+        self.run.pop('recording_policy_version',None)
+        self.run.pop('data_policy_version',None)
+        write_json(self.work/'.product-v2/run.json',self.run)
         self.system=self.out/'模拟系统';(self.system/'数据').mkdir(parents=True)
         (self.system/'数据/记录.csv').write_text('编号,值\n1,3\n',encoding='utf-8-sig')
         (self.system/'演示视频.mp4').write_bytes(b'video-fixture')
@@ -379,9 +385,9 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(self.run['chart_policy'],'analytical-v1')
         base,_,_=self.revision_fixture();new=self.root/'policy-document';new.mkdir()
         result=prepare(new,self.root/'policy-document-output','设备运行控制',self.source,base)
-        self.assertEqual(result['chart_policy'],'analytical-v1')
+        self.assertEqual(result['chart_policy'],'analytical-v2')
         prompt=(new/'.product-v2/深化命令词.txt').read_text(encoding='utf8')
-        for text in ('chart_policy=analytical-v1','总数无上限','不因数量造数据','no_schematic_evidence'):
+        for text in ('chart_policy=analytical-v2','总数无上限','不因数量造数据','no_schematic_evidence'):
             self.assertIn(text,prompt)
     def test_package_revision_inherits_parent_chart_policy_exactly(self):
         base,_,_=self.revision_fixture();path=base/'.product-v2/run.json';original=read_json(path)
@@ -421,14 +427,14 @@ class ContractTests(unittest.TestCase):
             prepare(new,self.root/'unknown-output','设备运行控制',self.source,base,revision_scope='package')
     def test_new_prompt_has_new_chart_rules_and_internal_only_instructions(self):
         prompt=(self.work/'.product-v2/深化命令词.txt').read_text(encoding='utf8')
-        for text in ('chart_policy=analytical-v1','通常约2–3张','总数无上限','至少须有1张','no_schematic_evidence','留内部工作区，排除源码ZIP'):
+        for text in ('chart_policy=analytical-v2','通常4—6张','总数无上限','1—2张黑白结果图','no_schematic_evidence','留内部工作区，排除源码ZIP'):
             self.assertIn(text,prompt)
         for text in ('生成2–6张','使用运行说明放源码ZIP已有运行说明.txt'):
             self.assertNotIn(text,prompt)
     def test_new_case_prompt_keeps_full_construction_contract(self):
         prompt=(self.work/'.product-v2/深化命令词.txt').read_text(encoding='utf8')
         self.assertIn('在原工作区对后端算法做尽可能深入的完善',prompt)
-        self.assertIn('再实际操作最终网页录制约一分钟',prompt)
+        self.assertIn('再实际操作最终网页录制一分多钟',prompt)
         self.assertIn('再执行finalize；',prompt)
         self.assertNotIn('scope=document-revision',prompt)
     def test_package_revision_document_gate_cannot_be_reused(self):

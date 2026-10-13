@@ -77,10 +77,44 @@ def state(workspace):
     run = read_json(workspace / '.product-v2/run.json')
     if run['workspace'] != str(workspace):
         raise ValueError('Workspace identity differs from preparation record')
-    output = no_links(run['output'])
+    output = product_location(workspace,run)
     if output == workspace or output in workspace.parents or workspace in output.parents:
         raise ValueError('Delivery and work directories must be disjoint')
     return workspace, output, run
+
+def product_location(workspace,run):
+    """Resolve a verified weekly archive without rewriting the frozen run."""
+    workspace=no_links(workspace)
+    original=no_links(run['output'])
+    if run.get('status')!='published':return original
+    config_path=Path(__file__).resolve().parents[1]/'local.config.json'
+    config=read_json(config_path) if config_path.exists() else {}
+    state_root=os.environ.get('SCB_PRO_ARCHIVE_STATE_ROOT') or config.get('archive_state_root')
+    if not state_root:return original
+    state_root=no_links(state_root)
+    if not (state_root/'current-locations.json').exists():return original
+    receipt=read_json(inside(workspace,'.product-v2/final-receipt.json'))
+    from archive_products import resolve_location
+    target=resolve_location(state_root,original,receipt['files'])
+    if target!=original:
+        final_path=inside(workspace,'.product-v2/final-receipt.json')
+        publish_path=inside(workspace,'.product-v2/publish-receipt.json')
+        published=read_json(publish_path)
+        locator=read_json(state_root/'current-locations.json')[str(original)]
+        if (run.get('workspace')!=str(workspace) or receipt.get('status')!='complete'
+                or receipt.get('delivery_state')!='verified-candidate'
+                or published.get('status')!='published'
+                or published.get('destination')!=run['output']
+                or published.get('files')!=receipt['files']
+                or published.get('source_receipt_sha256')!=digest(final_path)
+                or locator.get('receipt_sha256')!=digest(final_path)
+                or locator.get('publication_sha256')!=digest(publish_path)):
+            raise ValueError('Archive locator does not bind the current frozen publication receipts')
+        if original.exists():
+            current=file_map(original)
+            if any(receipt['files'].get(name)!=sha for name,sha in current.items()):
+                raise ValueError('Archived source has new or changed files; preserve them and resolve the version conflict')
+    return target
 
 def file_map(root):
     root = no_links(root)

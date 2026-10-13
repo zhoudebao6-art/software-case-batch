@@ -7,6 +7,7 @@
 ```powershell
 & $env:SCB_PRO_PYTHON '工具目录\proflow.py' prepare --workspace '案件目录' --output '成品新目录' --title '业务名称' --source-docx '原输入Word绝对路径.docx'
 & $env:SCB_PRO_PYTHON '工具目录\proflow.py' clean-data --workspace '案件目录' --manifest '重要CSV清单绝对路径'
+& $env:SCB_PRO_PYTHON '工具目录\proflow.py' check-data --workspace '案件目录'
 & $env:SCB_PRO_PYTHON '工具目录\proflow.py' pack-source --workspace '案件目录' --manifest '源码清单绝对路径'
 & $env:SCB_PRO_PYTHON '工具目录\proflow.py' scan --workspace '案件目录'
 ```
@@ -55,36 +56,19 @@ PID 必须来自本次实际启动，每个专属进程逐项登记；录制器�
 
 父建立完整必查文件清单后，用`evidence_index.py create --workspace 案件目录 --manifest 必查清单.json --index 新内部索引.json`机械收集短ID/hash，再用`review-input --workspace 案件目录 --index 新内部索引.json --output 新内部事实.json`绑定当前产物、图与timeline。事实文件不含decision、已阅ID或审查者签名，不替代finalize的fresh检查；独立审查者读完整必查集合后写自己的review JSON。
 
-```json
-{
-  "url":"http://127.0.0.1:8123/",
-  "health_path":"/api/health",
-  "version":"本案启动时冻结的实际版本",
-  "ready":"[data-ready='records']",
-  "duration_seconds":60,
-  "input_files":["app/server.py","web/app.js","web/index.html","data/records.csv"],
-  "steps":[
-    {"at":2,"action":"fill","selector":"#query","value":"设备01","expect":"#query"},
-    {"at":10,"action":"click","selector":"#search","expect":"#rows","text":"设备01"},
-    {"at":20,"action":"click","selector":"#detail","expect":"#detail-panel"},
-    {"at":30,"action":"select","selector":"#priority","value":"high","expect":"#priority"},
-    {"at":40,"action":"click","selector":"#save","expect":"#save-result","text":"已保存"},
-    {"at":53,"action":"download","selector":"#export","expect":"#save-result"}
-  ]
-}
-```
+新案直接使用 [录制计划](recording.md) 的 `flow-complete-v1` 格式；历史无版本run才沿用原定时计划。这里不另复制秒数模板。
 
 健康接口返回实际 `run_id`（run.json）、`workspace`（案件绝对目录）、`version`（启动时冻结，匹配计划）与 `pid`（实际监听进程）。录制前后与当前 OS 和登记记录核对；Windows venv 的启动器和实际监听子进程可能不同，两者都要登记。选择器和操作必须来自本案实际界面；无需为了符合示例命名修改业务。此计划只是格式示例，不能把“已保存”文本当持久化验证。当前录制工具支持同一浏览器页内操作；需要弹窗或新标签业务时先扩展工具和相应测试，不悄悄改成假流程。不能自动把不足一分钟的内容补长。
 
 ## 最终验证
 
-新版默认正式根`F:\研发图表\批次\案件`；`prepare --output`仍必须显式提供，默认路线的私有候选为`F:\研发图表\.staging\本批-本案-唯一版本`，与正式根同卷。`local.config.json.output_root`和当前进程`SCB_PRO_OUTPUT_ROOT/SCB_OUTPUT_ROOT`明确该默认根，不静默回D盘/桌面。用户明确其他目录优先；工作区方案采用`总工作区/成品/...`，每案执行目录为`总工作区/cases/...`，两者隔离。旧成果和冻结原规范中的D路径保留历史，不自动迁移。
+新版默认正式根`D:\研发图表\批次\案件`；`prepare --output`仍必须显式提供，默认路线的私有候选为`D:\研发图表\.staging\本批-本案-唯一版本`，与正式根同卷。`local.config.json.output_root`和当前进程`SCB_PRO_OUTPUT_ROOT/SCB_OUTPUT_ROOT`明确该默认根，不静默改变显式输出路径。用户明确其他目录优先；工作区方案采用`总工作区/成品/...`，每案执行目录为`总工作区/cases/...`，两者隔离。旧成果和冻结原规范中的D路径保留历史，不自动迁移。
 
 `.product-v2/chart-manifest.json`仅在工作区，记录新增图的依据、设计与不同PNG：
 
-新`prepare`及文档修订冻结`run.chart_policy="analytical-v1"`：新增图至少1张，无数量上限；常规约两三张、专业分析优先均是选图倾向，不作配额。没有值得新增的信息则报告事实，不凑图、不用零图虚报完成。包修订继承父policy；未标policy的旧run继续旧2–6合同，未知policy拒绝，旧run/收据不重写。
+新`prepare`及文档修订冻结`run.chart_policy="analytical-v2"`：通常4—6张有效分析图，允许更多；1—2张黑白结果图，专业分析图占多数。每图建设自检绑定实际PNG和Word宽度，存在标注碰撞不得提交。旧analytical-v1继续原合同，未标policy的旧run继续旧2—6，包修订继承父policy，未知policy拒绝，旧run/收据不重写。
 
-在同一个图manifest中说明每图问题/数据/图型/真实标签，完工补当前PNG hash即可，不新造计划台账。`labels`从绘图对象提取必要可见文本，覆盖轴/图例/矩阵行列/色标及短标记，无需人工抄全部自动数字刻度。
+在同一个图manifest中说明每图问题/数据/图型/真实标签，完工补当前PNG hash及build_selfcheck，不新造计划台账。`labels`从绘图对象提取必要可见文本，覆盖轴/图例/矩阵行列/色标及短标记，无需人工抄全部自动数字刻度。
 
 ```json
 {"figures":[
@@ -92,9 +76,11 @@ PID 必须来自本次实际启动，每个专属进程逐项登记；录制器�
 ]}
 ```
 
-示例只展示字段，实际caption/labels/单位和源位置必须来自本案。新policy的`question/data_source/chart_type`为非空文本，`labels`为非空字符串数组；caption与labels禁“示意”。图号延续原文并递增，新增图不放顶部整体标题/表头/图N/长解释，必要轴/矩阵行列标签/色标/短图例保留。脚本检查PNG签名/hash、图下精确caption、独立“请参考图N”、实际drawing嵌入同字节PNG和原正文/原媒体保留。`title_policy`及labels声明不替代真实看图；用既有计算记录或manifest保留源锚点、原式、前后文和解释依据供独立审核。
+以上片段只表示一张图的语义字段，不是完整可提交manifest；还须按文末建设自检字段绑定当前PNG，满足全案有效图覆盖。实际caption/labels/单位和源位置必须来自本案。新policy的`question/data_source/chart_type`为非空文本，`labels`为非空字符串数组；caption与labels禁“示意”。图号延续原文并递增，新增图不放顶部整体标题/表头/图N/长解释，必要轴/矩阵行列标签/色标/短图例保留。脚本检查PNG签名/hash、图下精确caption、独立“请参考图N”、实际drawing嵌入同字节PNG和原正文/原媒体保留。`title_policy`及labels声明不替代真实看图；用既有计算记录或manifest保留源锚点、原式、前后文和解释依据供独立审核。
 
 父会话实际调用如下工具阶段（不是PowerShell或自动caseflow命令）：
+
+若桌面原始日志将 `spawn_agent.message` 保存为加密串，沿用 [真实派发证据兼容](dispatch-evidence.md)：工具只提取冻结permit和实际call的绑定事实，由真实独立验收者在当前proof和自身final中确认。不要解密、伪造明文日志或让父代签；旧明文合同保持原校验。
 
 ```text
 spawn_agent(task_name="本案建设", fork_turns="none", model="gpt-6.1-sol", reasoning_effort="high", message="本案材料和完整建设/自检要求")
@@ -108,8 +94,8 @@ spawn_agent(task_name="本案独立验收", fork_turns="none", model="gpt-6.1-so
 {
   "schema_version":1,
   "stages":{
-    "build":{"session_log":"C:/Users/Administrator/.codex/sessions/.../父会话.jsonl","call_id":"实际建设call_id","agent_id":"/root/实际建设task_name","artifact_hashes":{"原名.docx":"SHA256","模拟系统/项目源码.zip":"SHA256","模拟系统/演示视频.mp4":"SHA256","模拟系统/数据/记录.csv":"SHA256"},"chart_snapshot":{"chart_policy":"analytical-v1","manifest_sha256":"SHA256","figures":{"3":"PNG_SHA256","4":"PNG_SHA256"}}},
-    "review":{"session_log":"C:/Users/Administrator/.codex/sessions/.../父会话.jsonl","call_id":"实际独立验收call_id","agent_id":"/root/实际独立验收task_name","review_session_log":"C:/Users/Administrator/.codex/sessions/.../验收子会话.jsonl","artifact_hashes":{"原名.docx":"SHA256","模拟系统/项目源码.zip":"SHA256","模拟系统/演示视频.mp4":"SHA256","模拟系统/数据/记录.csv":"SHA256"},"chart_snapshot":{"chart_policy":"analytical-v1","manifest_sha256":"SHA256","figures":{"3":"PNG_SHA256","4":"PNG_SHA256"}}}
+    "build":{"session_log":"C:/Users/Administrator/.codex/sessions/.../父会话.jsonl","call_id":"实际建设call_id","agent_id":"/root/实际建设task_name","artifact_hashes":{"原名.docx":"SHA256","模拟系统/项目源码.zip":"SHA256","模拟系统/演示视频.mp4":"SHA256","模拟系统/数据/记录.csv":"SHA256"},"chart_snapshot":{"chart_policy":"analytical-v2","manifest_sha256":"SHA256","figures":{"3":"PNG_SHA256","4":"PNG_SHA256"}}},
+    "review":{"session_log":"C:/Users/Administrator/.codex/sessions/.../父会话.jsonl","call_id":"实际独立验收call_id","agent_id":"/root/实际独立验收task_name","review_session_log":"C:/Users/Administrator/.codex/sessions/.../验收子会话.jsonl","artifact_hashes":{"原名.docx":"SHA256","模拟系统/项目源码.zip":"SHA256","模拟系统/演示视频.mp4":"SHA256","模拟系统/数据/记录.csv":"SHA256"},"chart_snapshot":{"chart_policy":"analytical-v2","manifest_sha256":"SHA256","figures":{"3":"PNG_SHA256","4":"PNG_SHA256"}}}
   }
 }
 ```
@@ -120,7 +106,7 @@ spawn_agent(task_name="本案独立验收", fork_turns="none", model="gpt-6.1-so
 
 建设者保存六类实际执行材料，独立ultra核验后写最后验收JSON：`checks` 恰含 `algorithm/api/persistence/browser/build/package_startup` 六类，每项含实际 `command`、`exit_code`、相对工作区的 `log` 和该日志 `sha256`。`package_startup` 必须从最终 ZIP 解压的新目录执行。另含 `source_zip_sha256`、`video_timeline_sha256`（父控完整5fps timeline）、`reviewed_files`（与scan全部成品路径→hash一致）、`visual_notes`（完整Word页/PNG/全部视频接触页、首尾及操作关键帧，区分实际打开和合法继承）、非空 `limitations`、`reviewer_agent_id`、`decision:"pass"`和chart_snapshot。父短证据索引通过evidence_index.py核实际已阅ID，不自动补签。建设者只提供事实，不写独立decision/pass。
 
-验收JSON的`chart_reviews`覆盖每个当前图，每项含`figure_id`、当前`png_sha256`、`no_title_header:true`及具体`no_title_header_evidence`，沿用`meaning/data/legibility/layout/explanation`五项，每项有`passed`和`evidence`。新`analytical-v1`还含`no_schematic:true`及非空`no_schematic_evidence`，说明已实际查看新增图与新图题无“示意”；原图原文不适用该禁词。五项及无标题项证据均为非空具体文本：meaning说明相对原图新增价值，explanation记录实际实施例位置、前文—红字—后文衔接、解释深度、原式关键符号首次简释（有原式才查）和Word页。沿同一review写实际证据，不另设上下文台账。没有实际查看或存在问题不能填true/pass，建设者不代独立验收签字。
+验收JSON的`chart_reviews`覆盖每个当前图，每项含`figure_id`、当前`png_sha256`、`no_title_header:true`及具体`no_title_header_evidence`，沿用`meaning/data/legibility/layout/explanation`五项，每项有`passed`和`evidence`。`analytical-v1/v2`还含`no_schematic:true`及非空`no_schematic_evidence`，说明已实际查看新增图与新图题无“示意”；原图原文不适用该禁词。五项及无标题项证据均为非空具体文本：meaning说明相对原图新增价值，explanation记录实际实施例位置、前文—红字—后文衔接、解释深度、原式关键符号首次简释（有原式才查）和Word页。沿同一review写实际证据，不另设上下文台账。没有实际查看或存在问题不能填true/pass，建设者不代独立验收签字。
 
 独立ultra写完不可再改的验收JSON后，其**最终消息仅输出这个JSON对象**（SHA256实际读取文件计算）：
 
@@ -138,7 +124,7 @@ spawn_agent(task_name="本案独立验收", fork_turns="none", model="gpt-6.1-so
 
 ## 原子发布候选
 
-最终candidate验收后，父使用`proflow.py publish --workspace '当前工作区' --destination 'F:\研发图表\正式本批\本案'`。门禁冻结publish-intent、再次逐文件核hash与本案后台停止、仅同卷新目标整体原子rename；新run路径更新与独立publish-receipt保存，原final receipt/独立review不改。intent保留便于崩溃后原命令恢复，不删除旧目标、不合并、不重签。未发布verified-candidate不可作下一修订父案；已publish的新schema父验证当前publish receipt，旧历史complete维持原兼容。
+最终candidate验收后，父使用`proflow.py publish --workspace '当前工作区' --destination 'D:\研发图表\正式本批\本案'`。门禁冻结publish-intent、再次逐文件核hash与本案后台停止、仅同卷新目标整体原子rename；新run路径更新与独立publish-receipt保存，原final receipt/独立review不改。intent保留便于崩溃后原命令恢复，不删除旧目标、不合并、不重签。未发布verified-candidate不可作下一修订父案；已publish的新schema父验证当前publish receipt，旧历史complete维持原兼容。
 
 ## 原显式加急条件路由
 
@@ -181,3 +167,11 @@ ZIP差异只允许移除明确排除的说明文档；业务members不得新增�
 `software-case-batch-pro` 是完整技能；原名 `software-case-batch` 作为名称兼容入口时，必须完整读取 pro 及其要求的引用，共享同一交付合同，不维护或回退旧十秒/两页流程。
 
 本机安装按 `SKILL.md` 的用户授权、当前版本独立验收与逐哈希核验备份要求执行。外部发布按当前用户明确指定的目标及当前文件、版本哈希证据执行，实际状态记录在当次发布证据中；历史 HEAD、仓库地址或已完成/未完成事实不作为通用规则。
+
+## r10建设检查与数据
+
+新图manifest每图增加`analysis_role: baseline_result|professional_analysis`、`palette: monochrome|color`和`build_selfcheck`。后者使用figure_preflight返回的`geometry_status/collisions/png_sha256/final_width_mm`，并附`visual_review:{inspected:true,png_sha256,final_width_mm,evidence}`，evidence为high实际查看当前图的具体结果，不能由脚本生成视觉pass。已知collision必须修正；无法自动判断仍需实际目视。
+
+已有原件统计结果可在同一manifest的`retained_results`登记`figure_id/source_member/sha256/analysis_role=baseline_result/palette=monochrome/result_reason/visual_review`，必须绑定原件实际图号和媒体字节。它不重新插图，不冒充新增图；独立proof的`retained_result_reviews`逐项写`figure_id/png_sha256/is_statistical_result/monochrome/evidence`。原流程图不能计数。
+
+新完整run冻结`recording_policy_version=flow-complete-v1`及`data_policy_version=neutral-expanded-v1`；文档/包修订继承父系统政策，不强迫历史视频重录。录制计划和校验详见recording.md；数据检查使用data_preflight，详见system-data.md。周归档详见archive.md。

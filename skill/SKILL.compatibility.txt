@@ -1,6 +1,6 @@
 ---
 name: software-case-batch
-description: 用户明确调用原名称时，读取已安装software-case-batch-pro完整技能，对授权案件交付源文图文、完整业务系统、重要CSV、源码和约一分钟真实操作视频。
+description: 用户明确调用原名称时，读取已安装software-case-batch-pro完整技能，对授权案件交付源文图文、完整业务系统、重要CSV、源码和一分多钟真实操作视频。
 ---
 
 # 原名称兼容入口

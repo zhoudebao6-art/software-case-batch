@@ -1,3 +1,4 @@
 # Only the Python dependency imported by the public unit/media-contract suite.
 # This version is installed in the verified local runtime; remote CI is not yet run.
 Pillow==12.3.0
+matplotlib==3.10.8

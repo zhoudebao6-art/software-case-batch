@@ -209,7 +209,8 @@
       "original": "- 成果沿用用户指定的 `D:\\研发图表`，每批独立子目录。新案工作区为本目录 `cases`。当前 config 的 output_root 和本机路径适配覆盖通用文档中的“原料同级目录名1”。",
       "status": "partial-explicit-override",
       "explicit_override_ids": [
-        "U9-general-requirements-and-output-root"
+        "U9-general-requirements-and-output-root",
+        "U12-trial-feedback-and-daily-archive"
       ],
       "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
@@ -974,9 +975,11 @@
       "start_line": 76,
       "end_line": 76,
       "original": "后续新批次的两个展示页面必须按案件属性采用匹配的系统形态（如工业控制台），不得统一套图表后台；新增结果图按独立分析价值合理安排2–6张，不固定两张或凑六张。详见 rules/case-design.md。",
-      "status": "preserved",
-      "explicit_override_ids": [],
-      "scope_reason": "Retained at the cited full original source and routed to guidance or an actual available tool; no claim that the old runner was automatically ported.",
+      "status": "partial-explicit-override",
+      "explicit_override_ids": [
+        "U12-trial-feedback-and-daily-archive"
+      ],
+      "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
         "guidance": "references/execution.md",
         "available_entry": "scripts/batch_control.py",
@@ -1174,7 +1177,8 @@
       "original": "用户指定最终成果在 `D:\\研发图表` 下的独立批次目录，本机 `config.json` 的 `runner.output_root` 与程序生成的批次路径覆盖本文通用“原料同级目录名1”默认值。临时文件和缓存统一位于 `D:\\codex+`；通用依赖按版本复用，依赖目录不是可删缓存。",
       "status": "partial-explicit-override",
       "explicit_override_ids": [
-        "U9-general-requirements-and-output-root"
+        "U9-general-requirements-and-output-root",
+        "U12-trial-feedback-and-daily-archive"
       ],
       "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
@@ -1321,7 +1325,8 @@
       "status": "partial-explicit-override",
       "explicit_override_ids": [
         "U1-complete-system",
-        "U2-minute-recording"
+        "U2-minute-recording",
+        "U12-trial-feedback-and-daily-archive"
       ],
       "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
@@ -1339,9 +1344,11 @@
       "start_line": 29,
       "end_line": 29,
       "original": "- 以源定义、实际计算和代表工况生成2–6张有独立分析价值的黑白结果图，可离线直接插 Word，不强制同步上网页。保留原文、原式、原图及其位置；正文恰当实施例插入自然衔接的红字说明，每图独立“请参考图N”；仅新增图及其下方图题按序追加到全部原文之后。",
-      "status": "preserved",
-      "explicit_override_ids": [],
-      "scope_reason": "Retained at the cited full original source and routed to guidance or an actual available tool; no claim that the old runner was automatically ported.",
+      "status": "partial-explicit-override",
+      "explicit_override_ids": [
+        "U12-trial-feedback-and-daily-archive"
+      ],
+      "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
         "guidance": "references/quality.md",
         "available_entry": "scripts/contracts.py",
@@ -3080,7 +3087,8 @@
       "original": "    \"output_root\": \"D:\\\\研发图表\",",
       "status": "partial-explicit-override",
       "explicit_override_ids": [
-        "U9-general-requirements-and-output-root"
+        "U9-general-requirements-and-output-root",
+        "U12-trial-feedback-and-daily-archive"
       ],
       "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
@@ -3424,7 +3432,8 @@
       "original": "    \"max_seconds\": 12,",
       "status": "partial-explicit-override",
       "explicit_override_ids": [
-        "U2-minute-recording"
+        "U2-minute-recording",
+        "U12-trial-feedback-and-daily-archive"
       ],
       "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
@@ -3444,7 +3453,8 @@
       "original": "    \"min_seconds\": 8,",
       "status": "partial-explicit-override",
       "explicit_override_ids": [
-        "U2-minute-recording"
+        "U2-minute-recording",
+        "U12-trial-feedback-and-daily-archive"
       ],
       "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
@@ -3464,7 +3474,8 @@
       "original": "    \"modules_max\": 2,",
       "status": "partial-explicit-override",
       "explicit_override_ids": [
-        "U2-minute-recording"
+        "U2-minute-recording",
+        "U12-trial-feedback-and-daily-archive"
       ],
       "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
@@ -3484,7 +3495,8 @@
       "original": "    \"modules_min\": 1,",
       "status": "partial-explicit-override",
       "explicit_override_ids": [
-        "U2-minute-recording"
+        "U2-minute-recording",
+        "U12-trial-feedback-and-daily-archive"
       ],
       "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
@@ -3522,7 +3534,8 @@
       "original": "    \"target_seconds\": 10,",
       "status": "partial-explicit-override",
       "explicit_override_ids": [
-        "U2-minute-recording"
+        "U2-minute-recording",
+        "U12-trial-feedback-and-daily-archive"
       ],
       "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
@@ -4520,9 +4533,11 @@
       "start_line": 86,
       "end_line": 86,
       "original": "后续界面与图数按 [案件设计规则](rules/case-design.md)：展示页面贴合案件属性，新增结果图合理安排2–6张。跨电脑安装见 [新电脑使用](docs/新电脑使用.md)。",
-      "status": "conditional-preserved",
-      "explicit_override_ids": [],
-      "scope_reason": "Apply the original scope, historical precedence and explicit authorization; no automatic old-case rerun, migration or publication.",
+      "status": "partial-explicit-override",
+      "explicit_override_ids": [
+        "U12-trial-feedback-and-daily-archive"
+      ],
+      "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
         "guidance": "references/execution.md",
         "available_entry": "scripts/batch_control.py",
@@ -4685,7 +4700,8 @@
       "status": "partial-explicit-override",
       "explicit_override_ids": [
         "U4-original-word-name",
-        "U9-general-requirements-and-output-root"
+        "U9-general-requirements-and-output-root",
+        "U12-trial-feedback-and-daily-archive"
       ],
       "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
@@ -5681,7 +5697,8 @@
       "original": "在Sol自检及脚本预检通过之后选择表现最佳且有业务代表性的1–2个模块；默认模式的独立验收者验收在录制后统一进行。每案约10秒，默认接受8–12秒；建议1920×1080、30fps、H.264/yuv420p、无桌面和地址栏，禁止用拼接截图假装真实操作录屏。操作节奏示例：0–4秒完整主视图，4–7秒一次轻量筛选/详情/自然移动，7–10秒结果稳定展示；只有一个优秀模块可录一个，不凑全系统巡游。第二模块只在准备充分时切换。",
       "status": "partial-explicit-override",
       "explicit_override_ids": [
-        "U2-minute-recording"
+        "U2-minute-recording",
+        "U12-trial-feedback-and-daily-archive"
       ],
       "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
@@ -5809,7 +5826,8 @@
       "original": "- 案件名/模拟系统/案件名.mp4：约 10 秒视频（保留用户现有交付目录名；不受产品禁词约束）",
       "status": "partial-explicit-override",
       "explicit_override_ids": [
-        "U2-minute-recording"
+        "U2-minute-recording",
+        "U12-trial-feedback-and-daily-archive"
       ],
       "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
@@ -9893,9 +9911,11 @@
       "start_line": 12,
       "end_line": 12,
       "original": "新增结果图按案件内容在 **2–6 张**内合理安排；两张是最低要求，不能把每案都固定为两张，也不能固定凑满六张。先列出需要说明的独立业务问题，再确定图数和图形类型。更多源方法、实施例、代表工况、对照关系确有独立分析价值时可增至三至六张；少量清楚的图足以解释时不重复绘图。",
-      "status": "preserved",
-      "explicit_override_ids": [],
-      "scope_reason": "Retained at the cited full original source and routed to guidance or an actual available tool; no claim that the old runner was automatically ported.",
+      "status": "partial-explicit-override",
+      "explicit_override_ids": [
+        "U12-trial-feedback-and-daily-archive"
+      ],
+      "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
         "guidance": "references/system-data.md",
         "available_entry": "scripts/proflow.py",
@@ -10044,7 +10064,8 @@
       "status": "partial-explicit-override",
       "explicit_override_ids": [
         "U1-complete-system",
-        "U2-minute-recording"
+        "U2-minute-recording",
+        "U12-trial-feedback-and-daily-archive"
       ],
       "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
@@ -10249,9 +10270,11 @@
       "start_line": 29,
       "end_line": 29,
       "original": "两个展示页面的案件属性匹配与2–6张新增结果图的选题依据，按 [案件设计规则](case-design.md) 执行。",
-      "status": "preserved",
-      "explicit_override_ids": [],
-      "scope_reason": "Retained at the cited full original source and routed to guidance or an actual available tool; no claim that the old runner was automatically ported.",
+      "status": "partial-explicit-override",
+      "explicit_override_ids": [
+        "U12-trial-feedback-and-daily-archive"
+      ],
+      "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
         "guidance": "references/execution.md",
         "available_entry": "scripts/batch_control.py",
@@ -15221,7 +15244,8 @@
       "original": "父执行器先核对健康身份，在录制槽内运行一次有界的真实录制会话（不再另启第二个预热浏览器）并录制1920×1080网页内容。通过连续实际帧与就绪截图比较定位开头，截取约10秒连续视频、编码H.264并完整解码。原视频、截图、操作时间、裁剪映射和结果保留在recording/capture-*。静态匹配仅证明技术上的起始就绪，切换质量、图表可读性和整体美观仍交Ultra检查。最终全视频5fps接触页及首尾/交互关键帧由既有受控证据流程生成。",
       "status": "partial-explicit-override",
       "explicit_override_ids": [
-        "U2-minute-recording"
+        "U2-minute-recording",
+        "U12-trial-feedback-and-daily-archive"
       ],
       "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
@@ -15587,7 +15611,8 @@
       "original": "- 将两个业务页面按案件属性设计、2–6 张有独立价值的新增结果图以及固定成品目录写入规则和实际提示词。",
       "status": "partial-explicit-override",
       "explicit_override_ids": [
-        "U1-complete-system"
+        "U1-complete-system",
+        "U12-trial-feedback-and-daily-archive"
       ],
       "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {
@@ -15935,7 +15960,8 @@
       "original": "建设内自检补齐源式输入约束、说明数值复算、上下标/帽号及正常尺寸图例检查、已选对象切换后的详情同步；服务持续日志按已有runtime-streams协议与冻结证据分离，预检提前校验登记范围。沿用两页业务框架、2–6张专业图、正文红字说明/文末新图和每案模拟系统视频结构，不新增固定验收轮次。",
       "status": "partial-explicit-override",
       "explicit_override_ids": [
-        "U1-complete-system"
+        "U1-complete-system",
+        "U12-trial-feedback-and-daily-archive"
       ],
       "scope_reason": "Only the named user changes replace this row fragment; every other obligation in the quoted source remains.",
       "evidence": {

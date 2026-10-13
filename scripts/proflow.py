@@ -16,11 +16,11 @@ import zipfile
 from common import (TEXT_SUFFIXES, META_COLUMNS, digest, file_map, forbidden, inside,
                     no_links, normalized, read_json, state, write_json)
 from source_intake import source_figure_numbers
-from contracts import ANALYTICAL_CHART_POLICY, chart_policy
+from contracts import ANALYTICAL_CHART_POLICY, BUILD_CHART_POLICY, chart_policy
 
 ROOT = Path(__file__).resolve().parent.parent
 SYSTEM = '模拟系统'
-DEFAULT_OUTPUT_ROOT = r'F:\研发图表'
+DEFAULT_OUTPUT_ROOT = r'D:\研发图表'
 EXCLUDED_DIRS = {'.git','.product-v2','node_modules','.venv','venv','__pycache__',
                  '.pytest_cache','.cache','evidence','recording','recordings','logs',
                  'source-analysis','source_analysis','docx-extract','docx_extract',
@@ -49,7 +49,11 @@ def finalized_snapshot(output, receipt, allow_untracked=False, workspace=None):
     if receipt.get('delivery_state')=='verified-candidate':
         if workspace is None:raise ValueError('Verified candidates require an actual atomic publication receipt before inheritance')
         published=read_json(inside(workspace,'.product-v2/publish-receipt.json'))
-        if (published.get('status')!='published' or published.get('destination')!=str(output)
+        from common import product_location
+        original_run=read_json(inside(workspace,'.product-v2/run.json'))
+        if (original_run.get('status')!='published' or original_run.get('workspace')!=str(no_links(workspace))
+                or published.get('status')!='published' or published.get('destination')!=original_run.get('output')
+                or product_location(workspace,original_run)!=output
                 or published.get('files')!=registered
                 or published.get('source_receipt_sha256')!=digest(inside(workspace,'.product-v2/final-receipt.json'))):
             raise ValueError('Verified candidate is not a published finalized revision base')
@@ -125,9 +129,15 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
            'data_dir':str(output/SYSTEM/'数据'),'source_zip':str(output/SYSTEM/'项目源码.zip'),
            'video':str(output/SYSTEM/'演示视频.mp4'),'status':'prepared'}
     if not base or revision_scope=='document':
-        run['chart_policy']=ANALYTICAL_CHART_POLICY
+        run['chart_policy']=BUILD_CHART_POLICY
     elif 'chart_policy' in base_run:
         run['chart_policy']=base_run['chart_policy']
+    if base:
+        for policy_key in ('recording_policy_version','data_policy_version'):
+            if policy_key in base_run:run[policy_key]=base_run[policy_key]
+    else:
+        run['recording_policy_version']='flow-complete-v1'
+        run['data_policy_version']='neutral-expanded-v1'
     # Historical finalized revisions keep their frozen numbering contract.
     if not base or base_run.get('chart_numbering_policy') == 'source-sequential-v1':
         run['chart_numbering_policy'] = 'source-sequential-v1'
@@ -148,7 +158,7 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
 先从上述显式冻结的原技术Word盘点正文、原式、原图、实施例和输入约束；新案不依赖已有测试成品。同案同源哈希且已合格的图文、定义与代码才可复用，不能套用上一案件的业务、图或数据。原流程图、结构图和示意图全保留，不计入新增结果图数量；源正文和图题已占用的阿拉伯图号为{source_numbers}，新增结果图从图{max(source_numbers, default=0)+1}起连续编号；只有正文引用而无对应图题时先人工核对，仍保守占号，不改原文。逐图结合原技术实施例，读前文—新增红字—后文，详细自然讲清工况、读图、计算依据、可复核算例、结果原因和适用判断。有原式时自然引入相应关键符号并在首次出现就地简释，保留上下标、帽号和希腊字母；无公式只按实施例解释，不强塞数学，不凑字数。每图独立“请参考图N”，原文原式原图不动；仅新增图及图下图题放全部原文之后。PNG图内禁止顶部title/suptitle、表头、图N或说明框，轴与必要图例正常。PNG、图设计manifest、渲染及证据留工作区，不放成品根目录。
 在原工作区对后端算法做尽可能深入的完善，补全领域约束、异常处理、持久化、批量处理和可验证业务闭环。Web 做成精细完整、内容丰富、中文为主、高交互且具备部署条件的业务系统；所有可见模块和按钮有效，不出现数学推导和过量英文。
 实际检索同类型开源项目及原始数据，核对许可、字段、单位和分布，用项目领域机理进行可复现扩充；数据量按实体、时间、频率和代表工况充分覆盖，不用复制或无约束随机数凑行数。保留内部出处、参数、种子、日志和限制，不冒充现场实测。
-图文完成后不录十秒版，先完成系统与数据，再实际操作最终网页录制约一分钟（55–75秒），展示筛选、详情、业务提交、结果、历史和导出等完整使用过程。连续真实浏览器录屏，不能拼图、循环或假响应。实际测试算法、接口、保存重启、浏览器、构建和压缩包解压后的启动。
+图文完成后不录十秒版，先完成系统与数据，再实际操作最终网页录制一分多钟，按本案有效操作与结果阅读自然结束，不固定60秒、不为凑时长空等、加速或截断。展示筛选、详情、业务提交、结果、历史和导出等完整使用过程。连续真实浏览器录屏，不能拼图、循环或假响应。实际测试算法、接口、保存重启、浏览器、构建和压缩包解压后的启动。
 录制和在线验证结束后核实并关闭本案全部专属后台，保留Codex/MCP、共享服务及其他项目。之后仅把白名单重要CSV清洗到上述数据目录；每个CSV整列删除“生成数据”“数据来源”及明确同义元数据列，保留其他字段和值，数据目录仅CSV，不删原工作区数据或数据库。
 本项目交付代码、Web和数据内容不得出现：模拟、虚拟、仿真、物理仿真、参考、源文件、公式、正文。固定容器目录“模拟系统”按用户指定保留；原技术Word原样保留，许可证单独核对。禁词命中按语义修复，不能转义藏词或破坏算法。
 将实际可运行的项目源码压成上述ZIP，排除所有层级README及任何针对原技术文档的解析、抽取、原文映射和分析文件，同时排除原技术文档、过程证据、日志、缓存、依赖目录与凭据。使用明确打包白名单，不复制整个工作区；业务软件必需的导入解析模块保留。原工作区被排除内容仍保留。压缩包不得依赖被排除文件或旧绝对路径。
@@ -186,19 +196,21 @@ PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据
 完整5fps视频接触页及frame_files映射、首尾和每交互前后0.2s原帧可对未变MP4解码补证据，无需重录；Word每页已有真实已阅按同hash继承，无需重新渲染。父保存短证据索引，独立ultra检查新ZIP、包启动实际log/结果/署名及完整继承链，声明本次实际打开与合法沿用范围，写review.json并final给精确proofhash。
 只执行finalize-package-revision --workspace "{workspace}" --evidence "独立ultra当前review.json"。出现任何应用代码/业务字符串、Word/PNG/视频/CSV字节变化，此专用gate拒绝；由负责人安排ultra定向返修和相应完整执行验证，不能强改hash或扩大继承。
 '''
-    if run.get('chart_policy')==ANALYTICAL_CHART_POLICY and (not base or revision_scope=='document'):
+    if run.get('chart_policy')==BUILD_CHART_POLICY and (not base or revision_scope=='document'):
         prompt+='''
-本次冻结chart_policy=analytical-v1：常规黑白图通常约2–3张，按独立分析价值增减，不是固定数；优先制作稍多的专业模型、热力、矩阵、轨迹、调度等图，总数无上限、不强制比例，始终以真实数据或可复核计算支持为先，不因数量造数据。完成新生图请求至少须有1张有效新增图；确无新分析价值时报告事实，不凑图、不宣称完成生成。仅有已有Word复用的请求另按其实际范围处理。
+本次冻结chart_policy=analytical-v2：建设开始在现有图manifest安排通常4—6张有效分析图，内容需要可更多，总数无上限；保留1—2张黑白结果图，专业模型、热力、矩阵、轨迹、调度等分析图占多数。每张独立图按analysis_role=baseline_result或professional_analysis及palette=monochrome或color登记，不能把原流程图或同图面板凑成多张。始终以真实数据或可复核计算支持为先，不因数量造数据；资料不足如实登记待补，不以单张图宣称完成。每张图使用figure_preflight在实际Word宽度检查文字与线、转折、轴框及边界的冲突，high逐张实际看PNG与最终尺寸并将当前PNG哈希和具体证据写入build_selfcheck；通过后再入Word，不把已知排版缺陷交给验收者首次发现。建设内自检调整仍由high完成，交验后返修由ultra。
 新增图及图下caption均不得含“示意”。PNG内无顶部title/suptitle、表头、图N、解释墙或说明框；必要矩阵行列标签、轴、图例、色标及单位保留。原文原式原图包括原有“示意”均原样保留。
 在现chart-manifest每图登记question（本图回答的具体问题）、data_source（可定位原件/数据/计算证据的来源）、chart_type和labels（所有实际人工文字标签，不需抄自动数值刻度），不另建重复台账。独立review必须绑定当前PNG，逐图给meaning/data/legibility/layout/explanation具体非空依据、no_schematic=true及no_schematic_evidence；meaning说明相对原图的新增价值，explanation说明实施例前文—红字—后文衔接。实际打开PNG与Word上下文检查无“示意”、布局和数据，不能把manifest文字扫描称为图片文字识别。
 '''
     elif base and revision_scope=='package':
         prompt+='\n本次package revision沿用父chart_policy='+str(base_run.get('chart_policy','未标记历史2–6'))+'，不新增或重制图、不用新政策重写父通过。\n'
-    prompt+=f'''\n以下均为以后每个授权案件的通用要求，不限于本次测试案：完整中文业务系统/领域算法和充分数据、原文原式原图保留、详细实施例红字和原式符号、图内无标题而Word图下有图题、约60秒连续平顺真实实操、真实独立审核、录后核归属关闭后台再清洗重要CSV、源码ZIP排除使用说明及制作/原件解析/来源构造说明和模拟性质文案。
+    prompt+=f'''\n以下均为以后每个授权案件的通用要求，不限于本次测试案：完整中文业务系统/领域算法和充分数据、原文原式原图保留、详细实施例红字和原式符号、图内无标题而Word图下有图题、一分多钟连续平顺真实实操、真实独立审核、录后核归属关闭后台再清洗重要CSV、源码ZIP排除使用说明及制作/原件解析/来源构造说明和模拟性质文案。
 通用状态验收：任何业务状态操作后，按本项目实际可见项核对列表、详情、统计、摘要和日志属于同一对象/版本；刷新保持用户筛选、排序及合法当前分页，关闭详情抽屉后迟到异步请求不得重新打开，连续/逆向操作也核验。不硬编码某个测试案的业务字段或动作。
-新版默认正式成果根：{default_output_root()}；按批次/案件集中，候选也在同卷私有.staging以便整案原子发布。当前显式指定的候选仍是{output}；用户明确指定工作区成果或其他目录时遵循该次指定，不静默回D盘或桌面。历史成果不自动搬移，TEMP和工具缓存仍D:\\codex+。
+新版默认日常正式成果根：{default_output_root()}；按批次/案件集中，候选也在同卷私有.staging以便整案原子发布。当前显式指定的候选仍是{output}；用户明确指定其他目录时优先遵循。每周仅将已完成成品核验归档到F:\\研发图表；历史和活跃批次路径不改，归档按references/archive.md先复制校验、更新位置索引再清理对应源。TEMP和工具缓存仍D:\\codex+。
 原模型角色继续保留：返修及录制准备修复必须另派gpt-6.1-sol/ultra，独立reviewer只读不实现；原high建设及每轮ultra真实调用/快照均保留。仅明确原加急模式且真实当前批/案user消息核验时才Astra/low；提速不换模型。本次普通ultra。finalize只冻结验收候选，随后父publish --destination 全新同卷正式目录进行整案原子发布，保留intent和独立publish receipt；未publish不称正式交付。
 '''
+    if run.get('data_policy_version')=='neutral-expanded-v1' and not base:
+        prompt+='''\n建设开始在现有data-plan制定足量数据：对现有不足版本先统计清洗后主要明细有效规模，以约2倍作为扩容起点，按业务粒度和性能说明调整，维表不机械翻倍；新案按领域对象、时间跨度及关键事件覆盖安排。使用批量可复现计算，不复制换号凑行。导出文件名、表头、备注和单元格不得有真实或编造的地名、公司名称、人名，统一稳定编号，保持跨表与Web下载一致。原始来源、性质和映射只留内部，不伪称实测。先用data_preflight实际检查规模、引用和专名，再清洗输出并核对初始化、分页和导出；沿现有数据清洗记录绑定当前文件哈希，见references/system-data.md。\n'''
     (record.parent/'深化命令词.txt').write_text(prompt, encoding='utf-8')
     return run
 
@@ -292,6 +304,37 @@ def clean_csv(workspace, output, manifest_path):
     receipt = {'at':utc(),'status':'cleaned','output':str(destination),'files':receipts}
     write_json(workspace/'.product-v2/data-cleaning.json',receipt)
     return receipt
+
+def check_data_quality(workspace,output,update=False):
+    """Recompute actual export checks; bind them within the existing cleaning record."""
+    run=read_json(inside(workspace,'.product-v2/run.json'))
+    policy=run.get('data_policy_version')
+    if policy is None:return None
+    if policy!='neutral-expanded-v1':raise ValueError('Unknown frozen data policy')
+    from data_preflight import audit_csv_exports,check_expansion
+    plan_path=inside(workspace,'.product-v2/data-plan.json');plan=read_json(plan_path)
+    directory=no_links(output/SYSTEM/'数据')
+    paths=sorted(directory.iterdir())
+    if not paths or any(not p.is_file() or p.suffix.lower()!='.csv' for p in paths):
+        raise ValueError('Selected important CSVs required for data quality checks')
+    for path in paths:no_links(path)
+    audit=audit_csv_exports(paths,plan['export_schema'],known_names=plan.get('known_names',[]),
+                            allowed_terms=plan.get('allowed_terms',[]),name_review=plan.get('name_review',{}))
+    expansion=check_expansion(plan.get('baseline_metrics'),audit,plan['expansion_plan'])
+    if audit.get('data_status')!='pass' or expansion.get('expansion_status')!='pass':
+        raise ValueError('Construction data checks incomplete: '+json.dumps(
+            {'status':audit.get('data_status'),'findings':audit.get('findings',[])[:10],
+             'name_review_required':audit.get('name_review_required',[]),'expansion':expansion},ensure_ascii=False))
+    quality={'policy':policy,'plan_sha256':digest(plan_path),'audit':audit,'expansion':expansion}
+    cleaning_path=inside(workspace,'.product-v2/data-cleaning.json');cleaning=read_json(cleaning_path)
+    if {p.name:digest(p) for p in paths}!={f['name']:f['sha256'] for f in cleaning['files']}:
+        raise ValueError('Data checks must bind the actual cleaned CSV snapshot')
+    if update:
+        if (workspace/'.product-v2/final-receipt.json').exists():raise ValueError('Finalized evidence is frozen')
+        cleaning['quality']=quality;write_json(cleaning_path,cleaning)
+    elif cleaning.get('quality')!=quality:
+        raise ValueError('Run check-data on the current exports before requesting independent acceptance')
+    return quality
 
 def excluded_source(relative, extra=()):
     from package_policy import excluded_delivery_document
@@ -439,6 +482,7 @@ def finalize(workspace, output, evidence_path):
     scanned=scan_delivery(output,run['word_name'])
     if not scanned['passed']: raise ValueError('Delivery scan failed: '+json.dumps(scanned['hits'][:10],ensure_ascii=False))
     clean=read_json(workspace/'.product-v2/data-cleaning.json')
+    check_data_quality(workspace,output)
     actual=file_map(output/SYSTEM/'数据')
     if actual!={f['name']:f['sha256'] for f in clean['files']}: raise ValueError('Clean CSV snapshot changed')
     for f in clean['files']:
@@ -450,7 +494,9 @@ def finalize(workspace, output, evidence_path):
     for rel,sha in package['files'].items():
         if digest(inside(workspace,rel))!=sha: raise ValueError('Source changed after packaging: '+rel)
     record=read_json(workspace/'.product-v2/recording.json')
-    if record.get('passed') is not True or record.get('sha256')!=digest(output/SYSTEM/'演示视频.mp4') or not 55<=record.get('duration',0)<=75:
+    from media_evidence import validate_recording_duration
+    validate_recording_duration(record,run.get('recording_policy_version','legacy-fixed-v1'))
+    if record.get('passed') is not True or record.get('sha256')!=digest(output/SYSTEM/'演示视频.mp4'):
         raise ValueError('Current successful one-minute recording required')
     for rel,sha in record.get('input_files',{}).items():
         if digest(inside(workspace,rel))!=sha: raise ValueError('Recording input changed: '+rel)
@@ -564,7 +610,9 @@ def finalize_document_revision(workspace,output,evidence_path):
     for rel,sha in package['files'].items():
         if digest(inside(runtime_base,rel))!=sha: raise ValueError('Inherited application source changed')
     recording=read_json(runtime_base/'.product-v2/recording.json')
-    if recording.get('passed') is not True or digest(output/SYSTEM/'演示视频.mp4')!=recording.get('sha256') or not 55<=recording.get('duration',0)<=75:
+    from media_evidence import validate_recording_duration
+    validate_recording_duration(recording,run.get('recording_policy_version','legacy-fixed-v1'))
+    if recording.get('passed') is not True or digest(output/SYSTEM/'演示视频.mp4')!=recording.get('sha256'):
         raise ValueError('Inherited successful recording changed')
     for rel,sha in recording.get('input_files',{}).items():
         if digest(inside(runtime_base,rel))!=sha: raise ValueError('Inherited recording input changed')
@@ -598,7 +646,11 @@ def revision_chain(workspace, base):
         seen.add(str(original))
         receipt_path=inside(original,'.product-v2/final-receipt.json')
         receipt=read_json(receipt_path)
-        if digest(receipt_path)!=link['receipt_sha256'] or str(output)!=link['output']:
+        # A parent recorded before its weekly archive keeps the original
+        # publication path. A child prepared later records the verified locator.
+        # Both identities are exact receipt-bound paths; arbitrary aliases fail.
+        parent_paths={str(no_links(run['output'])),str(output)}
+        if digest(receipt_path)!=link['receipt_sha256'] or link['output'] not in parent_paths:
             raise ValueError('Frozen revision receipt identity changed')
         untracked=finalized_snapshot(output,receipt,bool(link.get('untracked_base_files')),original)
         if untracked!=link.get('untracked_base_files',{}):
@@ -649,6 +701,8 @@ def package_only_delta(old_zip,new_zip):
 
 def inherited_execution(root):
     original,output,proof=root['workspace'],root['output'],root['proof']
+    run=read_json(original/'.product-v2/run.json')
+    check_data_quality(original,output)
     checks=proof.get('checks',[])
     if len(checks)!=6 or {c.get('kind') for c in checks}!={'algorithm','api','persistence','browser','build','package_startup'}:
         raise ValueError('Inherited six execution checks required')
@@ -662,7 +716,9 @@ def inherited_execution(root):
     for rel,sha in package['files'].items():
         if digest(inside(original,rel))!=sha: raise ValueError('Inherited source changed: '+rel)
     recording=read_json(original/'.product-v2/recording.json')
-    if not recording.get('passed') or recording.get('sha256')!=digest(output/SYSTEM/'演示视频.mp4') or not 55<=recording.get('duration',0)<=75:
+    from media_evidence import validate_recording_duration
+    validate_recording_duration(recording,run.get('recording_policy_version','legacy-fixed-v1'))
+    if not recording.get('passed') or recording.get('sha256')!=digest(output/SYSTEM/'演示视频.mp4'):
         raise ValueError('Inherited recording changed')
     for rel,sha in recording.get('input_files',{}).items():
         if digest(inside(original,rel))!=sha: raise ValueError('Inherited recording input changed')
@@ -783,7 +839,7 @@ def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     sub=p.add_subparsers(dest='command',required=True)
     prep=sub.add_parser('prepare');prep.add_argument('--workspace',required=True);prep.add_argument('--output',required=True);prep.add_argument('--title',required=True);prep.add_argument('--source-docx',required=True);prep.add_argument('--revision-of');prep.add_argument('--adopt-draft',action='store_true');prep.add_argument('--revision-scope',choices=['document','package'],default='document');prep.add_argument('--allow-untracked-base',action='store_true')
-    for name in ('clean-data','pack-source','scan','record','finalize','finalize-document-revision','finalize-package-revision','publish','preserve-draft'):
+    for name in ('clean-data','check-data','pack-source','scan','record','finalize','finalize-document-revision','finalize-package-revision','publish','preserve-draft'):
         item=sub.add_parser(name);item.add_argument('--workspace',required=True)
         if name in ('clean-data','pack-source'): item.add_argument('--manifest',required=True)
         if name=='record':
@@ -800,6 +856,7 @@ def main(argv=None):
             workspace,output,run=state(args.workspace)
             if args.command=='clean-data':
                 cleanup_ready(workspace);result=clean_csv(workspace,output,args.manifest)
+            elif args.command=='check-data':result=check_data_quality(workspace,output,update=True)
             elif args.command=='pack-source': result=pack_source(workspace,output,args.manifest)
             elif args.command=='scan':
                 result=scan_delivery(output,run.get('word_name'));write_json(workspace/'.product-v2/scan.json',result)
