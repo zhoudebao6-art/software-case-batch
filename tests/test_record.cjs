@@ -366,6 +366,10 @@ test('original UI Chinese and English labels are rejected in observed text',()=>
   for(const text of ['专利平台','权利要求','权要','工程样本','推演数据','mock','dummy','synthetic','simulated','simulation','virtual','demo data'])assert.ok(auditUiText(text).length,text);
 });
 test('ordinary business abbreviations do not trigger English UI labels',()=>assert.deepEqual(auditUiText('设备PLC状态 CSV记录 任务已保存'),[]));
+test('visible data-production copy is rejected while real business actions remain valid',()=>{
+ for(const text of ['经计算生成数据','通过计算生成的数据','由计算生成的数据','计算生成数据','生成数据','样例数据','种子数据','由模型生成的数据'])assert.ok(auditUiText(text).length,text);
+ for(const text of ['生成报告','经计算生成报告','通过计算生成报告','由模型生成报告','计算结果','预测结果','运行记录','任务已保存'])assert.deepEqual(auditUiText(text),[],text);
+});
 test('browser launches inherit private lane temp and downloads without changing parent environment',()=>{
  const previous=process.env.TEMP;
  const one=isolatedBrowserOptions('D:\\codex+\\temp\\lane1','D:\\codex+\\temp\\lane1\\downloads');
@@ -456,7 +460,7 @@ test('legacy timeline still uses its frozen duration and never silently adopts f
  assert.equal(result.duration,60);assert.equal(seconds,60);assert.equal(validateMeasuredDuration({duration:60}),60);
  assert.throws(()=>validateMeasuredDuration({duration:85}),/frozen recording policy/);
 });
-test('same-capture retry validates existing evidence and preserves receipt bytes without encoding or decoding again (mock media validator)',()=>{
+test('completed-video retry ignores later input edits and preserves receipt bytes without encoding or decoding again (mock media validator)',()=>{
  const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto'),vm=require('node:vm');
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'scb-reuse-test-'));fs.mkdirSync(path.join(root,'.product-v2'));
  const hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'),save=(p,v)=>fs.writeFileSync(p,JSON.stringify(v));
@@ -469,14 +473,18 @@ test('same-capture retry validates existing evidence and preserves receipt bytes
   process.env.SCB_PRO_PYTHON='fixture-validator';process.env.SCB_PRO_FFMPEG='fixture-encoder';process.env.SCB_PRO_FFPROBE='fixture-probe';
   const raw=path.join(root,'raw.webm'),final=path.join(root,'final.mp4'),input=path.join(root,'app.js');
   fs.writeFileSync(raw,'fixture raw');fs.writeFileSync(final,'fixture final; not a decoding claim');fs.writeFileSync(input,'frozen input');
-  const run={workspace:root,run_id:'fixture',video:final};save(path.join(root,'.product-v2/run.json'),run);
-  const capture=path.join(root,'capture.json');save(capture,{status:'captured',workspace:root,run_id:'fixture',final,dir:root,rawPath:raw,raw_sha256:hash(raw),errors:[],inputs:{'app.js':hash(input)},duration:60});
+  const run={workspace:root,run_id:'fixture',video:final,construction_check_policy_version:'dependency-bound-v1'};save(path.join(root,'.product-v2/run.json'),run);
+  const capture=path.join(root,'capture.json');save(capture,{status:'captured',workspace:root,run_id:'fixture',final,dir:root,rawPath:raw,raw_sha256:hash(raw),errors:[],inputs:{'app.js':hash(input)},duration:60,construction_checks:{status:'ready',run_id:run.run_id}});
   save(path.join(root,'.product-v2/capture-pending.json'),{path:capture,sha256:hash(capture)});
   const receipt=path.join(root,'.product-v2/recording.json');save(receipt,{passed:true,capture_receipt_sha256:hash(capture),sha256:hash(final),duration:60,width:1920,height:1080,events:[{action:'click',started:1,completed:2}],frames:path.join(root,'frames')});
   const timeline=path.join(root,'timeline.json');save(timeline,{fixture:true});save(path.join(root,'.product-v2/controlled-video.json'),{timeline,sha256:hash(timeline)});
+  fs.writeFileSync(input,'later parameter/data copy change');
   const before=fs.readFileSync(receipt),result=sandbox.module.exports.finishRecording(root);
   assert.equal(result.reused_existing_evidence,true);assert.equal(result.visual_review_required,true);assert.equal(commands.length,1);
   assert.deepEqual(fs.readFileSync(receipt),before);assert.equal(commands[0][commands[0].indexOf('--recording')+1],receipt);
+  save(path.join(root,'.product-v2/build-checks.json'),{video_material_change:'Primary operation path was replaced'});
+  assert.throws(()=>sandbox.module.exports.finishRecording(root),/major system\/operation change/);assert.equal(commands.length,1);
+  save(path.join(root,'.product-v2/build-checks.json'),{});
   fs.writeFileSync(raw,'changed raw');assert.throws(()=>sandbox.module.exports.finishRecording(root),/Original capture changed/);assert.equal(commands.length,1);
  }finally{
   for(const [key,value] of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}

@@ -321,6 +321,7 @@ class ContractTests(unittest.TestCase):
         shutil.copytree(self.out,base_out)
         write_json(base_work/'.product-v2/run.json',{'schema_version':1,'workspace':str(base_work),'output':str(base_out),'title':'历史'})
         checks=self.runtime_records(base_work,base_out)
+        self.make_media_fixture(base_work,base_out)
         old_proof=base_work/'.product-v2/old-review.json';write_json(old_proof,{'checks':checks,'source_zip_sha256':digest(base_out/'模拟系统/项目源码.zip')})
         old_receipt=base_work/'.product-v2/final-receipt.json';write_json(old_receipt,{'status':'complete','files':file_map(base_out),'execution_evidence':str(old_proof),'evidence_sha256':digest(old_proof)})
         self.run['revision_of']={'workspace':str(base_work),'output':str(base_out),'receipt_sha256':digest(old_receipt),'system_files':file_map(base_out/'模拟系统')}
@@ -336,6 +337,10 @@ class ContractTests(unittest.TestCase):
     def test_document_revision_changed_system_requires_normal_flow(self):
         self.revision_fixture();(self.system/'演示视频.mp4').write_bytes(b'changed')
         with patch('proflow.cleanup_ready'),self.assertRaises(ValueError):finalize_document_revision(self.work,self.out,self.proof_path)
+    def test_document_revision_completed_csv_survives_missing_old_raw_input(self):
+        base_work,_,_=self.revision_fixture();(base_work/'input.csv').unlink()
+        with patch('proflow.cleanup_ready'),patch('contracts.SESSION_ROOT',self.sessions):
+            self.assertEqual(finalize_document_revision(self.work,self.out,self.proof_path)['scope'],'document-revision')
     def test_document_revision_stale_prior_log_rejected(self):
         base_work,_,_=self.revision_fixture();(base_work/'.product-v2/api.log').write_text('changed')
         with patch('proflow.cleanup_ready'),self.assertRaises(ValueError):finalize_document_revision(self.work,self.out,self.proof_path)

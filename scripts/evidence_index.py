@@ -47,7 +47,7 @@ def review_input(workspace,index,destination):
            'instruction':'Reviewer must inspect the required evidence and write independent conclusions, actual reviewed IDs and final proof hash. These bindings are not a review.'}
     facts['review_sequence']={'first':'Use the actual source mappings and algorithm/API/persistence evidence to check applicable acceptance/rejection boundaries and final-engine derived results in references/system-data.md before expensive visual coverage.',
         'on_blocking_defect':'Report the concrete source-bound defect as revise and disclose unread evidence; never invent coverage.',
-        'for_pass':'Complete the full required source, document, chart, UI and video review; no visual scope or independent role is reduced.'}
+        'for_pass':'Complete the full required source, document, chart, UI and video review; no visual scope or independent role is reduced. A video already actually reviewed and accepted may inherit its original viewed conclusion while its final media and technical evidence remain unchanged; later minor code, data or copy edits do not require another video review. A video never actually accepted still requires the complete first review.'}
     if policy is not None:
         facts['current_charts']['chart_policy']=policy
         facts['chart_review_requirements']={'every_current_png':True,

@@ -256,6 +256,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(value['current_artifacts'],{'result.csv':digest(output/'result.csv')})
         self.assertIn('before expensive visual',value['review_sequence']['first'])
         self.assertIn('full required',value['review_sequence']['for_pass'])
+        self.assertIn('later minor code, data or copy edits',value['review_sequence']['for_pass'])
+        self.assertIn('complete first review',value['review_sequence']['for_pass'])
         with self.assertRaisesRegex(ValueError,'overwrite'):review_input(work,index,facts)
         png.write_bytes(b'changed');
         with self.assertRaisesRegex(ValueError,'changed'):review_input(work,index,work/'new-facts.json')

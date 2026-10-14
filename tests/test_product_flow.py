@@ -43,6 +43,8 @@ class FlowTests(unittest.TestCase):
     def test_prompt_embeds_exact_paths_and_latest_layout(self):
         text=(self.work/'.product-v2/深化命令词.txt').read_text(encoding='utf8')
         self.assertIn(str(self.out/SYSTEM/'数据'),text);self.assertIn(str(self.out/SYSTEM/'项目源码.zip'),text)
+        for item in ['references/web-design.md','source_trace','calculation_trace_map','coverage_matrix','references/ui-policy.json']:
+            self.assertIn(item,text)
     def test_clean_drops_whole_metadata_columns_preserves_other_cells(self):
         src=self.csv('full.csv',[['编号','值','生成数据',' 数据 来源 ','生成时间'],['001','1.2300','是','输入','2026-10-12'],['002','带,逗号\n换行','否','其他','']])
         before=digest(src);r=self.clean([self.entry('full.csv',min_rows=2)])

@@ -464,15 +464,20 @@ function finishRecording(workspace,lease=null) {
   const capturePath=safeFile(workspace,path.relative(workspace,pending.path));
   if(sha(fs.readFileSync(capturePath))!==pending.sha256) throw Error('Capture receipt changed');
   const c=load(capturePath),run=load(path.join(workspace,'.product-v2/run.json'));
-  if('construction_check_policy_version' in run){
+  if(!fs.existsSync(c.final)&&'construction_check_policy_version' in run){
     const current=JSON.parse(command(process.env.SCB_PRO_PYTHON,[path.join(__dirname,'proflow.py'),'check-build','--workspace',workspace,
       ...(c.plan_path?['--plan',c.plan_path]:[])]));
     if(current.status!=='ready'||current.required!==true||c.construction_checks?.status!=='ready'||c.construction_checks?.run_id!==run.run_id)throw Error('Current construction admission required before evidence');
   }
   const {final,dir,rawPath,prelude,duration,inputs,identity,events,texts}=c;
   if(c.status!=='captured'||c.workspace!==workspace||c.run_id!==run.run_id||final!==run.video||c.errors.length) throw Error('Capture belongs to a different or failed run');
+  if('construction_check_policy_version' in run&&(c.construction_checks?.status!=='ready'||c.construction_checks?.run_id!==run.run_id))throw Error('Original construction admission required');
+  const checksPath=path.join(workspace,'.product-v2/build-checks.json');
+  if(fs.existsSync(final)&&fs.existsSync(checksPath)&&load(checksPath).video_material_change)throw Error('Video requires replacement for recorded major system/operation change');
   if(sha(fs.readFileSync(safeFile(workspace,path.relative(workspace,rawPath))))!==c.raw_sha256) throw Error('Original capture changed');
-  for(const [rel,hash] of Object.entries(inputs)) if(sha(fs.readFileSync(safeFile(workspace,rel)))!==hash) throw Error('Application input changed: '+rel);
+  // Completed videos keep their original evidence. Later code/data edits are
+  // checked by current software gates; unfinished captures still bind inputs.
+  if(!fs.existsSync(final))for(const [rel,hash] of Object.entries(inputs)) if(sha(fs.readFileSync(safeFile(workspace,rel)))!==hash) throw Error('Application input changed: '+rel);
   validateMeasuredDuration(c,policyVersion(run.recording_policy_version));
   const ffmpeg=process.env.SCB_PRO_FFMPEG,ffprobe=process.env.SCB_PRO_FFPROBE;
   if(!ffmpeg||!ffprobe||!process.env.SCB_PRO_PYTHON) throw Error('Load Enter-Environment.ps1 first');

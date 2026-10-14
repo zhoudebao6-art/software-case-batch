@@ -24,6 +24,12 @@
 
 脚本保留其他单元格和字段顺序，仅去指定元数据整列。输出 UTF-8 BOM。字段数不齐、空/重复列、主键缺失/重复、不足计划行数、禁词值或不安全路径使本次失败；不会静默删行补值。输入不变；事务暂存留在工作区，失败不发布部分数据。清洗前后的哈希和删列记录在 `.product-v2/data-cleaning.json`。主键去重检查用内存集合，百万级以上须按实际内存改用磁盘唯一性检查，不能为过门禁减规模。
 
+数据一版达到充分规模、完成清洗并真实质量通过后，按完成成品复用。`check-data`、status、finalize及文档/包继承共同核实际CSV输出成员/完整字节hash和原`data-cleaning.quality`的data/expansion pass；后续代码、data-plan、检查器、解释器或原始input_csv变化不作废它，不重新审计、扩量、生成、清洗或补填新表。原input_sha256和plan_sha256仅保留首次制作事实，旧真实pass按当时的原形状直接复用，不升级或重写旧收据。
+
+首次或未完成充分质量仍完整执行专名、字段、主外键、有效规模及扩容检查；成品CSV自身变更/缺失/损坏、原清洗/质量证据无效或已知明确数据错误才针对处理。具体已知错误可沿已有build-checks.json的`data_material_error`记录事实（没有则省略），不能清除标记来隐瞒未解决错误。原quality若带已有result_sha256，只用于核原证据完整性，不是独立验收签名；新完成不强制新增字段。只读验收不能暗写质量通过，首次实际check-data成功后才保存原质量事实。
+
+status对已清洗但首次质量未完成的内容显示`cleaned`并建议check-data，充分质量及输出hash已齐显示`data_completed`；完成后不比较当前raw input或plan。当前软件算法/接口/持久化测试保留，用内部隔离输入和结果验证，不覆盖已完成CSV或以新plan强制重制；源码与Word按各自当前合同检查。这些完成事实不代签独立通过。
+
 源码清单是需要交付的实际文件列表；不支持盲目打包全工作区。`exclude` 补充本案特有解析文件名/路径：
 
 ```json
@@ -66,7 +72,13 @@ PID 必须来自本次实际启动，每个专属进程逐项登记；录制器�
 
 status仅在新会话接续、阶段完成或实际依赖变化后用于决策，同轮有效状态直接沿用，不把状态查询变成忙轮询。`next_actions`按现有依赖给当前可执行建议；`remaining_stages`只列未齐项。capture/evidence先于在线工作结束后的cleanup，再清洗数据/打包；源码与最终ZIP启动的六类当前事实未齐，不直接建议独立完整验收。查询不证明当前OS后台状态，cleanup记录只显示last_completed，后续既有工具仍按真实身份保护。只缺MP4且原capture未变推荐evidence；存在变动MP4先保留旧draft，原capture不明或capturing时先定位状态，不盲目重复业务动作。
 
-`proflow.py status --workspace 案件目录 [--plan 本案计划] [--evidence 已有独立proof]`只读汇总现有收据与下一步，不执行阶段或新增台账。`technical_ready`表示录制和技术证据已有绑定记录，尚未finalized时独立视觉仍为pending；核验范围只含video/receipt/timeline，帧文件本次不重核。输出unknown/stale不能当失败视频自动重录，先处理指明依赖；只有缺失或改变的技术timeline走evidence，实际record-plan业务输入改变才需要新capture。published成品及final/proof/publication绑定相同返回空next_actions。proof指针保留原reviewed_evidence值，不追加已阅ID或独立签字。
+`proflow.py status --workspace 案件目录 [--plan 本案计划] [--evidence 已有独立proof]`只读汇总现有收据与下一步，不执行阶段或新增台账。`technical_ready`表示录制和技术证据已有绑定记录，尚未finalized时独立视觉仍为pending；核验范围只含video/receipt/timeline，帧文件本次不重核。输出unknown/stale不能当失败视频自动重录，先处理指明依赖；只有缺失或改变的技术timeline走evidence，未完成录制的实际输入变化仍按原恢复规则处理；已合格视频后续一般软件/数据变化不触发capture。published成品及final/proof/publication绑定相同返回空next_actions。proof指针保留原reviewed_evidence值，不追加已阅ID或独立签字。
+
+合格视频只完成一次。`.product-v2/recording.json`成功且成片、原controlled-video/timeline和真实操作收据仍同hash时，后续软件、数据、参数、一般文案或细节改变不再按recording.input_files或plan hash使视频失效；无需逐项差异清单、原字节快照、recording-reuse.json或新增审核确认字段。status显示video_completed并只列尚缺工作，finalize与继承修订共用完成媒体核验，原收据不改。不重复录制、编码、完整解码或重看此前真实已阅且未被否定的完整视频。
+
+首次视频仍须按原完整质量和真实性合同实际检查一次；技术就绪不等于首次独立视觉已通过。原成片/技术证据缺失、hash改变或真实失败仍拒绝，不凭完成文字假通过，只补必要证据。只有系统主体/主要操作路径重大改变或视频本身有实质问题才重新处理视频；建设在现有build-checks.json以非空`video_material_change`记录这一具体重大变化或问题（未发生则省略），不另造台账或模型阶段。完成必要新视频及检查后更新该事实，旧片和旧收据留历史，禁止把标记清空掩盖未解决问题。尚只有capture、未形成合格成片时仍按原输入严格恢复evidence。
+
+当前源码包、数据、Word、六类运行检查和原技术对应继续独立按各自当前hash/真实证据验收；旧片只证明其实际展示的合格流程，不作为当前算法/参数/数据正确性证明。小细节或数据不同不构成重录理由，也不在同一次独立验收之外新增视频复核会话。旧run无需补写新字段或重复确认。
 
 新完整`prepare`冻结`construction_check_policy_version=dependency-bound-v1`；无该字段的旧run保持历史合同，未知值拒绝，文档/包继承修订不补写历史政策。建设沿`.product-v2/build-checks.json`保存`run_id/source_docx_sha256/implementation_hashes/checks`，checks对象至少有`algorithm/api/persistence/browser/build`五类；其他数据事实可保留。每类使用现有`command/exit_code/log/sha256`，另加非空`input_files:{工作区相对文件:SHA256}`和`test_files:[本项实际测试脚本及固定夹具路径]`；test_files均须在input_files中。动态DB、当前业务操作/持续日志不是不可变输入，以测试中准备的固定输入和实际结果日志留证。
 

@@ -1,5 +1,44 @@
 {
-  "source": "original/rules/web-visible-copy.md:5-10",
-  "chinese": ["物理仿真", "专利", "权利要求", "权要", "模拟", "虚拟", "仿真", "工程样本", "工程示例", "模拟数据", "演示数据", "推演数据", "合成数据", "参考", "源文件", "公式", "正文"],
-  "english_patterns": ["\\bmock\\b", "\\bdummy\\b", "\\bsynthetic\\b", "\\bsimulated\\b", "\\bsimulation\\b", "\\bvirtual\\b", "\\bdemo[\\s_-]+data\\b"]
+  "source": "original/rules/web-visible-copy.md:5-10; user instruction 2026-10-14: business-facing copy without data-construction explanations",
+  "chinese": [
+    "物理仿真",
+    "专利",
+    "权利要求",
+    "权要",
+    "模拟",
+    "虚拟",
+    "仿真",
+    "工程样本",
+    "工程示例",
+    "模拟数据",
+    "演示数据",
+    "推演数据",
+    "合成数据",
+    "参考",
+    "源文件",
+    "公式",
+    "正文",
+    "计算生成数据",
+    "生成数据",
+    "样例数据",
+    "种子数据",
+    "经计算生成的数据",
+    "通过计算生成的数据",
+    "由计算生成的数据",
+    "由模型生成的数据",
+    "由模型生成数据",
+    "数据经计算生成",
+    "数据通过计算生成",
+    "数据由计算生成",
+    "数据由模型生成"
+  ],
+  "english_patterns": [
+    "\\bmock\\b",
+    "\\bdummy\\b",
+    "\\bsynthetic\\b",
+    "\\bsimulated\\b",
+    "\\bsimulation\\b",
+    "\\bvirtual\\b",
+    "\\bdemo[\\s_-]+data\\b"
+  ]
 }

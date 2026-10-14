@@ -3,6 +3,7 @@ import argparse
 import csv
 from datetime import datetime, timezone
 import io
+import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -182,7 +183,7 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
 本次仅建设和自检Word、新增结果PNG、实施例红字说明、原式符号说明、图题和全页渲染。父会话实际分派spawn_agent(fork_turns=none, model=gpt-6.1-sol, reasoning_effort=high)，之后另一个明确gpt-6.1-sol/ultra独立会话只读审核当前修订；保存真实call_id、canonical task_name和原始session JSONL及当前产物hash，建设者只写建设自检事实，独立reviewer写review.json并在final给出其精确SHA256。调用目标不支持时不能静默降级或自行验收。
 结合源技术实施例实际读前文—红字—后文，逐图详细自然解释工况、读图、计算依据、可复核结果、原因和适用判断；有对应原式时自然引入关键符号并首次就地简释，保留上下标、帽号和希腊字母；无公式按实施例解释，不强塞数学、不凑字数。每图独立“请参考图N”，原文原式原图及位置保持不动，仅新增图和对应图下图题按图号放全部原文之后。新增PNG图内无顶部title/suptitle、表头、图N或说明框，正常轴和必要图例保留；核对最终PNG及Word实际尺寸图例/符号与数据一致。
 PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据都留本次修订工作区。按references/tools.md生成内部.product-v2/chart-manifest.json，核对Word嵌图同字节PNG、独立引用、图下caption和全页衔接，供独立ultra实际审核。
-旧系统按冻结system_files完整沿用：项目源码.zip、演示视频.mp4和全部数据CSV字节不变；旧源码、数据输入、六类执行日志、ZIP启动证据、录制及输入hash、数据出处和旧complete收据均冻结继承。旧软件的建设模型及执行身份保留历史事实，本轮high仅证明文档修订，不伪称旧软件由本轮high建设。无需新系统建设、重新取数或录制；原软件相关证据变化时此修订继承门禁拒绝通过，交负责人重新确定受影响范围。
+旧系统按冻结system_files完整沿用：项目源码.zip、演示视频.mp4和全部数据CSV字节不变；旧源码、六类执行日志、ZIP启动证据、原充分清洗CSV及质量事实、原录制及技术证据、数据出处和旧complete收据均冻结继承；后续原始input_csv或data-plan变化不作废完成数据。旧软件的建设模型及执行身份保留历史事实，本轮high仅证明文档修订，不伪称旧软件由本轮high建设。无需新系统建设、重新取数或录制；原软件相关证据变化时此修订继承门禁拒绝通过，交负责人重新确定受影响范围。
 成品根目录仅上述原名Word和模拟系统，系统内仅项目源码.zip、演示视频.mp4、数据/*.csv，与旧系统hash完全一致。所有PNG、证据及说明在工作区；此次Word-only修订软件字节继承原包；若用户还要求删ZIP说明必须另走package revision，不扩大本次范围。源Word完整basename即使含禁词仅豁免该Word，代码、Web和CSV豁免范围不扩大。
 在本次修订及旧工作区核对本案后台退出记录（process_guard stop，保留Codex/MCP及其他项目），执行scan；独立ultra实际核验当前Word全部页、PNG、正文衔接及未变系统继承证据。它写当前reviewed_files/visual_notes/limitations/reviewer_agent_id/decision/chart_snapshot/chart_reviews；完成后仅执行finalize-document-revision --workspace "{workspace}" --evidence "独立ultra当前review.json绝对路径"。保留旧finalized run、旧收据及旧交付，在本次新工作区另存document-revision收据，不重写历史通过。只报告实际证据支持的完成状态。
 '''
@@ -215,11 +216,12 @@ PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据
     if run.get('data_policy_version')=='neutral-expanded-v1' and not base:
         prompt+='''\n建设开始在现有data-plan制定足量数据：对现有不足版本先统计清洗后主要明细有效规模，以约2倍作为扩容起点，按业务粒度和性能说明调整，维表不机械翻倍；新案按领域对象、时间跨度及关键事件覆盖安排。使用批量可复现计算，不复制换号凑行。导出文件名、表头、备注和单元格不得有真实或编造的地名、公司名称、人名，统一稳定编号，保持跨表与Web下载一致。原始来源、性质和映射只留内部，不伪称实测。先用data_preflight实际检查规模、引用和专名，再清洗输出并核对初始化、分页和导出；沿现有数据清洗记录绑定当前文件哈希，见references/system-data.md。\n'''
     if not base:
-        prompt+='\n建设自检先读references/system-data.md的源依赖业务边界要求，在原有映射与六类检查中记录原定义→具体接受/拒绝断言→最终同引擎派生结果重算；先用最小业务闭环和关键反例调用真实最终函数，按源机制核验执行边界、集合门槛、真实输出误差和输入传递；同一次high内以当前部署入口实跑启动、健康身份、核心接口、必要持久化和停止/端口释放，通过后再扩量及制作依赖图文和录制；只前移便宜必要自检，不要求先完成全部后端，已有合格数据、计算和图文按原同hash规则复用，业务失败立即停止依赖生成、保留未变成果和独立验收，不以结构校验或成功状态代替业务正确，不新增台账或模型阶段。\n'
+        prompt+='\n建设开始实际读取references/web-design.md和references/system-data.md：从本案原材料形成角色、核心任务、主工作区、关键交互的短设计画像，按业务主对象设计页面结构，不仅换颜色；沿已有source_trace、calculation_trace_map、coverage_matrix绑定原段/原式→实际函数→真实边界测试，不新增第二张台账。同一次high browser自检实际主页面、关键详情、空状态和错误提示的可见文字，调用现有record.cjs.auditUiText（共用references/ui-policy.json），在录制前修齐，不新增preflight模型；不展示“经计算生成数据”等制作过程说明，保留真实“生成报告/计算结果/预测结果”，不伪称实测或已上线，不自动改写原文或源码。建设自检在原有映射与六类检查中记录原定义→具体接受/拒绝断言→最终同引擎派生结果重算；先用最小业务闭环和关键反例调用真实最终函数，按源机制核验执行边界、集合门槛、真实输出误差和输入传递；同一次high内以当前部署入口实跑启动、健康身份、核心接口、必要持久化和停止/端口释放，通过后再扩量及制作依赖图文和录制；只前移便宜必要自检，不要求先完成全部后端，已有合格数据、计算和图文按原同hash规则复用，业务失败立即停止依赖生成、保留未变成果和独立验收，不以结构校验或成功状态代替业务正确，不新增台账或模型阶段。\n'
     if not base or revision_scope=='package':
         prompt+='''\n建设自检及最终源码ZIP解压验证沿既有检查核验部署生命周期：PowerShell输出CIM/JSON前在子进程内明确[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false)，Python读取明确encoding='utf-8',errors='strict'并检查returncode；编码异常或非零退出如实失败，保留stdout/stderr，不用替换解码或吞错。启动返回后先保有Popen、PID、创建时间和本案entry归属再做探查，finally中失败也精确清退已核归属子树，无法核准时记录cleanup_pending，保留Codex/MCP及其他项目，不放宽process_guard边界。启动/停止使用同一真实entry，按当前部署目录解析绝对路径，入口变更时同步；建设内实际跑启动→停止→端口释放并核PID退出，最终ZIP解压后核对同一入口及清退效果、绑定ZIP哈希。命令、日志和哈希沿原有检查保存，不新增模型阶段、审批或全量重复测试。\n'''
     if not base:
         prompt+='''\n本次录制前必须在现有.product-v2/build-checks.json按references/tools.md绑定algorithm/api/persistence/browser/build五类真实日志，各自非空input_files含实际代码、测试脚本及固定夹具，test_files列实际测试入口；顶层run_id/source_docx_sha256/implementation_hashes绑定本案当前源与source-manifest。check-build只读核验，失败或陈旧在capture前拒绝，只重做依赖变化的检查。规范化反例必须走最终消费函数/API而非只测helper。父接续先proflow.py status读取收据：已capture进入evidence，technical_ready进入待完成独立审查，published未变结束；不反复录制、编码、解码或重看已实际验收且依赖未变的部分，finalize完整门禁保持。\n'''
+    prompt+='\n充分清洗数据一版真实通过后按references/tools.md和U14完成成品规则复用，不因后续代码、data-plan、工具、解释器或原始input_csv变化重审/扩量/生成/清洗，不新增逐项复用表、不重写原收据；当前软件算法及派生复算使用内部隔离输入/结果，完成CSV不自动覆盖。首次质量仍完整，CSV自身损坏/缺失/变化或明确数据错误才针对处理。\n'
     (record.parent/'深化命令词.txt').write_text(prompt, encoding='utf-8')
     return run
 
@@ -314,19 +316,49 @@ def clean_csv(workspace, output, manifest_path):
     write_json(workspace/'.product-v2/data-cleaning.json',receipt)
     return receipt
 
+def completed_data_quality(workspace,cleaning,current_files):
+    """Reuse the original sufficient, cleaned CSV result; no new plan binding."""
+    checks=workspace/'.product-v2/build-checks.json'
+    if checks.is_file() and read_json(checks).get('data_material_error'):
+        raise ValueError('Known material data error requires targeted correction')
+    quality=cleaning.get('quality')
+    if not isinstance(quality,dict) or quality.get('policy')!='neutral-expanded-v1':return None
+    audit=quality.get('audit');expansion=quality.get('expansion')
+    if (not isinstance(audit,dict) or not isinstance(expansion,dict) or
+            audit.get('data_status')!='pass' or audit.get('findings') or
+            expansion.get('expansion_status')!='pass' or expansion.get('failures')):return None
+    recorded=audit.get('files')
+    if not isinstance(recorded,dict) or not recorded or not all(isinstance(v,dict) for v in recorded.values()):return None
+    if ({name:item.get('sha256') for name,item in recorded.items()}!=current_files or
+            {f['name']:f['sha256'] for f in cleaning['files']}!=current_files):return None
+    if 'result_sha256' in quality:
+        original={key:quality.get(key) for key in ('policy','plan_sha256','audit','expansion')}
+        actual=hashlib.sha256(json.dumps(original,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
+        if quality['result_sha256']!=actual:return None
+    return quality
+
+
 def check_data_quality(workspace,output,update=False):
-    """Recompute actual export checks; bind them within the existing cleaning record."""
-    run=read_json(inside(workspace,'.product-v2/run.json'))
-    policy=run.get('data_policy_version')
-    if policy is None:return None
+    """Completed CSVs retain their actual original pass; first audits stay full."""
+    run=read_json(inside(workspace,'.product-v2/run.json'));policy=run.get('data_policy_version')
+    if policy is None:
+        checks=workspace/'.product-v2/build-checks.json'
+        if checks.is_file() and read_json(checks).get('data_material_error'):
+            raise ValueError('Known material data error requires targeted correction')
+        return None
     if policy!='neutral-expanded-v1':raise ValueError('Unknown frozen data policy')
-    from data_preflight import audit_csv_exports,check_expansion
-    plan_path=inside(workspace,'.product-v2/data-plan.json');plan=read_json(plan_path)
-    directory=no_links(output/SYSTEM/'数据')
-    paths=sorted(directory.iterdir())
+    cleaning_path=inside(workspace,'.product-v2/data-cleaning.json');cleaning=read_json(cleaning_path)
+    if update and (workspace/'.product-v2/final-receipt.json').exists():raise ValueError('Finalized evidence is frozen')
+    directory=no_links(output/SYSTEM/'数据');paths=sorted(directory.iterdir())
     if not paths or any(not p.is_file() or p.suffix.lower()!='.csv' for p in paths):
         raise ValueError('Selected important CSVs required for data quality checks')
     for path in paths:no_links(path)
+    current_files={p.name:digest(p) for p in paths}
+    completed=completed_data_quality(workspace,cleaning,current_files)
+    if completed is not None:return completed
+    from data_preflight import audit_csv_exports,check_expansion
+    plan_path=inside(workspace,'.product-v2/data-plan.json');plan_bytes=plan_path.read_bytes()
+    plan=json.loads(plan_bytes.decode('utf-8-sig'));plan_sha=hashlib.sha256(plan_bytes).hexdigest()
     audit=audit_csv_exports(paths,plan['export_schema'],known_names=plan.get('known_names',[]),
                             allowed_terms=plan.get('allowed_terms',[]),name_review=plan.get('name_review',{}))
     expansion=check_expansion(plan.get('baseline_metrics'),audit,plan['expansion_plan'])
@@ -334,16 +366,17 @@ def check_data_quality(workspace,output,update=False):
         raise ValueError('Construction data checks incomplete: '+json.dumps(
             {'status':audit.get('data_status'),'findings':audit.get('findings',[])[:10],
              'name_review_required':audit.get('name_review_required',[]),'expansion':expansion},ensure_ascii=False))
-    quality={'policy':policy,'plan_sha256':digest(plan_path),'audit':audit,'expansion':expansion}
-    cleaning_path=inside(workspace,'.product-v2/data-cleaning.json');cleaning=read_json(cleaning_path)
-    if {p.name:digest(p) for p in paths}!={f['name']:f['sha256'] for f in cleaning['files']}:
+    if ({f['name']:f['sha256'] for f in cleaning['files']}!=current_files or
+            {name:item['sha256'] for name,item in audit['files'].items()}!=current_files):
         raise ValueError('Data checks must bind the actual cleaned CSV snapshot')
+    if digest(plan_path)!=plan_sha:raise ValueError('Data plan changed during quality verification')
+    quality={'policy':policy,'plan_sha256':plan_sha,'audit':audit,'expansion':expansion}
     if update:
-        if (workspace/'.product-v2/final-receipt.json').exists():raise ValueError('Finalized evidence is frozen')
         cleaning['quality']=quality;write_json(cleaning_path,cleaning)
     elif cleaning.get('quality')!=quality:
         raise ValueError('Run check-data on the current exports before requesting independent acceptance')
     return quality
+
 
 def excluded_source(relative, extra=()):
     from package_policy import excluded_delivery_document
@@ -480,6 +513,33 @@ def scan_delivery(output, word_name=None):
             hits.extend(scan_text(relative,path.read_bytes()) if path.suffix.lower() in TEXT_SUFFIXES else [])
     return {'passed':not hits,'hits':hits,'license_exceptions':licenses,'files':file_map(output)}
 
+def completed_recording(workspace,record,video,hash_file=digest):
+    """Check completed media itself; later software/data edits do not stale it.
+
+    This reuses original technical facts, never decodes/encodes or approves
+    visuals. Current code/data correctness remains in its own existing gates.
+    """
+    if record.get('passed') is not True or record.get('errors') or record.get('sha256')!=hash_file(video):
+        raise ValueError('Successful unchanged completed video required')
+    checks_path=workspace/'.product-v2/build-checks.json'
+    if checks_path.is_file():
+        major=read_json(checks_path).get('video_material_change')
+        if major:
+            raise ValueError('Video requires replacement for a recorded major system/operation change: '+str(major))
+    receipt=inside(workspace,'.product-v2/recording.json')
+    controlled=read_json(inside(workspace,'.product-v2/controlled-video.json'))
+    timeline=no_links(controlled['timeline'])
+    if workspace not in timeline.parents or hash_file(timeline)!=controlled.get('sha256'):
+        raise ValueError('Original completed video technical timeline missing or changed')
+    facts=read_json(timeline);binding=facts.get('recording_receipt',{})
+    if (facts.get('decode_ok') is not True or facts.get('sample_fps')!=5 or
+            facts.get('video_sha256')!=record['sha256'] or
+            binding.get('sha256')!=hash_file(receipt) or no_links(binding.get('path',''))!=receipt):
+        raise ValueError('Original completed video technical/operation binding changed')
+    return {'video_completed':True,'timeline':str(timeline),
+            'scope':'Original completed video only; current source/data/Word and independent review keep their own checks.'}
+
+
 def finalize(workspace, output, evidence_path):
     if (workspace/'.product-v2/final-receipt.json').exists():
         raise ValueError('Finalized receipt is immutable; create a separate revision')
@@ -497,10 +557,6 @@ def finalize(workspace, output, evidence_path):
     check_data_quality(workspace,output)
     actual=file_map(output/SYSTEM/'数据')
     if actual!={f['name']:f['sha256'] for f in clean['files']}: raise ValueError('Clean CSV snapshot changed')
-    for f in clean['files']:
-        src=no_links(f['input'])
-        if workspace not in src.parents or digest(src)!=f['input_sha256']:
-            raise ValueError('CSV input changed after cleaning')
     package=read_json(workspace/'.product-v2/source-package.json')
     if package['sha256']!=digest(output/SYSTEM/'项目源码.zip'): raise ValueError('Source archive changed')
     for rel,sha in package['files'].items():
@@ -508,16 +564,14 @@ def finalize(workspace, output, evidence_path):
     if current_checks['required']:
         captured_checks=record.get('construction_checks',{})
         if (captured_checks.get('status')!='ready' or captured_checks.get('run_id')!=run['run_id'] or
-                captured_checks.get('source_docx_sha256')!=run['source_docx_sha256'] or
-                record.get('plan_sha256')!=current_checks['plan_sha256']):
-            raise ValueError('Recording lacks its current-run construction admission or plan binding')
+                captured_checks.get('source_docx_sha256')!=run['source_docx_sha256']):
+            raise ValueError('Recording lacks its original current-run construction admission')
     from media_evidence import validate_recording_duration
     validate_recording_duration(record,run.get('recording_policy_version','legacy-fixed-v1'))
     if record.get('passed') is not True or record.get('sha256')!=digest(output/SYSTEM/'演示视频.mp4'):
         raise ValueError('Current successful one-minute recording required')
-    for rel,sha in record.get('input_files',{}).items():
-        if digest(inside(workspace,rel))!=sha: raise ValueError('Recording input changed: '+rel)
     proof=read_json(evidence_path)
+    completed_recording(workspace,record,output/SYSTEM/'演示视频.mp4')
     controlled=read_json(workspace/'.product-v2/controlled-video.json')
     from media_evidence import validate as validate_video_evidence
     timeline=no_links(controlled['timeline'])
@@ -665,12 +719,17 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
         if value.get('status')!='cleaned' or not files:return {'state':'failed'}
         changed=[]
         for item in files:
-            if not bound(item['input'],item['input_sha256'],workspace):changed.append(item['input'])
             if not bound(output/SYSTEM/'数据'/item['name'],item['sha256'],output):changed.append('数据/'+item['name'])
         directory=output/SYSTEM/'数据'
         actual={p.name for p in directory.iterdir()} if directory.is_dir() else set()
         if actual!={item['name'] for item in files}:changed.append('CSV member set')
-        return {'state':'stale' if changed else 'completed','changed_dependencies':changed,'receipt':str(path)}
+        if changed:return {'state':'stale','changed_dependencies':changed,'receipt':str(path)}
+        policy=run.get('data_policy_version')
+        if policy not in {None,'neutral-expanded-v1'}:raise ValueError('Unknown frozen data policy')
+        quality=completed_data_quality(workspace,value,{item['name']:item['sha256'] for item in files})
+        completed=policy is None or quality is not None
+        return {'state':'completed' if completed else 'cleaned','data_completed':completed,
+                'next_action':None if completed else 'check-data','changed_dependencies':[],'receipt':str(path)}
     def package():
         value,path=receipt('source-package.json')
         if not value:return {'state':'not_started'}
@@ -716,13 +775,9 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
     def media():
         if recording:
             if '_read_error' in recording:return {'state':'unknown','reason':recording['_read_error']}
-            changed=inputs_current(recording.get('input_files'))
-            if recording.get('passed') is not True:return {'state':'failed','reason':'Recording receipt did not complete successfully'}
+            if recording.get('passed') is not True or recording.get('errors'):return {'state':'failed','reason':'Recording receipt did not complete successfully'}
             if not admission_current(recording):
                 return {'state':'unknown','reason':'Recording lacks its current-run construction admission; inspect before any business replay'}
-            active_plan=plan_path or recording.get('plan_path') or workspace/'.product-v2/record-plan.json'
-            if recording.get('plan_sha256') and not bound(active_plan,recording['plan_sha256'],workspace):changed.append('recording plan')
-            if changed:return {'state':'stale','changed_dependencies':changed,'last_completed':'recorded'}
             if not bound(run['video'],recording.get('sha256'),output):
                 recovered=original_capture()
                 if recovered['state']=='captured':
@@ -739,8 +794,10 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
                     timeline_value.get('sample_fps')!=5 or binding.get('sha256')!=sha(recording_path) or
                     no_links(binding.get('path',''))!=no_links(recording_path)):
                 return {'state':'captured','next_action':'evidence','reason':'Technical timeline bindings incomplete','last_completed':'recorded'}
+            completed_recording(workspace,recording,output/SYSTEM/'演示视频.mp4',hash_file=sha)
             return {'state':'technical_ready','last_completed':'technical_evidence','receipt':str(recording_path),
-                    'timeline':str(timeline),'verification_scope':'Video, operation receipt and timeline hashes; frame files were not rechecked or visually viewed.'}
+                    'timeline':str(timeline),'video_completed':True,
+                    'verification_scope':'Video, operation receipt and timeline hashes; frame files were not rechecked or visually viewed.'}
         return original_capture() if pending else {'state':'not_started'}
     summarize('recording',media)
     cleanup,cleanup_path=receipt('cleanup.json')
@@ -751,7 +808,7 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
     steps.setdefault('independent_review',{'state':'pending','reason':'No finalized independent acceptance is recorded'})
     remaining=[]
     for name,action in [('data','clean-data'),('source_package','pack-source')]:
-        if steps[name]['state']!='completed':remaining.append(action)
+        if steps[name]['state']!='completed':remaining.append(steps[name].get('next_action') or action)
     def execution():
         execution_doc=read_json(no_links(evidence_path)) if evidence_path else prior_execution_doc
         if not execution_doc and (workspace/'.product-v2/build-checks.json').is_file():execution_doc=read_json(workspace/'.product-v2/build-checks.json')
@@ -778,6 +835,7 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
     elif video_state in {'unknown','failed'}:next_actions.append('inspect-recording-state-before-any-business-replay')
     elif video_state=='technical_ready':
         if steps['cleanup']['last_completed']!='stopped':next_actions=['cleanup-after-required-online-work']
+        elif steps['data']['state']=='cleaned':next_actions=['check-data']
         elif steps['data']['state']!='completed':
             next_actions=['inspect-data-receipt'] if steps['data']['state']=='unknown' else ['preserve-data-draft then clean-data' if (output/SYSTEM/'数据').exists() else 'clean-data']
         elif steps['source_package']['state']!='completed':
@@ -873,14 +931,11 @@ def finalize_document_revision(workspace,output,evidence_path):
     validate_recording_duration(recording,run.get('recording_policy_version','legacy-fixed-v1'))
     if recording.get('passed') is not True or digest(output/SYSTEM/'演示视频.mp4')!=recording.get('sha256'):
         raise ValueError('Inherited successful recording changed')
-    for rel,sha in recording.get('input_files',{}).items():
-        if digest(inside(runtime_base,rel))!=sha: raise ValueError('Inherited recording input changed')
+    completed_recording(runtime_base,recording,output/SYSTEM/'演示视频.mp4')
     clean=read_json(runtime_base/'.product-v2/data-cleaning.json')
     if file_map(output/SYSTEM/'数据')!={f['name']:f['sha256'] for f in clean['files']}:
         raise ValueError('Inherited CSV snapshot changed')
-    for f in clean['files']:
-        src=no_links(f['input'])
-        if runtime_base not in src.parents or digest(src)!=f['input_sha256']: raise ValueError('Inherited CSV input changed')
+    check_data_quality(runtime_base,output)
     provenance=read_json(runtime_base/'.product-v2/data-provenance.json')
     if not provenance.get('nature') or not provenance.get('sources') or not provenance.get('validation'):
         raise ValueError('Inherited data provenance required')
@@ -979,14 +1034,10 @@ def inherited_execution(root):
     validate_recording_duration(recording,run.get('recording_policy_version','legacy-fixed-v1'))
     if not recording.get('passed') or recording.get('sha256')!=digest(output/SYSTEM/'演示视频.mp4'):
         raise ValueError('Inherited recording changed')
-    for rel,sha in recording.get('input_files',{}).items():
-        if digest(inside(original,rel))!=sha: raise ValueError('Inherited recording input changed')
+    completed_recording(original,recording,output/SYSTEM/'演示视频.mp4')
     clean=read_json(original/'.product-v2/data-cleaning.json')
     if file_map(output/SYSTEM/'数据')!={f['name']:f['sha256'] for f in clean['files']}:
         raise ValueError('Inherited CSV output changed')
-    for f in clean['files']:
-        source=no_links(f['input'])
-        if original not in source.parents or digest(source)!=f['input_sha256']: raise ValueError('Inherited CSV input changed')
     provenance=read_json(original/'.product-v2/data-provenance.json')
     if not all(provenance.get(key) for key in ('nature','sources','validation')): raise ValueError('Inherited data provenance missing')
     return checks

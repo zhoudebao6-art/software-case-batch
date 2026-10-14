@@ -129,6 +129,11 @@ class ProgressTests(DependencyFixture):
         exported=self.out/'模拟系统/数据/input.csv';exported.write_bytes((self.work/'data/input.csv').read_bytes())
         write_json(self.control/'data-cleaning.json',{'status':'cleaned','files':[{'input':str(self.work/'data/input.csv'),
             'input_sha256':digest(self.work/'data/input.csv'),'name':'input.csv','sha256':digest(exported)}]})
+        self.assertEqual(self.status()['next_actions'],['check-data'])
+        cleaned=read_json(self.control/'data-cleaning.json')
+        cleaned['quality']={'policy':'neutral-expanded-v1','audit':{'data_status':'pass','files':{'input.csv':{'sha256':digest(exported)}}},
+                            'expansion':{'expansion_status':'pass'}}
+        write_json(self.control/'data-cleaning.json',cleaned)
         self.assertEqual(self.status()['next_actions'],['pack-source'])
         archive=self.out/'模拟系统/项目源码.zip';archive.write_bytes(b'final package fixture')
         write_json(self.control/'source-package.json',{'sha256':digest(archive),'files':{'app.py':digest(self.work/'app.py')}})
@@ -162,11 +167,11 @@ class ProgressTests(DependencyFixture):
         self.file('LICENSES/license.txt','changed lawful packaging notice')
         self.file('evidence/algorithm-new.log','new check evidence')
         self.assertEqual(self.status()['steps']['recording']['state'],'technical_ready')
-    def test_changed_recorded_business_dependency_requires_capture(self):
+    def test_changed_current_business_dependency_keeps_completed_video(self):
         self.recorded();self.file('app.py','changed shared engine')
-        result=self.status();self.assertEqual(result['steps']['recording']['state'],'stale')
-        self.assertIn('app.py',result['steps']['recording']['changed_dependencies'])
-        self.assertIn('check-build then capture',result['next_actions'])
+        result=self.status();self.assertEqual(result['steps']['recording']['state'],'technical_ready')
+        self.assertTrue(result['steps']['recording']['video_completed'])
+        self.assertNotIn('check-build then capture',result['next_actions'])
     def test_only_missing_technical_timeline_recommends_evidence(self):
         self.recorded();(self.work/'evidence/timeline.json').unlink()
         result=self.status();self.assertEqual(result['steps']['recording']['state'],'captured')
@@ -199,6 +204,10 @@ class ProgressTests(DependencyFixture):
         write_json(self.control/'data-cleaning.json',{'status':'cleaned','files':[{'input':str(self.work/'data/input.csv'),
             'input_sha256':digest(self.work/'data/input.csv'),'name':'input.csv','sha256':digest(exported)}]})
         write_json(self.control/'source-package.json',{'sha256':digest(archive),'files':{'app.py':digest(self.work/'app.py')}})
+        cleaned=read_json(self.control/'data-cleaning.json')
+        cleaned['quality']={'policy':'neutral-expanded-v1','audit':{'data_status':'pass','files':{'input.csv':{'sha256':digest(exported)}}},
+                            'expansion':{'expansion_status':'pass'}}
+        write_json(self.control/'data-cleaning.json',cleaned)
         result=self.status();self.assertEqual(result['steps']['data']['state'],'completed');self.assertEqual(result['steps']['source_package']['state'],'completed')
         exported.write_text('new exported bytes',encoding='utf8');archive.write_bytes(b'new packaging bytes')
         result=self.status();self.assertEqual(result['steps']['data']['state'],'stale');self.assertEqual(result['steps']['source_package']['state'],'stale')

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r15-expedited-question-reply-20261014",
+  "release": "r16-efficiency-source-web-20261014",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -34,8 +34,8 @@
     },
     {
       "relative_path": "SKILL.md",
-      "sha256": "102311c7f7084be5a724407dc15d407ca01e08bc4877166d1d89e45d6e594086",
-      "size": 19899
+      "sha256": "ebd124488fe2d3fc7415e0133cf9431a79dabcb4382d257ae30f0db5a2234ea5",
+      "size": 21331
     },
     {
       "relative_path": "agents/openai.yaml",
@@ -94,8 +94,8 @@
     },
     {
       "relative_path": "references/execution.md",
-      "sha256": "ef8449160e82d9fa33b1fa9535a00d63a48a54471a0c9af89f1cd982d14fb05a",
-      "size": 21146
+      "sha256": "c4b09405289d00b227d6aa316d240206f637caeda948d63617c90c68a4e86f5e",
+      "size": 24839
     },
     {
       "relative_path": "references/expedited-routing.md",
@@ -119,8 +119,8 @@
     },
     {
       "relative_path": "references/inheritance.md",
-      "sha256": "d87759dc68e95bf91344de3dc1c4f959422420f198773f05faa63742ff4338ca",
-      "size": 7067
+      "sha256": "383459052b1621ef2b749ec0db44b500f64d3aa367471606914b85111605c95f",
+      "size": 8319
     },
     {
       "relative_path": "references/original-discovery-mapping.json",
@@ -279,8 +279,8 @@
     },
     {
       "relative_path": "references/recording.md",
-      "sha256": "b22e6aab451f23e35103c3a9264a78186281dceb48da0697b171746d933db4ca",
-      "size": 10500
+      "sha256": "ff113284a9358425be91c2278c09354d9ee7bf5fd334e5bfe2d0ac949a480594",
+      "size": 11964
     },
     {
       "relative_path": "references/scheduler-policy.md",
@@ -289,18 +289,23 @@
     },
     {
       "relative_path": "references/system-data.md",
-      "sha256": "711b659083bf5400d7b617d4cf86c31250e9d33b7e89c1226de469707832c0b7",
-      "size": 23032
+      "sha256": "60bc4dc7f3fa5628260bc9958502c983f6530100a85df7c94126f371d42aaa70",
+      "size": 24979
     },
     {
       "relative_path": "references/tools.md",
-      "sha256": "2ec0f201c83617457d3f7ac0840003ef89d3cd8c6ab8475af2f4f34a46146eb7",
-      "size": 29403
+      "sha256": "9224e5dc2470ae4d363811d8c0b2f1f5b0a2de3f0141f31698370808b63a6739",
+      "size": 32700
     },
     {
       "relative_path": "references/ui-policy.json",
-      "sha256": "62319ee1f50da3626ade5ac4f1a1debe843ce1db9acee285a8180da77636ebb6",
-      "size": 448
+      "sha256": "81e41b23f7c210837b937b36e72fda8ec3ea424d660e3f38ed05422258665fa1",
+      "size": 1051
+    },
+    {
+      "relative_path": "references/web-design.md",
+      "sha256": "0e883ad8b11750284537d8c4e11b616b8b4f0523f148208472c99391c2afa0f5",
+      "size": 4801
     },
     {
       "relative_path": "requirements-ci.txt",
@@ -359,8 +364,8 @@
     },
     {
       "relative_path": "scripts/evidence_index.py",
-      "sha256": "e40a5f082c99fcc4acbacc1702e9fd99ab3849a5e2797a40fefd826eb9227c13",
-      "size": 5851
+      "sha256": "7b8b2cf823142032695fb883180f102f1d16775e81e93dfe60eda6d8b5465257",
+      "size": 6152
     },
     {
       "relative_path": "scripts/figure_preflight.py",
@@ -394,13 +399,13 @@
     },
     {
       "relative_path": "scripts/proflow.py",
-      "sha256": "bc1f3b4b4872b17a59f0ee16c595d90064c1b762966911aeb7a8abd83842618d",
-      "size": 97683
+      "sha256": "8d762e536aa78d6ded16d41d20fb06346bc5312de156ddb2f0c990d88e56042f",
+      "size": 101062
     },
     {
       "relative_path": "scripts/record.cjs",
-      "sha256": "ec0cb2e04377ae4a7aa1e4208798e2ce8a41a7d2d22abec6daa927d4059b44d0",
-      "size": 43644
+      "sha256": "8a391e160a7fe052f6c5e151846f978bdf236e27ba87cf70e2bd13dc426a7b7f",
+      "size": 44295
     },
     {
       "relative_path": "scripts/render_native_math.py",
@@ -474,13 +479,13 @@
     },
     {
       "relative_path": "tests/test_construction_progress.py",
-      "sha256": "26e495a56a1158b7aae2053bb9cc426f5c9c4662bdec994c8c5f51be96c1f923",
-      "size": 23028
+      "sha256": "f2a12e32ec35c3ffd2e7f6db17c4769797ea6aaff0c95209c753b364196e92f9",
+      "size": 23770
     },
     {
       "relative_path": "tests/test_contracts.py",
-      "sha256": "4574133fd931cd479e2546d94482dc46025cf2f27bbe84dd285d67b1c5c4c185",
-      "size": 46207
+      "sha256": "2bfc0ad83ac90cc231595922cad48b8677c5126ddcb1491e0329678e81b66122",
+      "size": 46095
     },
     {
       "relative_path": "tests/test_controller_facts.py",
@@ -494,8 +499,8 @@
     },
     {
       "relative_path": "tests/test_data_workflow.py",
-      "sha256": "d3b37fc9a49ac1f08c3ff15e0c2e4bbcec873bdf27fa83d06bd8eedf14ce0599",
-      "size": 2158
+      "sha256": "f40cc42bd730731291477acb3928a725934c84db913c759cbea229ce450f5240",
+      "size": 10213
     },
     {
       "relative_path": "tests/test_defaults.py",
@@ -539,18 +544,23 @@
     },
     {
       "relative_path": "tests/test_product_flow.py",
-      "sha256": "186d2546cfa6613897f9c54aa858093ef5f17898fb9e02fe08a611046cfbd9fa",
-      "size": 9330
+      "sha256": "c82c442e5ce1f8b4d0cde5b20b264a3863f51817bf8f9ac9bc2046d91c9ff57d",
+      "size": 9502
     },
     {
       "relative_path": "tests/test_record.cjs",
-      "sha256": "5b3d2844fddfcee4b9716fd0d1b1b9d45d8b508b62cc10c0d32842da009fe80b",
-      "size": 45092
+      "sha256": "a939a09c7a07b465020751b2ec2aece4d2bf5a28885c42855985b5cc41b68515",
+      "size": 46132
     },
     {
       "relative_path": "tests/test_recording_concurrency.py",
       "sha256": "1335a7e369931d4dea206858476a68f407ffb1c83c86ed11de0d8241f3bdf056",
       "size": 18413
+    },
+    {
+      "relative_path": "tests/test_recording_reuse.py",
+      "sha256": "0ced9b4aecdf5d294777363a5f0e1d92bc7b3d21a4152f3e86adc49c5be4b03d",
+      "size": 6610
     },
     {
       "relative_path": "tests/test_scheduler_groups.py",
@@ -569,8 +579,8 @@
     },
     {
       "relative_path": "tests/test_workflow.py",
-      "sha256": "4d6a19785d990608e07be0c1b78ef88c4533b138bb87a6602021b930c9728044",
-      "size": 29114
+      "sha256": "6e87b8e534eff4979c0ad0328c2056d2d0e87e7c72d7dba0c88fbd445c7be22a",
+      "size": 29299
     }
   ]
 }
