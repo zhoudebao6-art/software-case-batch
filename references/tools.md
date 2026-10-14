@@ -2,6 +2,8 @@
 
 加载 `Enter-Environment.ps1` 后，`$env:SCB_PRO_PYTHON` 是已配置 Python。下面 `工具目录` 均指本技能 scripts；`案件目录` 是用户点名的原案件工作区。工具不调用模型；父会话实际分派high建设、ultra返修，普通独立审核ultra，真实当前批/案原加急授权后的独立审核Astra/low；不能把配置或自检当成调用证明。
 
+`batch_control.py bind-controller|bind-repair|configure-scheduler --root ... --batch-id ... --pid ... --value 请求JSON --authorization 本轮真实调度授权引用`对已登记批次独立保存真实聊天/返修绑定及策略，仅改变后续准入；返修请求含case_id，可同传--case-id校验。请求格式、真实session/revise证明、普通/加急借位、8建设+2已核返修、审核4/4与回退`mode=legacy`见 [真实聊天调度](scheduler-policy.md)。未中用selected接续明确已有票据。安装时两个支持模块先于消费入口就位；不重写manifest/run/review proof或原active。
+
 ## 准备、数据、源码
 
 ```powershell

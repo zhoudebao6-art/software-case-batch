@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r13-dependency-admission-and-receipt-progress-20261014",
+  "release": "r14-verified-controller-fair-repair-budget-20261014",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -29,13 +29,13 @@
     },
     {
       "relative_path": "README.md",
-      "sha256": "9817e40b37c76796429150638d625766ff4fde5a6935860cb43a3f8c6476bc1e",
-      "size": 10636
+      "sha256": "a2fdd66d260f667337eadd3fb50ee8cbf53eaca616a85bde20641cb314dfc26b",
+      "size": 11083
     },
     {
       "relative_path": "SKILL.md",
-      "sha256": "355cebd6d16cad2f816cd276bace9790c82c59035eab932d15312bf408c16db4",
-      "size": 19464
+      "sha256": "102311c7f7084be5a724407dc15d407ca01e08bc4877166d1d89e45d6e594086",
+      "size": 19899
     },
     {
       "relative_path": "agents/openai.yaml",
@@ -94,13 +94,13 @@
     },
     {
       "relative_path": "references/execution.md",
-      "sha256": "277a53405733e736beb0d862f44654853dc0581f6af826f23df58057d064f996",
-      "size": 20358
+      "sha256": "ef8449160e82d9fa33b1fa9535a00d63a48a54471a0c9af89f1cd982d14fb05a",
+      "size": 21146
     },
     {
       "relative_path": "references/expedited-routing.md",
-      "sha256": "255fe9d841b4c89e964cb080c432363d6dd27a49b165333b295964f6cba4b8c3",
-      "size": 7654
+      "sha256": "131189397d93577ca876ee5e3f2ab4b11267c4d0f9cf72496a74782cb4693dc2",
+      "size": 7785
     },
     {
       "relative_path": "references/figure-design.md",
@@ -283,14 +283,19 @@
       "size": 10500
     },
     {
+      "relative_path": "references/scheduler-policy.md",
+      "sha256": "948b1765ae363538c78101888225f0ae5515d3aadb717a2053563e613b9dfa66",
+      "size": 5209
+    },
+    {
       "relative_path": "references/system-data.md",
       "sha256": "711b659083bf5400d7b617d4cf86c31250e9d33b7e89c1226de469707832c0b7",
       "size": 23032
     },
     {
       "relative_path": "references/tools.md",
-      "sha256": "f61ac118f8ae1538e0b8edeceb7176c958c27caddfb9c4603927c69fee094ea4",
-      "size": 28774
+      "sha256": "2ec0f201c83617457d3f7ac0840003ef89d3cd8c6ab8475af2f4f34a46146eb7",
+      "size": 29403
     },
     {
       "relative_path": "references/ui-policy.json",
@@ -329,8 +334,8 @@
     },
     {
       "relative_path": "scripts/batch_control.py",
-      "sha256": "0609b5c36655245f82c21344f7786cb76569ded00fc769d12ce750c09b2cb8a1",
-      "size": 55146
+      "sha256": "f5bdcab46d6902efadcebdb09d6c68ed55111bc9d16749da095abb23a740436d",
+      "size": 57694
     },
     {
       "relative_path": "scripts/common.py",
@@ -401,6 +406,16 @@
       "relative_path": "scripts/render_native_math.py",
       "sha256": "72c80fef2ea968108c0d2d67fa152bfdb4d33ade43ad36a355eca9bad5dcdc05",
       "size": 15909
+    },
+    {
+      "relative_path": "scripts/scheduler_policy.py",
+      "sha256": "237f9880a4e51c0b4526d9279ee9bd38048bd75cd8a6d7a8568c16f318aa4a9d",
+      "size": 19941
+    },
+    {
+      "relative_path": "scripts/scheduler_repair.py",
+      "sha256": "8e1bd962287a2cb5764b9609cb32ea1d96b7d1ed39d3e9012558828fafca01c7",
+      "size": 10900
     },
     {
       "relative_path": "scripts/source_intake.py",
@@ -536,6 +551,16 @@
       "relative_path": "tests/test_recording_concurrency.py",
       "sha256": "1335a7e369931d4dea206858476a68f407ffb1c83c86ed11de0d8241f3bdf056",
       "size": 18413
+    },
+    {
+      "relative_path": "tests/test_scheduler_groups.py",
+      "sha256": "866378991657aaafd9c56a1027461ce122e5a2c69a989d9e271e88dbfdc5c45e",
+      "size": 26780
+    },
+    {
+      "relative_path": "tests/test_scheduler_repair.py",
+      "sha256": "679b394cbe9f8f6f5ed93ebc205eb827da3a3b9bba3f3abbeebf12f3b9398822",
+      "size": 14213
     },
     {
       "relative_path": "tests/test_source_intake.py",

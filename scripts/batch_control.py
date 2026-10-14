@@ -471,7 +471,11 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
     with transaction(root,wait_seconds=3 if action in {'verify-record','verify-evidence','bind-media-runtime','verify-review'} else 0):
         target,manifest=batch(root,batch_id);owner_check(target,pid);state=read_json(target/'state.json')
         if case_id is not None and case_id not in state['cases']:raise ValueError('Control is restricted to this batch registered cases')
-        if action=='preflight':
+        if action in {'configure-scheduler','bind-controller','bind-repair'}:
+            from scheduler_policy import control
+            pool=read_json(Path(root)/'queue.json') if (Path(root)/'queue.json').exists() else []
+            return control(root,target,manifest,pid,action,value,authorization,pool,case_id)
+        elif action=='preflight':
             path=no_links(value);proof=read_json(path);checks=proof.get('checks',[])
             if proof.get('status')!='ready' or proof.get('zero_model_calls')!=0 or not {'workspace_write','read_only','browser','word_render'}.issubset({c.get('kind') for c in checks}):
                 raise ValueError('Real zero-model constrained execution/browser/Word checks required')
@@ -668,6 +672,8 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
                 eligible=ready_models if entry['stage'] in MODEL_STAGES else runnable
                 waiting=sorted((q for q in eligible if q['stage']==entry['stage']),key=lambda q:(-q['priority'],q['submitted_ns'],q['token']))
                 limit,host_available=admission_limits(root,manifest,active,entry['stage'])
+                from scheduler_policy import config as scheduler_config,CONTRACT as SCHEDULER_CONTRACT,choose as choose_model
+                scheduling=scheduler_config(root);group=None;fair_models=entry['stage'] in MODEL_STAGES and scheduling.get('mode')==SCHEDULER_CONTRACT
                 if entry['stage']=='evidence' and any(q['stage']=='record' for q in active):
                     return {'acquired':False,'reason':'live capture must finish before heavy media evidence'}
                 if entry['stage']=='record' and any(q['stage']=='evidence' for q in active+runnable):
@@ -678,13 +684,23 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
                         live_case=next(c for c in live_manifest['cases'] if c['case_id']==live['case_id'])
                         if (manifest['schema_version']>=2 or live_manifest['schema_version']>=2) and live_case['workspace'].lower()==case['workspace'].lower():
                             return {'acquired':False,'reason':'case_workspace_busy'}
-                if entry['stage'] in MODEL_STAGES:
+                if fair_models:
+                    chosen,group=choose_model(root,ready_models,active,pool,scheduling)
+                    if not chosen or chosen['token']!=entry['token']:
+                        selected=None
+                        if chosen:
+                            selected_model=MODELS[chosen.get('model_kind',chosen['stage'])]
+                            selected={key:chosen[key] for key in ('token','batch_id','case_id','stage')}
+                            selected.update(work_kind=chosen.get('work_kind','build'),model=selected_model[0],effort=selected_model[1],reason='current eligible class, work kind, group and batch turn')
+                        return {'acquired':False,'reason':'fair eligible model queue or controller/stage capacity',
+                                'priority_token':chosen['token'] if chosen else None,'selected':selected}
+                elif entry['stage'] in MODEL_STAGES:
                     for candidate in sorted((q for q in ready_models if q['priority']>entry['priority']),key=lambda q:(-q['priority'],q['submitted_ns'],q['token'])):
                         _,candidate_manifest=batch(root,candidate['batch_id'])
                         candidate_limit,candidate_host=admission_limits(root,candidate_manifest,active,candidate['stage'])
                         if candidate_host and sum(q['stage']==candidate['stage'] for q in active)<candidate_limit:
                             return {'acquired':False,'reason':'runnable higher-priority model stage has priority on shared model capacity','priority_token':candidate['token']}
-                if not host_available or sum(q['stage']==entry['stage'] for q in active)>=limit or not waiting or waiting[0]['token']!=entry['token']:
+                if not fair_models and (not host_available or sum(q['stage']==entry['stage'] for q in active)>=limit or not waiting or waiting[0]['token']!=entry['token']):
                     return {'acquired':False,'reason':'fair queue or host capacity'}
                 if entry['stage']=='record':
                     resources=recording_resources(manifest['execution_profile'],1+sum(q['stage']=='record' for q in active))
@@ -693,6 +709,14 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
                     if not resources['acquired']:
                         write_json(queue_path,pool);return resources
                 entry['status']='active';entry['acquired_ns']=time.time_ns();entry['slot_wait_seconds']=(entry['acquired_ns']-entry['submitted_ns'])/1e9
+                if fair_models:
+                    entry['scheduler_admission']={'contract':SCHEDULER_CONTRACT,'group':group,'capacities':deepcopy(scheduling['capacities']),
+                                                  'work_kind':chosen.get('work_kind','build'),'repair_extra_capacity':scheduling.get('repair_extra_capacity',0)}
+                    if chosen.get('repair_binding'):
+                        entry['scheduler_admission']['repair_binding']=deepcopy(chosen['repair_binding'])
+                        entry['work_kind']='repair'
+                    if chosen.get('model_kind')=='repair':
+                        entry['model_kind']='repair';entry['model'],entry['effort']=MODELS['repair']
                 if route and manifest.get('review_admission_contract')==REVIEW_ADMISSION_CONTRACT:
                     entry['review_admission'],admission_files=freeze_review_admission(root,target,manifest,state,entry,route)
             try:write_json(queue_path,pool)
@@ -704,14 +728,15 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
         write_json(target/'state.json',state);return state
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('action',choices=['register','claim','recover-owner','status','preflight','release-owner','priority','resume-case','expedite','drain','continue','update','queue','acquire','release-slot','verify-record','verify-evidence','bind-media-runtime','verify-review'])
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('action',choices=['register','claim','recover-owner','status','preflight','release-owner','priority','resume-case','expedite','drain','continue','update','queue','acquire','release-slot','verify-record','verify-evidence','bind-media-runtime','verify-review','configure-scheduler','bind-controller','bind-repair'],help='Scheduling controls require --value JSON and --authorization; bind-repair value names case_id and authenticates actual revise evidence; config affects future acquire only')
     p.add_argument('--root',required=True);p.add_argument('--batch-id',required=True);p.add_argument('--pid',type=int);p.add_argument('--cases');p.add_argument('--authorization');p.add_argument('--host-slots',type=int,default=4);p.add_argument('--recording-limit',choices=['2','3','4','auto'],default='auto');p.add_argument('--case-id');p.add_argument('--value');p.add_argument('--token');p.add_argument('--stage');p.add_argument('--runtime-pid',type=int)
     a=p.parse_args()
     try:
         if a.action=='register':result=register(a.root,a.batch_id,a.cases,a.authorization or '',a.host_slots,a.recording_limit)
         elif a.action in {'claim','recover-owner'}:result=claim(a.root,a.batch_id,a.pid,a.action=='recover-owner')
         elif a.action=='status':
-            path,manifest=batch(a.root,a.batch_id);result={'manifest':manifest,'state':read_json(path/'state.json')}
+            from scheduler_policy import config as scheduler_config
+            path,manifest=batch(a.root,a.batch_id);result={'manifest':manifest,'state':read_json(path/'state.json'),'scheduler':scheduler_config(a.root)}
         else:result=mutate(a.root,a.batch_id,a.pid,a.action,a.case_id,a.value,a.token,a.stage,a.authorization,a.runtime_pid)
         print(json.dumps(result,ensure_ascii=False,indent=2));return 0
     except (ValueError,OSError,KeyError,TypeError) as e:print('ERROR: '+str(e));return 2

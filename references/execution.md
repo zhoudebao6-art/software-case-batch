@@ -6,6 +6,8 @@
 
 ## 本批登记与资源
 
+r14真实聊天分组与可借用公平策略需本轮用户授权后显式`bind-controller`及`configure-scheduler`，可直接接入已登记批次，不改冻结manifest/run/permit或原active。按真实session而非共享PID去重，每组最多3模型子任务；建设最多8，授权可另设2个已核返修余量（`bind-repair`核实际revise，仍build/ultra），普通审核/加急审核本次目标4/4。普通/priority10、建设/已核返修合格时轮转，空闲立即借位，先过滤满组/满stage及无效候选；跨组/批按实际准入轮转。未中返回的selected明确实际应接续票据。未启用仍使用以下旧策略；启用及回退仅约束后续acquire，媒体合同保持。请求和命令见 [真实聊天调度](scheduler-policy.md)。
+
 仅用户明确调用/点名并确认的清单运行，已确认不逐案重问。一个Word默认一案，多材料合并须清单明确；锁文件、加密/损坏/旧doc不能静默跳过。冻结原basename、绝对/相对路径、大小、采集时间和SHA256，source副本哈希核验，原目录只读。新增工作区为`cases/YYYY-MM/案件名`（同名中文序号），点名旧案只在其独立revision继续。管理在新版`cases/.batches`、运行状态在各案`.product-v2`/`.runtime`，每案独立端口、浏览器、D盘临时目录。用户指定工作区优先。
 
 共享上限保持8建设/返修、3普通独立审核、1受控证据、1明确加急。用户本次明确多开录制授权下，新批次CLI默认`--recording-limit auto`最高4路，也可显式2/3/4；旧manifest保持2路及旧worker规则。新批模型槽和媒体槽分开：实际宿主4模型槽含父，最多3模型子任务（还须扣其他使用者），同一父可直接启动4个Node录制进程；不虚增host_total_slots。`batch_control.py register --root 新版cases/.batches --batch-id 本批 --cases 已确认清单.json --authorization 本轮用户请求引用 --host-slots 4 --recording-limit auto`冻结manifest，之后config不热改。跨批全局4路、CPU/内存准入、旧active容量保护及launch前lease复查见 [并发录制](recording-concurrency.md)。清单每案含case_id/workspace/source_docx/source_sha256；父补原名/大小/时间及端口等实际字段。
