@@ -454,6 +454,7 @@ def runnable_waiting(root,pool):
     batches={};result=[]
     for ticket in pool:
         if ticket['status']!='waiting':continue
+        if ticket.get('capacity_retry',{}).get('not_before_ns',0)>time.time_ns():continue
         batch_id=ticket['batch_id']
         if batch_id not in batches:
             target,_=batch(root,batch_id);state=read_json(target/'state.json')
@@ -465,10 +466,119 @@ def runnable_waiting(root,pool):
             result.append(ticket)
     return result
 
+def capacity_failure(entry,manifest,state,value):
+    """A real failed spawn or a proven terminal child may release a model slot."""
+    from contracts import SESSION_ROOT
+    request=read_json(no_links(value));path=no_links(request['session_log'])
+    if no_links(SESSION_ROOT) not in path.parents or path.suffix!='.jsonl':
+        raise ValueError('Capacity defer requires actual Codex session JSONL')
+    call_id=request['call_id'];calls=[];outputs=[];meta=[];events=[]
+    with path.open('rb') as stream:
+        for raw in stream:
+            try:event=json.loads(raw)
+            except (ValueError,UnicodeDecodeError):continue
+            payload=event.get('payload',{})
+            events.append(event)
+            if event.get('type')=='session_meta':meta.append(payload)
+            if event.get('type')!='response_item' or payload.get('call_id')!=call_id:continue
+            if payload.get('type')=='function_call':calls.append((payload,raw))
+            if payload.get('type')=='function_call_output':outputs.append((payload,raw))
+    if len(meta)!=1 or len(calls)!=1 or len(outputs)!=1:raise ValueError('One actual failed model dispatch call/output required')
+    if not path.name.endswith('-'+str(meta[0].get('id'))+'.jsonl'):raise ValueError('Capacity session filename identity mismatch')
+    call,raw_call=calls[0];output,raw_output=outputs[0];args=json.loads(call.get('arguments','{}'))
+    kind=entry.get('model_kind') or ('repair' if entry['stage']=='build' and state['cases'][entry['case_id']].get('phase')=='repairing' else entry['stage'])
+    model,effort=MODELS[kind]
+    if (call.get('name','').split('.')[-1]!='spawn_agent' or args.get('fork_turns')!='none' or
+        [args.get('model'),args.get('reasoning_effort')]!=[model,effort]):
+        raise ValueError('Capacity failure must retain the exact admitted model/effort')
+    case=next(c for c in manifest['cases'] if c['case_id']==entry['case_id'])
+    message=args.get('message','')
+    if not isinstance(message,str) or entry['token'] not in message or str(case['workspace']).casefold() not in message.casefold():
+        raise ValueError('Capacity dispatch must name this exact token and workspace')
+    result=output.get('output');text=result if isinstance(result,str) else json.dumps(result)
+    try:parsed=json.loads(text)
+    except ValueError:parsed=None
+    child_proof=None
+    if isinstance(parsed,dict) and parsed.get('task_name'):
+        # A spawned child may terminate immediately or midway. Its last actual
+        # lifecycle and the parent's latest actual agent census must BOTH prove
+        # the same terminal overload; a message or caller's status is not proof.
+        child=no_links(request['child_session_log']);child_events=[]
+        if no_links(SESSION_ROOT) not in child.parents or child.suffix!='.jsonl':raise ValueError('Actual child session JSONL required')
+        with child.open('rb') as stream:
+            for raw in stream:
+                try:child_events.append(json.loads(raw))
+                except (ValueError,UnicodeDecodeError):continue
+        child_meta=[e['payload'] for e in child_events if e.get('type')=='session_meta']
+        if len(child_meta)!=1 or not child.name.endswith('-'+str(child_meta[0].get('id'))+'.jsonl'):raise ValueError('Child session identity mismatch')
+        spawn=child_meta[0].get('source',{}).get('subagent',{}).get('thread_spawn',{})
+        if spawn.get('agent_path')!=parsed['task_name'] or spawn.get('parent_thread_id')!=meta[0]['id']:raise ValueError('Capacity child belongs to another parent/dispatch')
+        lifecycle=[e for e in child_events if e.get('type')=='event_msg' and e.get('payload',{}).get('type') in {'task_started','task_complete'}]
+        terminal=lifecycle[-1] if lifecycle else {}
+        error=terminal.get('payload',{}).get('error') or {}
+        if terminal.get('payload',{}).get('type')!='task_complete' or error.get('codex_error_info')!='server_overloaded' or 'Selected model is at capacity' not in error.get('message',''):
+            raise ValueError('Child is live, resumed, or has no terminal capacity error')
+        contexts=[e['payload'] for e in child_events if e.get('type')=='turn_context']
+        if not contexts or [contexts[-1].get('model'),contexts[-1].get('effort')]!=[model,effort]:raise ValueError('Child terminal model differs from admitted route')
+        pending={};census=None;census_index=-1
+        for index,event in enumerate(events):
+            p=event.get('payload',{})
+            if event.get('type')!='response_item':continue
+            if p.get('type')=='function_call':pending[p['call_id']]=p
+            if p.get('type')!='function_call_output':continue
+            actual=pending.get(p.get('call_id'),{})
+            if actual.get('name','').split('.')[-1]!='list_agents':continue
+            try:rows=json.loads(p['output']) if isinstance(p['output'],str) else p['output']
+            except ValueError:continue
+            census=(rows,event);census_index=index
+        rows,census_event=census if census else ({}, {})
+        found=[row for row in rows.get('agents',[]) if row.get('agent_name')==parsed['task_name']]
+        if len(found)!=1 or not isinstance(found[0].get('agent_status'),dict) or 'Selected model is at capacity' not in found[0]['agent_status'].get('errored','') or census_event.get('timestamp','')<terminal.get('timestamp',''):
+            raise ValueError('Latest real agent census must prove this child terminal capacity error')
+        for event in events[census_index+1:]:
+            p=event.get('payload',{})
+            if p.get('type')!='function_call' or p.get('name','').split('.')[-1] not in {'followup_task','send_message'}:continue
+            try:resumed=json.loads(p.get('arguments','{}'))
+            except ValueError:continue
+            if resumed.get('target') in {parsed['task_name'],parsed['task_name'].rsplit('/',1)[-1]}:raise ValueError('Child received a later continuation; preserve its reservation')
+        child_proof={'session_log':str(child),'terminal':terminal,'census':census_event}
+    elif (isinstance(parsed,dict) and any(parsed.get(key) for key in ('agent_id','thread_id'))) or 'Selected model is at capacity' not in text:
+        raise ValueError('Only actual capacity failure can defer; preserve spawned child reservations')
+    import hashlib
+    return {'session_log':str(path),'call_id':call_id,'model':model,'effort':effort,
+            'events_sha256':hashlib.sha256(raw_call+raw_output).hexdigest(),'child_terminal':child_proof}
+
+def defer_capacity(root,target,manifest,state,pool,entry,pid,value):
+    """One atomic queue replacement; repeat calls return the same waiting ticket."""
+    proof=capacity_failure(entry,manifest,state,value)
+    existing=next((q for q in pool if q.get('capacity_retry',{}).get('failed_token')==entry['token']),None)
+    if existing:
+        old=existing['capacity_retry']['proof']
+        if any(old[key]!=proof[key] for key in ('session_log','call_id','model','effort','events_sha256')):raise ValueError('Different capacity failure cannot reuse an already deferred attempt')
+        return existing
+    if entry['status']!='active' or entry['stage'] not in MODEL_STAGES or entry['owner']!=identity(pid):
+        raise ValueError('Current own active model slot required for capacity defer')
+    if any(q['batch_id']==entry['batch_id'] and q['case_id']==entry['case_id'] and q['status'] in {'active','waiting'} and q['token']!=entry['token'] for q in pool):
+        raise ValueError('Case already has another current attempt')
+    attempts=1+entry.get('capacity_retry',{}).get('attempts',0);seconds=min(300,30*2**min(attempts-1,4));now=time.time_ns()
+    retry={'failed_token':entry['token'],'attempts':attempts,'not_before_ns':now+seconds*1_000_000_000,
+           'cooldown_seconds':seconds,'proof':proof}
+    waiting={'token':uuid.uuid4().hex,'batch_id':entry['batch_id'],'case_id':entry['case_id'],'stage':entry['stage'],
+             'status':'waiting','priority':entry['priority'],'submitted_ns':max(now,1+max(q['submitted_ns'] for q in pool)),
+             'owner':identity(pid),'capacity_retry':retry,'model':proof['model'],'effort':proof['effort']}
+    if entry.get('model_kind'):waiting['model_kind']=entry['model_kind']
+    if entry.get('authorization'):waiting['authorization']=deepcopy(entry['authorization'])
+    entry.update(status='released',released_ns=now,release_reason='model_capacity',capacity_failure=proof)
+    pool.append(waiting)
+    # Queue is the authoritative retry journal: one atomic replace makes release
+    # and requeue inseparable, including if the process dies before returning.
+    write_json(no_links(root)/'queue.json',pool)
+    return waiting
+
 def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=None,authorization=None,runtime_pid=None):
     # Concurrent Node captures can perform launch checks together. Wait only for
     # this exact short-lived lock contention, never remove or steal a live lock.
-    with transaction(root,wait_seconds=3 if action in {'verify-record','verify-evidence','bind-media-runtime','verify-review'} else 0):
+    with transaction(root,wait_seconds=3 if action in {'verify-record','verify-evidence','bind-media-runtime','verify-review','release-slot','defer-capacity'} else 0):
         target,manifest=batch(root,batch_id);owner_check(target,pid);state=read_json(target/'state.json')
         if case_id is not None and case_id not in state['cases']:raise ValueError('Control is restricted to this batch registered cases')
         if action in {'configure-scheduler','bind-controller','bind-repair'}:
@@ -542,7 +652,7 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
                         if published.get('status')!='published' or published.get('files')!=receipt['files']:raise ValueError('Atomic publication receipt required before delivered')
                 for key in ('calls','usage'):item.setdefault(key,[]).extend(update.pop(key,[]))
                 item.update(update)
-        elif action in {'queue','acquire','release-slot','verify-record','verify-evidence','bind-media-runtime','verify-review'}:
+        elif action in {'queue','acquire','release-slot','defer-capacity','verify-record','verify-evidence','bind-media-runtime','verify-review'}:
             queue_path=Path(root)/'queue.json';pool=read_json(queue_path) if queue_path.exists() else []
             admission_files=[]
             if action=='queue':
@@ -566,7 +676,10 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
             matching=[q for q in pool if q['token']==token and q['batch_id']==batch_id]
             if len(matching)!=1:raise ValueError('Slot token does not belong to this batch')
             entry=matching[0]
-            if action=='verify-review':
+            if action=='defer-capacity':
+                if case_id!=entry['case_id']:raise ValueError('Capacity attempt belongs to a different registered case')
+                return defer_capacity(root,target,manifest,state,pool,entry,pid,value)
+            elif action=='verify-review':
                 if entry['status']!='active' or entry['stage'] not in {'review','expedited'} or entry['owner']!=identity(pid):
                     raise ValueError('Current active review lease required immediately before actual model dispatch')
                 if case_id!=entry['case_id']:raise ValueError('Review lease belongs to a different registered case')
@@ -652,6 +765,9 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
             else:
                 if state['drain']:return {'acquired':False,'reason':'authorized drain at stage boundary'}
                 if entry['status']!='waiting':raise ValueError('Only waiting tickets can acquire')
+                if entry.get('capacity_retry',{}).get('not_before_ns',0)>time.time_ns():
+                    return {'acquired':False,'reason':'same-model capacity cooldown','token':token,
+                            'retry':deepcopy(entry['capacity_retry']),'model':entry['model'],'effort':entry['effort']}
                 case=next(c for c in manifest['cases'] if c['case_id']==entry['case_id'])
                 if digest(no_links(case['source_docx']))!=case['source_sha256']:raise ValueError('Registered case source changed before dispatch')
                 route=None
@@ -677,7 +793,9 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
                 if entry['stage']=='evidence' and any(q['stage']=='record' for q in active):
                     return {'acquired':False,'reason':'live capture must finish before heavy media evidence'}
                 if entry['stage']=='record' and any(q['stage']=='evidence' for q in active+runnable):
-                    return {'acquired':False,'reason':'queued evidence drains live capture group before new recording'}
+                    next_evidence=min((q for q in active+runnable if q['stage']=='evidence'),key=lambda q:(q['status']!='active',-q['priority'],q['submitted_ns'],q['token']))
+                    return {'acquired':False,'reason':'queued evidence drains live capture group before new recording',
+                            'selected':{key:next_evidence[key] for key in ('token','batch_id','case_id','stage','owner')}}
                 if entry['stage']=='record':
                     for live in (q for q in active if q['stage']=='record'):
                         _,live_manifest=batch(root,live['batch_id'])
@@ -701,7 +819,10 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
                         if candidate_host and sum(q['stage']==candidate['stage'] for q in active)<candidate_limit:
                             return {'acquired':False,'reason':'runnable higher-priority model stage has priority on shared model capacity','priority_token':candidate['token']}
                 if not fair_models and (not host_available or sum(q['stage']==entry['stage'] for q in active)>=limit or not waiting or waiting[0]['token']!=entry['token']):
-                    return {'acquired':False,'reason':'fair queue or host capacity'}
+                    selected=None
+                    if entry['stage'] in {'record','evidence'} and waiting:
+                        selected={key:waiting[0][key] for key in ('token','batch_id','case_id','stage','owner')}
+                    return {'acquired':False,'reason':'fair queue or host capacity','selected':selected}
                 if entry['stage']=='record':
                     resources=recording_resources(manifest['execution_profile'],1+sum(q['stage']=='record' for q in active))
                     entry['memory_available_mb']=resources['available_mb'];entry['memory_required_mb']=resources['required_mb']
@@ -709,6 +830,9 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
                     if not resources['acquired']:
                         write_json(queue_path,pool);return resources
                 entry['status']='active';entry['acquired_ns']=time.time_ns();entry['slot_wait_seconds']=(entry['acquired_ns']-entry['submitted_ns'])/1e9
+                if entry.get('capacity_retry'):
+                    kind='repair' if entry['stage']=='build' and state['cases'][entry['case_id']].get('phase')=='repairing' else entry['stage']
+                    if [entry['model'],entry['effort']]!=MODELS[kind]:raise ValueError('Capacity retry route changed; exact same model/effort required')
                 if fair_models:
                     entry['scheduler_admission']={'contract':SCHEDULER_CONTRACT,'group':group,'capacities':deepcopy(scheduling['capacities']),
                                                   'work_kind':chosen.get('work_kind','build'),'repair_extra_capacity':scheduling.get('repair_extra_capacity',0)}
@@ -728,7 +852,7 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
         write_json(target/'state.json',state);return state
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('action',choices=['register','claim','recover-owner','status','preflight','release-owner','priority','resume-case','expedite','drain','continue','update','queue','acquire','release-slot','verify-record','verify-evidence','bind-media-runtime','verify-review','configure-scheduler','bind-controller','bind-repair'],help='Scheduling controls require --value JSON and --authorization; bind-repair value names case_id and authenticates actual revise evidence; config affects future acquire only')
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('action',choices=['register','claim','recover-owner','status','preflight','release-owner','priority','resume-case','expedite','drain','continue','update','queue','acquire','release-slot','defer-capacity','verify-record','verify-evidence','bind-media-runtime','verify-review','configure-scheduler','bind-controller','bind-repair'],help='Scheduling controls require --value JSON and --authorization; bind-repair value names case_id and authenticates actual revise evidence; config affects future acquire only')
     p.add_argument('--root',required=True);p.add_argument('--batch-id',required=True);p.add_argument('--pid',type=int);p.add_argument('--cases');p.add_argument('--authorization');p.add_argument('--host-slots',type=int,default=4);p.add_argument('--recording-limit',choices=['2','3','4','auto'],default='auto');p.add_argument('--case-id');p.add_argument('--value');p.add_argument('--token');p.add_argument('--stage');p.add_argument('--runtime-pid',type=int)
     a=p.parse_args()
     try:
@@ -737,6 +861,8 @@ def main():
         elif a.action=='status':
             from scheduler_policy import config as scheduler_config
             path,manifest=batch(a.root,a.batch_id);result={'manifest':manifest,'state':read_json(path/'state.json'),'scheduler':scheduler_config(a.root)}
+            queue_path=no_links(a.root)/'queue.json';pool=read_json(queue_path) if queue_path.exists() else []
+            result['current_tickets']=[q for q in pool if q['batch_id']==a.batch_id and q['status'] in {'waiting','active'}]
         else:result=mutate(a.root,a.batch_id,a.pid,a.action,a.case_id,a.value,a.token,a.stage,a.authorization,a.runtime_pid)
         print(json.dumps(result,ensure_ascii=False,indent=2));return 0
     except (ValueError,OSError,KeyError,TypeError) as e:print('ERROR: '+str(e));return 2

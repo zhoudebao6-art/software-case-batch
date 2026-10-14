@@ -86,6 +86,8 @@ implementation_hashes完整对应source-manifest打包有效成员；五类依�
 
 ## 最终验证
 
+准备验收材料反复出现格式错误或手工列举大量文件时，可先运行`review_packet.py check --workspace 本案 --execution 六类实际执行事实.json --index 已有完整证据索引.json`，在派发前得到明确的缺失/陈旧/格式问题。`draft`加`--output 本案/.product-v2/review-inputs/全新目录名`生成中性事实和空白审查草稿；保留既有E编号，不覆盖旧proof，不填已阅或通过。没有完整索引时可提供`--manifest 补充必查文件清单.json`辅助收集当前收据引用；自动发现不保证覆盖全部原文、Word页或业务语义，负责人仍核必查集合。已有合格输入不为升级重做此步。
+
 新版默认正式根`D:\研发图表\批次\案件`；`prepare --output`仍必须显式提供，默认路线的私有候选为`D:\研发图表\.staging\本批-本案-唯一版本`，与正式根同卷。`local.config.json.output_root`和当前进程`SCB_PRO_OUTPUT_ROOT/SCB_OUTPUT_ROOT`明确该默认根，不静默改变显式输出路径。用户明确其他目录优先；工作区方案采用`总工作区/成品/...`，每案执行目录为`总工作区/cases/...`，两者隔离。旧成果和冻结原规范中的D路径保留历史，不自动迁移。
 
 `.product-v2/chart-manifest.json`仅在工作区，记录新增图的依据、设计与不同PNG：

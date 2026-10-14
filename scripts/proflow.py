@@ -18,6 +18,7 @@ from common import (TEXT_SUFFIXES, META_COLUMNS, digest, file_map, forbidden, in
                     no_links, normalized, read_json, state, write_json)
 from source_intake import source_figure_numbers
 from contracts import ANALYTICAL_CHART_POLICY, BUILD_CHART_POLICY, chart_policy
+from review_packet import execution_checks
 
 ROOT = Path(__file__).resolve().parent.parent
 SYSTEM = '模拟系统'
@@ -543,6 +544,9 @@ def completed_recording(workspace,record,video,hash_file=digest):
 def finalize(workspace, output, evidence_path):
     if (workspace/'.product-v2/final-receipt.json').exists():
         raise ValueError('Finalized receipt is immutable; create a separate revision')
+    proof=read_json(evidence_path)
+    if not isinstance(proof,dict):raise ValueError('Independent evidence must be a JSON object')
+    execution_checks(proof.get('checks'))  # Fail before expensive artifact checks.
     from contracts import delivery_layout, chart_snapshot, model_review
     run=read_json(workspace/'.product-v2/run.json')
     record=read_json(workspace/'.product-v2/recording.json')
@@ -580,7 +584,7 @@ def finalize(workspace, output, evidence_path):
     validate_video_evidence(workspace,timeline,output/SYSTEM/'演示视频.mp4',workspace/'.product-v2/recording.json')
     needed={'algorithm','api','persistence','browser','build','package_startup'}
     checks=proof.get('checks',[])
-    if len(checks)!=6 or {c.get('kind') for c in checks}!=needed: raise ValueError('Six distinct execution checks required')
+    execution_checks(checks)
     for check in checks:
         log=inside(workspace,check['log'])
         if check.get('exit_code')!=0 or not check.get('command') or log.stat().st_size==0 or check.get('sha256')!=digest(log):
@@ -659,7 +663,8 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
                 needed={'package_startup'} if scope=='package-revision' else {'algorithm','api','persistence','browser','build','package_startup'}
                 if scope!='document-revision':
                     if (not isinstance(checks,list) or len(checks)!=len(needed) or
-                            {c.get('kind') for c in checks}!=needed or final.get('checks')!=checks):
+                            not all(isinstance(c,dict) for c in checks) or
+                            {str(c.get('kind')) for c in checks}!=needed or final.get('checks')!=checks):
                         raise ValueError('Final review lacks its required execution checks')
                     for check in checks:
                         log=inside(workspace,check['log'])
@@ -814,7 +819,10 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
         if not execution_doc and (workspace/'.product-v2/build-checks.json').is_file():execution_doc=read_json(workspace/'.product-v2/build-checks.json')
         if not isinstance(execution_doc,dict):return {'state':'unknown','reason':'Execution facts must be a JSON object'}
         checks=execution_doc.get('checks',{})
-        if isinstance(checks,list):checks={c['kind']:c for c in checks}
+        if isinstance(checks,list):
+            if not all(isinstance(c,dict) and isinstance(c.get('kind'),str) for c in checks):
+                raise ValueError('Execution checks must contain objects with string kinds')
+            checks={c['kind']:c for c in checks}
         kinds={'algorithm','api','persistence','browser','build','package_startup'}
         if not isinstance(checks,dict) or not kinds.issubset(checks):return {'state':'pending','reason':'Six current execution facts including final ZIP startup are not yet supplied'}
         for kind in kinds:
@@ -906,7 +914,8 @@ def finalize_document_revision(workspace,output,evidence_path):
     if digest(inherited_evidence)!=runtime_receipt['evidence_sha256']:
         raise ValueError('Inherited execution evidence changed')
     checks=previous_proof.get('checks',[])
-    if len(checks)!=6 or {c.get('kind') for c in checks}!={'algorithm','api','persistence','browser','build','package_startup'}:
+    if (not isinstance(checks,list) or len(checks)!=6 or not all(isinstance(c,dict) for c in checks)
+            or {str(c.get('kind')) for c in checks}!={'algorithm','api','persistence','browser','build','package_startup'}):
         raise ValueError('Inherited six execution checks required')
     for check in checks:
         log=inside(runtime_base,check['log'])
@@ -1018,7 +1027,8 @@ def inherited_execution(root):
     run=read_json(original/'.product-v2/run.json')
     check_data_quality(original,output)
     checks=proof.get('checks',[])
-    if len(checks)!=6 or {c.get('kind') for c in checks}!={'algorithm','api','persistence','browser','build','package_startup'}:
+    if (not isinstance(checks,list) or len(checks)!=6 or not all(isinstance(c,dict) for c in checks)
+            or {str(c.get('kind')) for c in checks}!={'algorithm','api','persistence','browser','build','package_startup'}):
         raise ValueError('Inherited six execution checks required')
     for check in checks:
         log=inside(original,check['log'])
@@ -1070,7 +1080,7 @@ def finalize_package_revision(workspace,output,evidence_path):
     timeline=inside(workspace,proof['video_timeline'])
     if proof.get('video_timeline_sha256')!=digest(timeline):raise ValueError('Package review must bind current complete video evidence')
     validate_video_evidence(workspace,timeline,output/SYSTEM/'演示视频.mp4',root['workspace']/'.product-v2/recording.json')
-    if len(checks)!=1 or checks[0].get('kind')!='package_startup': raise ValueError('New independent archive startup check required')
+    if not isinstance(checks,list) or len(checks)!=1 or not isinstance(checks[0],dict) or checks[0].get('kind')!='package_startup': raise ValueError('New independent archive startup check required')
     check=checks[0];log=inside(workspace,check['log'])
     if not check.get('command') or check.get('exit_code')!=0 or check.get('sha256')!=digest(log) or not log.stat().st_size:
         raise ValueError('New archive startup log failed or changed')

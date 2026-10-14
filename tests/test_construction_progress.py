@@ -114,9 +114,16 @@ class ConstructionTests(DependencyFixture):
         self.assertFalse(self.gate()['required']);self.assertEqual(self.run,before)
     def test_finalize_rechecks_gate_before_artifact_work(self):
         self.recorded();self.checks['checks']['api']['exit_code']=1;self.save_checks()
-        with patch('contracts.chart_snapshot',side_effect=AssertionError('Expensive artifacts reached')):
+        checks=[]
+        for kind in ('algorithm','api','persistence','browser','build','package_startup'):
+            log=self.file('evidence/final-'+kind+'.log','isolated execution fixture '+kind)
+            checks.append({'kind':kind,'command':'isolated-check '+kind,'exit_code':0,
+                           'log':str(log.relative_to(self.work)),'sha256':digest(log)})
+        proof=self.control/'execution-for-failed-construction.json';write_json(proof,{'checks':checks})
+        with patch('contracts.chart_snapshot',side_effect=AssertionError('Expensive artifacts reached')) as artifacts:
             with self.assertRaisesRegex(ValueError,'construction execution log: api'):
-                finalize(self.work,self.out,self.control/'no-review.json')
+                finalize(self.work,self.out,proof)
+            artifacts.assert_not_called()
 
 
 class ProgressTests(DependencyFixture):

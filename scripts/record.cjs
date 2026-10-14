@@ -148,9 +148,35 @@ async function executeTimeline(plan,perform,observeFinal,{now,wait=pause}={}) {
     return {duration:completed_at,final_result_completion:{...plan.final_result,observed_at,completed_at,completed:true}};
   } finally {if(timer)clearTimeout(timer);}
 }
-function command(exe,args) {
-  const result=spawnSync(exe,args,{encoding:'utf8',windowsHide:true,maxBuffer:16*1024*1024});
-  if(result.error || result.status!==0) throw Error('Media tool failed: '+String(result.error || result.stderr).slice(-1600));
+function commandFailure(exe,args,result) {
+  const secrets=[];
+  const sensitive=/^(?:--?)?(?:password|passwd|token|access[-_]?token|refresh[-_]?token|api[-_]?key|secret|authorization|cookie|credential|media[-_]?token|record[-_]?token|lease)(?:=|$)/i;
+  for(let i=0;i<args.length;i++) {
+    const arg=String(args[i]);
+    if(sensitive.test(arg))secrets.push(arg.includes('=')?arg.slice(arg.indexOf('=')+1):String(args[i+1]??''));
+    if(/^(?:https?|ftp):\/\//i.test(arg))secrets.push(arg);
+    if(arg.startsWith('{')||arg.startsWith('['))secrets.push(arg);
+    // A tool may echo a positional credential or full input path on failure.
+    if(arg.length>=6&&!arg.startsWith('-'))secrets.push(arg);
+  }
+  function tail(value) {
+    let text=String(value??'');
+    for(const secret of secrets.filter(Boolean).sort((a,b)=>b.length-a.length))text=text.split(secret).join('[REDACTED]');
+    text=text.replace(/\b(?:https?|ftp):\/\/[^\s"'<>]+/gi,'[URL REDACTED]')
+      .replace(/\bBearer\s+\S+/gi,'Bearer [REDACTED]')
+      .replace(/((?:password|passwd|token|api[-_]?key|secret|authorization|cookie|credential)["']?\s*[=:]\s*["']?)[^\s,;"'}]+/gi,'$1[REDACTED]')
+      .replace(/((?:password|passwd|token|api[-_]?key|secret|authorization|cookie|credential)\s*[=:]\s*)[^\s,;]+/gi,'$1[REDACTED]')
+      .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'');
+    return text.slice(-1200)||'(empty)';
+  }
+  const tool=path.win32.basename(path.basename(String(exe))).replace(/[^\w. -]/g,'_').slice(-100);
+  return 'Media tool failed: '+tool+'; exit='+String(result.status??'none')+'; signal='+String(result.signal??'none')+
+    (result.error?'; error='+tail(result.error.code||result.error.message):'')+
+    '; stdout tail: '+tail(result.stdout)+'; stderr tail: '+tail(result.stderr);
+}
+function command(exe,args,runner=spawnSync) {
+  const result=runner(exe,args,{encoding:'utf8',windowsHide:true,maxBuffer:16*1024*1024});
+  if(result.error || result.status!==0) throw Error(commandFailure(exe,args,result));
   return result.stdout;
 }
 function batchBinding(workspace) {
@@ -543,4 +569,4 @@ if(require.main===module) {
     }catch(error){console.error(String(error));process.exitCode=2;}
   }
 }
-module.exports={validatePlan,checkReady,downloadRequestGuard,record,localUrl,auditUiText,finishRecording,leaseArgs,isolatedBrowserOptions,batchBinding,validateBatchPhase,executeTimeline,boundPolicy,validateMeasuredDuration,withActionableTarget,performRecordedAction,movePointer};
+module.exports={validatePlan,checkReady,downloadRequestGuard,record,localUrl,auditUiText,finishRecording,leaseArgs,isolatedBrowserOptions,batchBinding,validateBatchPhase,executeTimeline,boundPolicy,validateMeasuredDuration,withActionableTarget,performRecordedAction,movePointer,command,commandFailure};

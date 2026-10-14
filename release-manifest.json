@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r16-efficiency-source-web-20261014",
+  "release": "r17-bounded-progress-20261015",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -34,8 +34,8 @@
     },
     {
       "relative_path": "SKILL.md",
-      "sha256": "ebd124488fe2d3fc7415e0133cf9431a79dabcb4382d257ae30f0db5a2234ea5",
-      "size": 21331
+      "sha256": "38371809897cfd418eb38e007cf93761206ae65065b2fc8a138f4522fc43d8a0",
+      "size": 21888
     },
     {
       "relative_path": "agents/openai.yaml",
@@ -94,8 +94,8 @@
     },
     {
       "relative_path": "references/execution.md",
-      "sha256": "c4b09405289d00b227d6aa316d240206f637caeda948d63617c90c68a4e86f5e",
-      "size": 24839
+      "sha256": "cf05ea6652648c4839ec266e4ec735b658f81a9d38df4616f8a465717b928248",
+      "size": 25701
     },
     {
       "relative_path": "references/expedited-routing.md",
@@ -268,6 +268,11 @@
       "size": 1619
     },
     {
+      "relative_path": "references/progress.md",
+      "sha256": "7aa393b024c7b9c0abbb09a9bcec13a39f032d8856fc3f5e279bafc4f28623c3",
+      "size": 6132
+    },
+    {
       "relative_path": "references/quality.md",
       "sha256": "7b2a8fe6396caf77a1b1d82c3c9bcf977523b3e2d875d35991211d244121008a",
       "size": 9528
@@ -294,8 +299,8 @@
     },
     {
       "relative_path": "references/tools.md",
-      "sha256": "9224e5dc2470ae4d363811d8c0b2f1f5b0a2de3f0141f31698370808b63a6739",
-      "size": 32700
+      "sha256": "244410b1fe1ad8807d40b620b86bf85e30e4e8083c8b717c995f55f692a9b06f",
+      "size": 33395
     },
     {
       "relative_path": "references/ui-policy.json",
@@ -339,8 +344,8 @@
     },
     {
       "relative_path": "scripts/batch_control.py",
-      "sha256": "f5bdcab46d6902efadcebdb09d6c68ed55111bc9d16749da095abb23a740436d",
-      "size": 57694
+      "sha256": "00b85cdc657d8c9ece54c5178f11f543cecd67a8c9996fd885b1cfcfe4a5a41b",
+      "size": 68234
     },
     {
       "relative_path": "scripts/common.py",
@@ -399,18 +404,28 @@
     },
     {
       "relative_path": "scripts/proflow.py",
-      "sha256": "8d762e536aa78d6ded16d41d20fb06346bc5312de156ddb2f0c990d88e56042f",
-      "size": 101062
+      "sha256": "66e63ae55c118a759f008ea2cd29b2219b690b49372eea71d033d39781bfa0f4",
+      "size": 101763
+    },
+    {
+      "relative_path": "scripts/progress_driver.py",
+      "sha256": "13dfbfb55d7f07fb6ffdbd8f35549b76f9bef199dfa8d245ef16cd17bf8a879f",
+      "size": 15850
     },
     {
       "relative_path": "scripts/record.cjs",
-      "sha256": "8a391e160a7fe052f6c5e151846f978bdf236e27ba87cf70e2bd13dc426a7b7f",
-      "size": 44295
+      "sha256": "7cc17ba80045de79fc38c0bda4fad2ae4ce881f254e09b621347eadd81190a4d",
+      "size": 46076
     },
     {
       "relative_path": "scripts/render_native_math.py",
       "sha256": "72c80fef2ea968108c0d2d67fa152bfdb4d33ade43ad36a355eca9bad5dcdc05",
       "size": 15909
+    },
+    {
+      "relative_path": "scripts/review_packet.py",
+      "sha256": "0311e266c07ddcf06a9227c7291bb112cd8c1d1e6a97a2d5314e5412596972b3",
+      "size": 12634
     },
     {
       "relative_path": "scripts/scheduler_policy.py",
@@ -478,9 +493,14 @@
       "size": 4666
     },
     {
+      "relative_path": "tests/test_capacity_defer.py",
+      "sha256": "4ac19c40f4785e529af546e8c04f7a9a7acf84fead6e1c50c357bd0632e45a76",
+      "size": 7856
+    },
+    {
       "relative_path": "tests/test_construction_progress.py",
-      "sha256": "f2a12e32ec35c3ffd2e7f6db17c4769797ea6aaff0c95209c753b364196e92f9",
-      "size": 23770
+      "sha256": "d241874828eefbbe901135e6a72acb4a51d38e01d489284f5b11c38a09552af2",
+      "size": 24281
     },
     {
       "relative_path": "tests/test_contracts.py",
@@ -548,9 +568,14 @@
       "size": 9502
     },
     {
+      "relative_path": "tests/test_progress_driver.py",
+      "sha256": "52200161361cba2a4c020ba1721d8300c6d936dd329c71739c9434fa905c7e9e",
+      "size": 17565
+    },
+    {
       "relative_path": "tests/test_record.cjs",
-      "sha256": "a939a09c7a07b465020751b2ec2aece4d2bf5a28885c42855985b5cc41b68515",
-      "size": 46132
+      "sha256": "e3f19b54b0a7640e000c09770608c294a05e05f75eb557a2243c07db0ae7c947",
+      "size": 48102
     },
     {
       "relative_path": "tests/test_recording_concurrency.py",
@@ -561,6 +586,11 @@
       "relative_path": "tests/test_recording_reuse.py",
       "sha256": "0ced9b4aecdf5d294777363a5f0e1d92bc7b3d21a4152f3e86adc49c5be4b03d",
       "size": 6610
+    },
+    {
+      "relative_path": "tests/test_review_packet.py",
+      "sha256": "19eb0b51aa46afe1638fbf8b2b185c344290cb746cfb04ef21c07b67541db590",
+      "size": 8993
     },
     {
       "relative_path": "tests/test_scheduler_groups.py",

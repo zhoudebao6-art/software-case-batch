@@ -8,6 +8,27 @@ function valid(){return {url:'http://127.0.0.1:8123',ready:'#ready',health_path:
   {at:30,action:'select',value:'x',selector:'#status',expect:'#status'},
   {at:40,action:'click',selector:'#save',expect:'#saved'},
   {at:53,action:'download',selector:'#download',expect:'#saved'}]};}
+test('media failure identifies tool exit signal and both output channels even with empty stderr',()=>{
+ const {command}=require('../scripts/record.cjs');
+ assert.throws(()=>command('C:\\tools\\ffprobe.exe',['--probe'],()=>({status:7,signal:null,stdout:'invalid input on stdout',stderr:''})),
+  /ffprobe.exe; exit=7; signal=none; stdout tail: invalid input on stdout; stderr tail: \(empty\)/);
+ assert.throws(()=>command('/tools/ffmpeg',['-x'],()=>({status:null,signal:'SIGTERM',stdout:'',stderr:''})),/ffmpeg; exit=none; signal=SIGTERM/);
+ assert.throws(()=>command('/missing/ffmpeg',[],()=>({status:null,error:{code:'ENOENT'},stdout:null,stderr:null})),/error=ENOENT/);
+ assert.equal(command('/tools/ffprobe',[],()=>({status:0,stdout:'ok'})),'ok');
+});
+test('media diagnostics bound output and redact secret arguments authorization and URLs',()=>{
+ const {commandFailure}=require('../scripts/record.cjs');
+ const result=commandFailure('D:\\private\\ffmpeg.exe',['--token','never-print-token','--password=never-print-password','https://name:never-print-url@host/path?key=hidden'],
+  {status:1,stdout:'x'.repeat(10000)+' never-print-token never-print-password Bearer opaque-auth https://name:never-print-url@host/path?key=hidden',
+   stderr:'token=unknown-log-secret password:unknown-password'});
+ assert.ok(result.length<2700);assert.match(result,/ffmpeg.exe; exit=1/);assert.match(result,/REDACTED/);
+ for(const secret of ['never-print-token','never-print-password','never-print-url','opaque-auth','unknown-log-secret','unknown-password','D:\\private'])assert.ok(!result.includes(secret),secret);
+});
+test('real failed child process reports actionable stdout stderr and exit code',()=>{
+ const {command}=require('../scripts/record.cjs');
+ assert.throws(()=>command(process.execPath,['-e','process.stdout.write("probe stdout");process.stderr.write("probe stderr");process.exit(23)']),
+  /exit=23; signal=none; stdout tail: probe stdout; stderr tail: probe stderr/);
+});
 function pointerFixture({blocked=false,clickError=false,downloadError=false}={}) {
  const counts={states:[],moves:0,clicks:0,disposed:0,waiters:0,begun:0,ended:0};
  const target={click:async()=>{throw Error('Pointer-moving trial is forbidden during preparation');},
