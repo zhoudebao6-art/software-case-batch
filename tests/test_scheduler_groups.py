@@ -321,7 +321,7 @@ class SchedulerGroupsTests(unittest.TestCase):
             meta = {'type': 'session_meta', 'payload': {'id': session_id, 'thread_source': 'user', 'source': 'vscode'}}
             event = {'type': 'event_msg', 'payload': {'type': 'item_completed', 'thread_id': session_id, 'item': {
                 'type': 'CommandExecution', 'status': 'completed', 'exit_code': 0, 'aggregated_output': 'exit=0',
-                'command': ["python 'batch_control.py' claim --root '" + str(fixture.pool) + "' --batch-id 'modern' --pid 202"]}}}
+                'command': ['powershell', '-Command', "python 'batch_control.py' claim --root '" + str(fixture.pool) + "' --batch-id 'modern' --pid 202"]}}}
             log.write_text(json.dumps(meta) + '\n' + json.dumps(event) + '\n', encoding='utf-8')
             request = fixture.root / 'bind.json'; write_json(request, {'session_id': session_id, 'session_log': str(log)})
             fixture.call('bind-controller', value=request, authorization='fixture explicit scheduling authorization')
