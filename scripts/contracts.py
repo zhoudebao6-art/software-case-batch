@@ -17,6 +17,88 @@ NS = {'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
 ANALYTICAL_CHART_POLICY = 'analytical-v1'
 BUILD_CHART_POLICY = 'analytical-v2'
 ANALYTICAL_POLICIES = {ANALYTICAL_CHART_POLICY, BUILD_CHART_POLICY}
+CONSTRUCTION_POLICY = 'dependency-bound-v1'
+CONSTRUCTION_KINDS = {'algorithm','api','persistence','browser','build'}
+
+def construction_checks(workspace, run, plan_path=None):
+    """Read actual self-check bindings; never run commands or approve business logic.
+
+    Individual dependency maps permit unchanged checks to retain their actual
+    logs. Their union must cover the declared software and recording inputs;
+    an independent reviewer still checks whether those scopes are truthful.
+    """
+    policy=run.get('construction_check_policy_version')
+    if 'construction_check_policy_version' not in run:
+        return {'required':False,'status':'historical-contract'}
+    if policy!=CONSTRUCTION_POLICY:raise ValueError('Unknown construction check policy')
+    workspace=no_links(workspace)
+    spec_path=inside(workspace,'.product-v2/build-checks.json');spec=read_json(spec_path)
+    if spec.get('run_id')!=run.get('run_id') or spec.get('source_docx_sha256')!=run.get('source_docx_sha256'):
+        raise ValueError('Construction checks belong to a different run or source')
+    if digest(no_links(run['source_docx']))!=run['source_docx_sha256']:
+        raise ValueError('Construction original Word source changed')
+    manifest_path=inside(workspace,'.product-v2/source-manifest.json');manifest=read_json(manifest_path)
+    files=manifest.get('files',[])
+    if not isinstance(files,list) or not files or not all(isinstance(p,str) for p in files):
+        raise ValueError('Construction requires the explicit source file manifest')
+    from proflow import excluded_source
+    declared={}
+    names=set()
+    for relative in files:
+        relative=relative.replace('\\','/')
+        path=inside(workspace,relative)
+        if relative.casefold() in names:raise ValueError('Duplicate construction source member')
+        names.add(relative.casefold())
+        if not excluded_source(relative,manifest.get('exclude',[])):
+            declared[relative]=digest(path)
+    if not declared or spec.get('implementation_hashes')!=declared:
+        raise ValueError('Construction implementation snapshot is incomplete or stale')
+    if 'hashes' in manifest and any(manifest['hashes'].get(p)!=sha for p,sha in declared.items()):
+        raise ValueError('Construction source manifest hash changed')
+    plan_path=no_links(plan_path or workspace/'.product-v2/record-plan.json')
+    if workspace not in plan_path.parents or not plan_path.is_file():
+        raise ValueError('Construction recording plan must be an actual file inside its workspace')
+    plan=read_json(plan_path);recording_inputs=plan.get('input_files',[])
+    if (not isinstance(recording_inputs,list) or not recording_inputs or
+            not all(isinstance(p,str) for p in recording_inputs)):
+        raise ValueError('Nonempty construction recording inputs required')
+    required=dict(declared)
+    for relative in recording_inputs:required[relative.replace('\\','/')]=digest(inside(workspace,relative))
+    checks=spec.get('checks',{})
+    if not isinstance(checks,dict) or not CONSTRUCTION_KINDS.issubset(checks):
+        raise ValueError('Five actual construction execution checks required')
+    covered=set();bindings={}
+    for kind in sorted(CONSTRUCTION_KINDS):
+        check=checks[kind]
+        if not isinstance(check,dict):raise ValueError('Invalid construction check: '+kind)
+        log=inside(workspace,check.get('log',''))
+        if (type(check.get('exit_code')) is not int or check['exit_code']!=0 or
+                not _nonempty_text(check.get('command')) or log.stat().st_size==0 or check.get('sha256')!=digest(log)):
+            raise ValueError('Missing/failed/stale construction execution log: '+kind)
+        inputs=check.get('input_files')
+        test_files=check.get('test_files')
+        if not isinstance(inputs,dict) or not inputs:
+            raise ValueError('Nonempty actual construction dependencies required: '+kind)
+        if (not isinstance(test_files,list) or not test_files or
+                not all(isinstance(p,str) and p in inputs for p in test_files) or len(set(test_files))!=len(test_files)):
+            raise ValueError('Bind actual construction test scripts and fixed fixtures: '+kind)
+        canonical=set()
+        for relative,sha in inputs.items():
+            if not isinstance(relative,str) or not isinstance(sha,str) or not re.fullmatch('[0-9a-f]{64}',sha):
+                raise ValueError('Invalid construction dependency hash: '+kind)
+            key=relative.replace('\\','/')
+            if key.casefold() in canonical:raise ValueError('Duplicate construction dependency: '+kind)
+            canonical.add(key.casefold())
+            if digest(inside(workspace,relative))!=sha:raise ValueError('Construction dependency changed: '+kind+' / '+relative)
+            covered.add(key)
+        bindings[kind]={'log':check['log'],'sha256':check['sha256'],'input_files':inputs,'test_files':test_files}
+    if not set(required).issubset(covered):
+        raise ValueError('Construction checks omit current source/recording dependencies: '+', '.join(sorted(set(required)-covered)))
+    return {'required':True,'status':'ready','policy':policy,'run_id':run['run_id'],
+            'source_docx_sha256':run['source_docx_sha256'],'build_checks_sha256':digest(spec_path),
+            'source_manifest_sha256':digest(manifest_path),'plan_sha256':digest(plan_path),
+            'implementation_hashes':declared,'checks':bindings,
+            'limitation':'Commands were not rerun; current logs and dependency hashes are bound, not independently approved.'}
 
 def chart_policy(run):
     """An absent policy keeps the historical gate; unknown policies fail closed."""
@@ -405,8 +487,25 @@ def expedited_authorization(workspace,record):
         result['batch_binding']={key:binding[key] for key in ('root','batch_id','case_id','manifest_sha256')}
     return result
 
+def final_review_binding(workspace, proof, files, charts, evidence_path, dispatch, hash_file=digest):
+    """Authenticate a saved review without rereading original build/repair logs.
+
+    Frozen stage summaries retain their identities; only the actual review
+    call and latest independent final are authenticated again. No chart bytes
+    or prior visual judgments are rechecked here.
+    """
+    if not isinstance(dispatch,dict) or not dispatch:
+        raise ValueError('Recorded final dispatch bindings required')
+    return _model_review(workspace,proof,files,charts,evidence_path,hash_file,
+                         _recorded_dispatch=dispatch)
+
+
 def model_review(workspace, proof, files, charts, evidence_path):
     """Verify actual implementation and admitted independent review dispatch."""
+    return _model_review(workspace,proof,files,charts,evidence_path)
+
+
+def _model_review(workspace, proof, files, charts, evidence_path, hash_file=digest, _recorded_dispatch=None):
     run=read_json(inside(workspace,'.product-v2/run.json'))
     policy=chart_policy(run)
     analytical=policy in ANALYTICAL_POLICIES
@@ -455,6 +554,20 @@ def model_review(workspace, proof, files, charts, evidence_path):
         call_id=record.get('call_id')
         if not call_id or call_id in call_ids: raise ValueError('Distinct stage dispatch call IDs required')
         call_ids.add(call_id)
+        if _recorded_dispatch is not None and stage!='review':
+            saved=_recorded_dispatch.get(stage,{})
+            agent_id=record.get('agent_id')
+            if (not isinstance(saved,dict) or not isinstance(agent_id,str) or not agent_id or
+                    saved.get('agent_id')!=agent_id or saved.get('call_id')!=call_id or
+                    not isinstance(saved.get('dispatch_event_sha256'),str) or
+                    not re.fullmatch('[0-9a-f]{64}',saved['dispatch_event_sha256']) or agent_id in agents.values()):
+                raise ValueError('Frozen implementation dispatch summary is incomplete or inconsistent')
+            if (not isinstance(record.get('artifact_hashes'),dict) or not record['artifact_hashes'] or
+                    not record.get('chart_snapshot') or
+                    (stage==final_implementation and (record['artifact_hashes']!=files or record['chart_snapshot']!=charts))):
+                raise ValueError('Frozen implementation completion snapshot changed')
+            agents[stage]=agent_id;verified[stage]=saved
+            continue
         call,result,parent_id=_dispatch_events(record['session_log'],call_id)
         if stage=='review': review_parent=parent_id
         payload=call['payload']
@@ -503,7 +616,7 @@ def model_review(workspace, proof, files, charts, evidence_path):
     actual_identity=False
     actual_attestation=False
     child_sessions=[]
-    proof_hash=digest(evidence_path)
+    proof_hash=hash_file(evidence_path)
     with review_log.open(encoding='utf-8') as stream:
         for line in stream:
             try: event=json.loads(line)
@@ -541,6 +654,7 @@ def model_review(workspace, proof, files, charts, evidence_path):
     if encrypted_binding and len(child_sessions)!=1:actual_identity=False
     if not actual_identity or not actual_attestation:
         raise ValueError('Independent reviewer final must attest the exact review JSON SHA256 and any encrypted dispatch binding; builder cannot self-sign pass')
+    if _recorded_dispatch is not None:return verified
     reviews=proof.get('chart_reviews',[])
     if policy==BUILD_CHART_POLICY:
         retained_reviews=proof.get('retained_result_reviews',[])

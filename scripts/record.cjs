@@ -289,7 +289,11 @@ function recordingSetup(workspace,planPath) {
   const inputs=Object.fromEntries(plan.input_files.map(rel=>[rel,sha(fs.readFileSync(safeFile(workspace,rel)))]));
   const storageState='storage_state' in plan?safeFile(workspace,plan.storage_state):undefined;
   const storageStateHash=storageState?sha(fs.readFileSync(storageState)):null;
-  return {workspace,run,plan,estimatedDuration,recordingPolicy,planSha:sha(planBytes),runSha:sha(runBytes),inputs,storageState,storageStateHash};
+  const constructionChecks='construction_check_policy_version' in run?
+    JSON.parse(command(process.env.SCB_PRO_PYTHON,[path.join(__dirname,'proflow.py'),'check-build','--workspace',workspace,'--plan',planPath])):
+    {required:false,status:'historical-contract'};
+  if('construction_check_policy_version' in run&&(constructionChecks.status!=='ready'||constructionChecks.required!==true))throw Error('Current construction self-check admission required');
+  return {workspace,run,plan,estimatedDuration,recordingPolicy,planSha:sha(planBytes),runSha:sha(runBytes),inputs,storageState,storageStateHash,constructionChecks};
 }
 async function healthIdentity(workspace,run,plan,request=null) {
   const origin=new URL(plan.url),url=new URL(plan.health_path,origin.origin);
@@ -313,7 +317,8 @@ async function checkReady(workspace,planPath) {
   return {kind:'recording-readiness-check',status:'ready',capture_performed:false,visual_review:'not performed',
     workspace:setup.workspace,run_id:setup.run.run_id,version:setup.plan.version,recording_policy_version:setup.recordingPolicy,
     run_sha256:setup.runSha,plan_sha256:setup.planSha,input_files:setup.inputs,
-    storage_state:setup.storageState?{relative_path:setup.plan.storage_state,sha256:setup.storageStateHash}:null,service_identity:identity};
+    storage_state:setup.storageState?{relative_path:setup.plan.storage_state,sha256:setup.storageStateHash}:null,service_identity:identity,
+    construction_checks:setup.constructionChecks};
 }
 function downloadRequestGuard(page) {
   const failures=[],successful=new Map(),ids=new WeakMap();let active=null,serial=0;
@@ -445,7 +450,7 @@ async function recordPhase(workspace, planPath, phase='full',lease=null) {
   if(errors.length) throw Error('Browser errors: '+errors.join('; ').slice(0,1600));
   for(const [rel,hash] of Object.entries(inputs)) if(sha(fs.readFileSync(safeFile(workspace,rel)))!==hash) throw Error('Application input changed: '+rel);
   if(sha(fs.readFileSync(planPath))!==planSha)throw Error('Recording plan changed during capture');
-  const capture={schema_version:1,status:'captured',passed:false,workspace,run_id:run.run_id,final,dir,rawPath,raw_sha256:sha(fs.readFileSync(rawPath)),prelude,duration,inputs,identity,events,texts,errors,request_failures:requestGuard?.audit()??[],downloads,browser_temp:browserTemp,launch_admission:launchAdmission,captured_start_utc:capturedStartUtc,captured_end_utc:capturedEndUtc,
+  const capture={schema_version:1,status:'captured',passed:false,workspace,run_id:run.run_id,final,dir,rawPath,raw_sha256:sha(fs.readFileSync(rawPath)),prelude,duration,inputs,identity,events,texts,errors,request_failures:requestGuard?.audit()??[],downloads,browser_temp:browserTemp,launch_admission:launchAdmission,captured_start_utc:capturedStartUtc,captured_end_utc:capturedEndUtc,construction_checks:setup.constructionChecks,plan_path:planPath,
     recording_policy_version:recordingPolicy,plan_sha256:planSha,estimated_duration_seconds:estimatedDuration,timeout_seconds:plan.timeout_seconds,planned_step_count:plan.steps.length,completed_step_count:events.length,final_result_completion:finalResultCompletion};
   save(path.join(dir,'capture.json'),capture);
   save(path.join(workspace,'.product-v2/capture-pending.json'),{path:path.join(dir,'capture.json'),sha256:sha(fs.readFileSync(path.join(dir,'capture.json')))});
@@ -459,6 +464,11 @@ function finishRecording(workspace,lease=null) {
   const capturePath=safeFile(workspace,path.relative(workspace,pending.path));
   if(sha(fs.readFileSync(capturePath))!==pending.sha256) throw Error('Capture receipt changed');
   const c=load(capturePath),run=load(path.join(workspace,'.product-v2/run.json'));
+  if('construction_check_policy_version' in run){
+    const current=JSON.parse(command(process.env.SCB_PRO_PYTHON,[path.join(__dirname,'proflow.py'),'check-build','--workspace',workspace,
+      ...(c.plan_path?['--plan',c.plan_path]:[])]));
+    if(current.status!=='ready'||current.required!==true||c.construction_checks?.status!=='ready'||c.construction_checks?.run_id!==run.run_id)throw Error('Current construction admission required before evidence');
+  }
   const {final,dir,rawPath,prelude,duration,inputs,identity,events,texts}=c;
   if(c.status!=='captured'||c.workspace!==workspace||c.run_id!==run.run_id||final!==run.video||c.errors.length) throw Error('Capture belongs to a different or failed run');
   if(sha(fs.readFileSync(safeFile(workspace,path.relative(workspace,rawPath))))!==c.raw_sha256) throw Error('Original capture changed');
@@ -495,7 +505,7 @@ function finishRecording(workspace,lease=null) {
   if(stream.width!==1920||stream.height!==1080) throw Error('Video geometry check failed');
   fs.mkdirSync(path.dirname(final),{recursive:true});if(!fs.existsSync(final)) fs.copyFileSync(staged,final,fs.constants.COPYFILE_EXCL);
   const evidenceDir=path.join(dir,'controlled-video-'+crypto.randomUUID()),frames=path.join(evidenceDir,'frames');
-  const report={passed:true,duration:seconds,width:1920,height:1080,sha256:sha(fs.readFileSync(final)),video:final,raw_video:rawPath,prelude_seconds:prelude,input_files:inputs,service_identity:identity,events,texts,frames,visual_review_required:true,capture_receipt_sha256:pending.sha256,encoding_threads:2,
+  const report={passed:true,duration:seconds,width:1920,height:1080,sha256:sha(fs.readFileSync(final)),video:final,raw_video:rawPath,prelude_seconds:prelude,input_files:inputs,service_identity:identity,events,texts,frames,visual_review_required:true,capture_receipt_sha256:pending.sha256,encoding_threads:2,construction_checks:c.construction_checks,plan_path:c.plan_path,
     recording_policy_version:policyVersion(c.recording_policy_version),plan_sha256:c.plan_sha256,estimated_duration_seconds:c.estimated_duration_seconds,timeout_seconds:c.timeout_seconds,planned_step_count:c.planned_step_count,completed_step_count:c.completed_step_count,final_result_completion:c.final_result_completion};
   save(path.join(workspace,'.product-v2/recording.json'),report);
   // Fixed evidence wrapper produces the complete sampled timeline, mapped

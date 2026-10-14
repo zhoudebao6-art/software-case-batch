@@ -138,6 +138,8 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
     else:
         run['recording_policy_version']='flow-complete-v1'
         run['data_policy_version']='neutral-expanded-v1'
+        from contracts import CONSTRUCTION_POLICY
+        run['construction_check_policy_version']=CONSTRUCTION_POLICY
     # Historical finalized revisions keep their frozen numbering contract.
     if not base or base_run.get('chart_numbering_policy') == 'source-sequential-v1':
         run['chart_numbering_policy'] = 'source-sequential-v1'
@@ -216,6 +218,8 @@ PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据
         prompt+='\n建设自检先读references/system-data.md的源依赖业务边界要求，在原有映射与六类检查中记录原定义→具体接受/拒绝断言→最终同引擎派生结果重算；先用最小业务闭环和关键反例调用真实最终函数，按源机制核验执行边界、集合门槛、真实输出误差和输入传递；同一次high内以当前部署入口实跑启动、健康身份、核心接口、必要持久化和停止/端口释放，通过后再扩量及制作依赖图文和录制；只前移便宜必要自检，不要求先完成全部后端，已有合格数据、计算和图文按原同hash规则复用，业务失败立即停止依赖生成、保留未变成果和独立验收，不以结构校验或成功状态代替业务正确，不新增台账或模型阶段。\n'
     if not base or revision_scope=='package':
         prompt+='''\n建设自检及最终源码ZIP解压验证沿既有检查核验部署生命周期：PowerShell输出CIM/JSON前在子进程内明确[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false)，Python读取明确encoding='utf-8',errors='strict'并检查returncode；编码异常或非零退出如实失败，保留stdout/stderr，不用替换解码或吞错。启动返回后先保有Popen、PID、创建时间和本案entry归属再做探查，finally中失败也精确清退已核归属子树，无法核准时记录cleanup_pending，保留Codex/MCP及其他项目，不放宽process_guard边界。启动/停止使用同一真实entry，按当前部署目录解析绝对路径，入口变更时同步；建设内实际跑启动→停止→端口释放并核PID退出，最终ZIP解压后核对同一入口及清退效果、绑定ZIP哈希。命令、日志和哈希沿原有检查保存，不新增模型阶段、审批或全量重复测试。\n'''
+    if not base:
+        prompt+='''\n本次录制前必须在现有.product-v2/build-checks.json按references/tools.md绑定algorithm/api/persistence/browser/build五类真实日志，各自非空input_files含实际代码、测试脚本及固定夹具，test_files列实际测试入口；顶层run_id/source_docx_sha256/implementation_hashes绑定本案当前源与source-manifest。check-build只读核验，失败或陈旧在capture前拒绝，只重做依赖变化的检查。规范化反例必须走最终消费函数/API而非只测helper。父接续先proflow.py status读取收据：已capture进入evidence，technical_ready进入待完成独立审查，published未变结束；不反复录制、编码、解码或重看已实际验收且依赖未变的部分，finalize完整门禁保持。\n'''
     (record.parent/'深化命令词.txt').write_text(prompt, encoding='utf-8')
     return run
 
@@ -481,6 +485,9 @@ def finalize(workspace, output, evidence_path):
         raise ValueError('Finalized receipt is immutable; create a separate revision')
     from contracts import delivery_layout, chart_snapshot, model_review
     run=read_json(workspace/'.product-v2/run.json')
+    record=read_json(workspace/'.product-v2/recording.json')
+    from contracts import construction_checks
+    current_checks=construction_checks(workspace,run,record.get('plan_path'))
     word=delivery_layout(output,run)
     charts=chart_snapshot(workspace,word,run)
     cleanup_ready(workspace)
@@ -498,7 +505,12 @@ def finalize(workspace, output, evidence_path):
     if package['sha256']!=digest(output/SYSTEM/'项目源码.zip'): raise ValueError('Source archive changed')
     for rel,sha in package['files'].items():
         if digest(inside(workspace,rel))!=sha: raise ValueError('Source changed after packaging: '+rel)
-    record=read_json(workspace/'.product-v2/recording.json')
+    if current_checks['required']:
+        captured_checks=record.get('construction_checks',{})
+        if (captured_checks.get('status')!='ready' or captured_checks.get('run_id')!=run['run_id'] or
+                captured_checks.get('source_docx_sha256')!=run['source_docx_sha256'] or
+                record.get('plan_sha256')!=current_checks['plan_sha256']):
+            raise ValueError('Recording lacks its current-run construction admission or plan binding')
     from media_evidence import validate_recording_duration
     validate_recording_duration(record,run.get('recording_policy_version','legacy-fixed-v1'))
     if record.get('passed') is not True or record.get('sha256')!=digest(output/SYSTEM/'演示视频.mp4'):
@@ -535,6 +547,248 @@ def finalize(workspace, output, evidence_path):
              'limitations':proof['limitations'],'checks':checks,'license_exceptions':scanned['license_exceptions']}
     write_json(workspace/'.product-v2/final-receipt.json',receipt)
     return receipt
+
+def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
+    """Summarize existing receipts, never perform a stage or sign a review.
+
+    Hash each inspected path once per request. Media readiness is limited to
+    receipt/video/timeline bindings; finalization still checks all frame bytes.
+    """
+    hashes={};steps={};pointers=[];prior_execution_doc={}
+    def sha(path):
+        path=no_links(path)
+        if path not in hashes:hashes[path]=digest(path)
+        return hashes[path]
+    def receipt(name):
+        path=workspace/'.product-v2'/name
+        if not path.is_file():return None,path
+        try:
+            value=read_json(path)
+            return (value if isinstance(value,dict) else {'_read_error':'Receipt must be a JSON object'}),path
+        except (ValueError,OSError) as exc:return {'_read_error':str(exc)},path
+    def bound(path,expected,root):
+        path=no_links(path)
+        if root not in path.parents:raise ValueError('Status dependency escaped its root')
+        return path.is_file() and isinstance(expected,str) and sha(path)==expected
+    def inputs_current(inputs):
+        if not isinstance(inputs,dict) or not inputs:return ['missing immutable input bindings']
+        changed=[]
+        for rel,expected in inputs.items():
+            path=inside(workspace,rel,must_exist=False)
+            if not bound(path,expected,workspace):changed.append(rel)
+        return changed
+    def summarize(name,reader):
+        try:steps[name]=reader()
+        except (ValueError,OSError,KeyError,TypeError) as exc:
+            steps[name]={'state':'unknown','reason':str(exc)}
+    final,final_path=receipt('final-receipt.json')
+    if final and '_read_error' in final:steps['independent_review']={'state':'unknown','reason':final['_read_error']}
+    current_files=None
+    if final and '_read_error' not in final:
+        current_files={p.relative_to(output).as_posix():sha(p) for p in sorted(output.rglob('*')) if p.is_file()}
+        completed=False;proof_matches=False;review_error=None;proof={}
+        try:
+            proof_path=Path(final['execution_evidence'])
+            proof_path=no_links(proof_path) if proof_path.is_absolute() else inside(workspace,proof_path)
+            proof_matches=bound(proof_path,final.get('evidence_sha256'),workspace)
+            if proof_matches:proof=read_json(proof_path)
+            if (final.get('status')=='complete' and current_files==final.get('files') and proof_matches):
+                from contracts import delivery_layout, final_review_binding
+                if (not isinstance(proof,dict) or proof.get('reviewed_files')!=current_files or
+                        not proof.get('visual_notes') or not proof.get('limitations') or
+                        not isinstance(final.get('chart_snapshot'),dict)):
+                    raise ValueError('Final receipt lacks its current independent review facts')
+                scope=final.get('scope')
+                if scope not in {None,'document-revision','package-revision'}:
+                    raise ValueError('Unknown final review scope')
+                checks=proof.get('checks',[])
+                needed={'package_startup'} if scope=='package-revision' else {'algorithm','api','persistence','browser','build','package_startup'}
+                if scope!='document-revision':
+                    if (not isinstance(checks,list) or len(checks)!=len(needed) or
+                            {c.get('kind') for c in checks}!=needed or final.get('checks')!=checks):
+                        raise ValueError('Final review lacks its required execution checks')
+                    for check in checks:
+                        log=inside(workspace,check['log'])
+                        if (type(check.get('exit_code')) is not int or check['exit_code']!=0 or
+                                not check.get('command') or log.stat().st_size==0 or
+                                not bound(log,check.get('sha256'),workspace)):
+                            raise ValueError('Final review execution fact is missing/failed/changed: '+check['kind'])
+                    if proof.get('source_zip_sha256')!=current_files.get(SYSTEM+'/项目源码.zip'):
+                        raise ValueError('Final review archive binding changed')
+                if scope is None:
+                    controlled,_=receipt('controlled-video.json')
+                    if (not controlled or proof.get('video_timeline_sha256')!=controlled.get('sha256') or
+                            not bound(controlled['timeline'],controlled.get('sha256'),workspace)):
+                        raise ValueError('Final review controlled timeline binding changed')
+                elif not final.get('inherited_system') or not final.get('inherited_checks'):
+                    raise ValueError('Final revision lacks its recorded inheritance')
+                # Authenticate saved calls and the exact latest reviewer final;
+                # use the frozen chart snapshot without inspecting charts/frames.
+                dispatch=final_review_binding(workspace,proof,current_files,final['chart_snapshot'],proof_path,
+                                              final.get('verified_dispatch'),hash_file=sha)
+                if dispatch!=final.get('verified_dispatch'):
+                    raise ValueError('Final receipt actual independent dispatch binding changed')
+                delivery_layout(output,run)
+                completed=sha(no_links(run['source_docx']))==run['source_docx_sha256']
+        except (ValueError,OSError,KeyError,TypeError,AttributeError) as exc:
+            review_error=str(exc)
+        publication,pub_path=receipt('publish-receipt.json')
+        if (completed and run.get('status')=='published' and publication and publication.get('status')=='published' and
+                publication.get('files')==current_files and publication.get('source_receipt_sha256')==sha(final_path)):
+            return {'kind':'workflow-status','workspace':str(workspace),'run_id':run['run_id'],
+                    'state':'published','next_actions':[],'last_completed':'published',
+                    'independent_visual_review':'verified','receipt':str(pub_path),
+                    'verification_scope':'Current published artifact hashes and recorded final-proof/publication bindings; no stage was rerun.'}
+        changed_artifacts=[p for p in set(current_files)|set(final.get('files',{}))
+                           if current_files.get(p)!=final.get('files',{}).get(p)]
+        steps['independent_review']={'state':'verified' if completed else 'stale' if changed_artifacts or not proof_matches else 'unknown',
+                                    'reason':review_error,
+                                    'changed_artifacts':changed_artifacts,
+                                    'proof_sha256':final.get('evidence_sha256')}
+        if proof_matches and isinstance(proof,dict):
+            prior_execution_doc=proof
+            pointers.append({'path':str(proof_path),'sha256':sha(proof_path),'reviewer_agent_id':proof.get('reviewer_agent_id'),
+                             'reviewed_evidence':proof.get('reviewed_evidence',[]),
+                             'status':'recorded-final-proof','instruction':'Reuse only actually reviewed unchanged dependencies; changed product is not approved by this pointer.'})
+    if evidence_path:
+        path=no_links(evidence_path)
+        if workspace not in path.parents:raise ValueError('Status review pointer must stay inside the workspace')
+        proof=read_json(path)
+        pointers.append({'path':str(path),'sha256':sha(path),'reviewer_agent_id':proof.get('reviewer_agent_id'),
+                         'reviewed_evidence':proof.get('reviewed_evidence',[]),'decision':proof.get('decision'),
+                         'status':'pointer-only-not-authenticated','instruction':'This pointer does not attest actual reading or independent acceptance.'})
+    def data():
+        value,path=receipt('data-cleaning.json')
+        if not value:return {'state':'not_started'}
+        if '_read_error' in value:return {'state':'unknown','reason':value['_read_error']}
+        files=value.get('files',[])
+        if value.get('status')!='cleaned' or not files:return {'state':'failed'}
+        changed=[]
+        for item in files:
+            if not bound(item['input'],item['input_sha256'],workspace):changed.append(item['input'])
+            if not bound(output/SYSTEM/'数据'/item['name'],item['sha256'],output):changed.append('数据/'+item['name'])
+        directory=output/SYSTEM/'数据'
+        actual={p.name for p in directory.iterdir()} if directory.is_dir() else set()
+        if actual!={item['name'] for item in files}:changed.append('CSV member set')
+        return {'state':'stale' if changed else 'completed','changed_dependencies':changed,'receipt':str(path)}
+    def package():
+        value,path=receipt('source-package.json')
+        if not value:return {'state':'not_started'}
+        if '_read_error' in value:return {'state':'unknown','reason':value['_read_error']}
+        changed=inputs_current(value.get('files'))
+        if not bound(output/SYSTEM/'项目源码.zip',value.get('sha256'),output):changed.append('项目源码.zip')
+        return {'state':'stale' if changed else 'completed','changed_dependencies':changed,'receipt':str(path)}
+    summarize('data',data);summarize('source_package',package)
+    recording,recording_path=receipt('recording.json')
+    pending,pending_path=receipt('capture-pending.json')
+    capture=None
+    def admission_current(value):
+        if 'construction_check_policy_version' not in run:return True
+        from contracts import CONSTRUCTION_POLICY
+        if run['construction_check_policy_version']!=CONSTRUCTION_POLICY:
+            raise ValueError('Unknown construction check policy')
+        admission=value.get('construction_checks',{})
+        return (isinstance(admission,dict) and admission.get('status')=='ready' and
+                admission.get('run_id')==run['run_id'] and
+                admission.get('source_docx_sha256')==run['source_docx_sha256'])
+    def original_capture():
+        nonlocal capture
+        if not pending:return {'state':'unknown','reason':'No original capture receipt is available; do not repeat business automatically'}
+        if '_read_error' in pending:return {'state':'unknown','reason':pending['_read_error']}
+        if pending.get('status') not in {None,'captured'} or not pending.get('sha256'):
+            return {'state':'unknown','reason':'Capture is still running or did not save a successful receipt'}
+        path=no_links(pending['path'])
+        if not bound(path,pending['sha256'],workspace):return {'state':'unknown','reason':'Capture receipt missing or changed'}
+        capture=read_json(path)
+        if capture.get('status')!='captured' or capture.get('errors'):
+            return {'state':'failed','reason':'Capture has recorded failure; inspect actual business effects before retrying'}
+        if capture.get('workspace')!=str(workspace) or capture.get('run_id')!=run['run_id']:
+            return {'state':'unknown','reason':'Capture belongs to a different run'}
+        if not admission_current(capture):
+            return {'state':'unknown','reason':'Capture lacks its current-run construction admission; inspect before any business replay'}
+        changed=inputs_current(capture.get('inputs'))
+        if not bound(capture['rawPath'],capture.get('raw_sha256'),workspace):
+            return {'state':'unknown','reason':'Original capture missing or changed; no automatic business replay','changed_dependencies':['raw capture']}
+        active_plan=plan_path or capture.get('plan_path') or workspace/'.product-v2/record-plan.json'
+        if capture.get('plan_sha256') and not bound(active_plan,capture['plan_sha256'],workspace):changed.append('recording plan')
+        return {'state':'stale' if changed else 'captured','changed_dependencies':changed,'last_completed':'captured',
+                'next_action':'capture' if changed else 'evidence','receipt':str(path)}
+    def media():
+        if recording:
+            if '_read_error' in recording:return {'state':'unknown','reason':recording['_read_error']}
+            changed=inputs_current(recording.get('input_files'))
+            if recording.get('passed') is not True:return {'state':'failed','reason':'Recording receipt did not complete successfully'}
+            if not admission_current(recording):
+                return {'state':'unknown','reason':'Recording lacks its current-run construction admission; inspect before any business replay'}
+            active_plan=plan_path or recording.get('plan_path') or workspace/'.product-v2/record-plan.json'
+            if recording.get('plan_sha256') and not bound(active_plan,recording['plan_sha256'],workspace):changed.append('recording plan')
+            if changed:return {'state':'stale','changed_dependencies':changed,'last_completed':'recorded'}
+            if not bound(run['video'],recording.get('sha256'),output):
+                recovered=original_capture()
+                if recovered['state']=='captured':
+                    recovered.update(reason='Only final MP4 is missing or changed; original capture remains current',
+                                     next_action='preserve-video-draft then evidence' if Path(run['video']).exists() else 'evidence')
+                return recovered
+            controlled,controlled_path=receipt('controlled-video.json')
+            if not controlled:return {'state':'captured','next_action':'evidence','last_completed':'recorded'}
+            timeline=no_links(controlled['timeline'])
+            if not bound(timeline,controlled.get('sha256'),workspace):
+                return {'state':'captured','next_action':'evidence','reason':'Controlled timeline missing or changed','last_completed':'recorded'}
+            timeline_value=read_json(timeline);binding=timeline_value.get('recording_receipt',{})
+            if (timeline_value.get('video_sha256')!=recording['sha256'] or timeline_value.get('decode_ok') is not True or
+                    timeline_value.get('sample_fps')!=5 or binding.get('sha256')!=sha(recording_path) or
+                    no_links(binding.get('path',''))!=no_links(recording_path)):
+                return {'state':'captured','next_action':'evidence','reason':'Technical timeline bindings incomplete','last_completed':'recorded'}
+            return {'state':'technical_ready','last_completed':'technical_evidence','receipt':str(recording_path),
+                    'timeline':str(timeline),'verification_scope':'Video, operation receipt and timeline hashes; frame files were not rechecked or visually viewed.'}
+        return original_capture() if pending else {'state':'not_started'}
+    summarize('recording',media)
+    cleanup,cleanup_path=receipt('cleanup.json')
+    steps['cleanup']={'state':'pending' if cleanup and cleanup.get('status')!='stopped' else 'unknown',
+                      'last_completed':'stopped' if cleanup and cleanup.get('status')=='stopped' else None,
+                      'reason':'Existing cleanup receipt only; current OS process identities were not queried.',
+                      'receipt':str(cleanup_path) if cleanup else None}
+    steps.setdefault('independent_review',{'state':'pending','reason':'No finalized independent acceptance is recorded'})
+    remaining=[]
+    for name,action in [('data','clean-data'),('source_package','pack-source')]:
+        if steps[name]['state']!='completed':remaining.append(action)
+    def execution():
+        execution_doc=read_json(no_links(evidence_path)) if evidence_path else prior_execution_doc
+        if not execution_doc and (workspace/'.product-v2/build-checks.json').is_file():execution_doc=read_json(workspace/'.product-v2/build-checks.json')
+        if not isinstance(execution_doc,dict):return {'state':'unknown','reason':'Execution facts must be a JSON object'}
+        checks=execution_doc.get('checks',{})
+        if isinstance(checks,list):checks={c['kind']:c for c in checks}
+        kinds={'algorithm','api','persistence','browser','build','package_startup'}
+        if not isinstance(checks,dict) or not kinds.issubset(checks):return {'state':'pending','reason':'Six current execution facts including final ZIP startup are not yet supplied'}
+        for kind in kinds:
+            check=checks[kind]
+            if (type(check.get('exit_code')) is not int or check['exit_code']!=0 or not check.get('command') or
+                    not bound(inside(workspace,check['log'],must_exist=False),check.get('sha256'),workspace)):
+                return {'state':'stale','reason':'Current execution fact is missing/failed/changed: '+kind}
+        package_hash=execution_doc.get('source_zip_sha256') or checks['package_startup'].get('source_zip_sha256')
+        if not bound(output/SYSTEM/'项目源码.zip',package_hash,output):return {'state':'pending','reason':'ZIP startup facts are not bound to this final archive'}
+        return {'state':'completed','scope':'Recorded current log/archive hashes only; no business or independent pass is inferred'}
+    summarize('execution_evidence',execution)
+    if steps['execution_evidence']['state']!='completed':remaining.append('final-zip-startup-and-execution-evidence')
+    if steps['independent_review']['state']!='verified':remaining.append('independent-review-changed-or-unread-evidence')
+    next_actions=[]
+    video_state=steps['recording']['state']
+    if video_state in {'not_started','stale'}:next_actions.append('check-build then capture')
+    elif video_state=='captured':next_actions.append(steps['recording'].get('next_action','evidence'))
+    elif video_state in {'unknown','failed'}:next_actions.append('inspect-recording-state-before-any-business-replay')
+    elif video_state=='technical_ready':
+        if steps['cleanup']['last_completed']!='stopped':next_actions=['cleanup-after-required-online-work']
+        elif steps['data']['state']!='completed':
+            next_actions=['inspect-data-receipt'] if steps['data']['state']=='unknown' else ['preserve-data-draft then clean-data' if (output/SYSTEM/'数据').exists() else 'clean-data']
+        elif steps['source_package']['state']!='completed':
+            next_actions=['inspect-source-package-receipt'] if steps['source_package']['state']=='unknown' else ['preserve-source-draft then pack-source' if (output/SYSTEM/'项目源码.zip').exists() else 'pack-source']
+        elif steps['execution_evidence']['state']!='completed':next_actions=['verify-final-zip-startup-and-execution-evidence']
+        else:next_actions=['independent-review-changed-or-unread-evidence']
+    if steps['independent_review']['state']=='verified':next_actions=['publish']
+    return {'kind':'workflow-status','workspace':str(workspace),'run_id':run['run_id'],'steps':steps,
+            'independent_visual_review':steps['independent_review']['state'],'review_pointers':pointers,'next_actions':next_actions,'remaining_stages':remaining,
+            'finalized_scope':'Any recorded acceptance applies to frozen delivered artifacts. Workspace edits require their own authorized revision; this status does not approve new workspace code.',
+            'verification_scope':'Read-only receipt and selected dependency hashes, memoized within this request. No commands, media processing, services, images, model calls or frame traversal performed.'}
 
 def preserve_draft(workspace,output,artifact):
     """Move one exact generated draft into verified internal history for retry."""
@@ -844,8 +1098,10 @@ def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     sub=p.add_subparsers(dest='command',required=True)
     prep=sub.add_parser('prepare');prep.add_argument('--workspace',required=True);prep.add_argument('--output',required=True);prep.add_argument('--title',required=True);prep.add_argument('--source-docx',required=True);prep.add_argument('--revision-of');prep.add_argument('--adopt-draft',action='store_true');prep.add_argument('--revision-scope',choices=['document','package'],default='document');prep.add_argument('--allow-untracked-base',action='store_true')
-    for name in ('clean-data','check-data','pack-source','scan','record','finalize','finalize-document-revision','finalize-package-revision','publish','preserve-draft'):
+    for name in ('clean-data','check-data','check-build','status','pack-source','scan','record','finalize','finalize-document-revision','finalize-package-revision','publish','preserve-draft'):
         item=sub.add_parser(name);item.add_argument('--workspace',required=True)
+        if name in ('check-build','status'):item.add_argument('--plan')
+        if name=='status':item.add_argument('--evidence')
         if name in ('clean-data','pack-source'): item.add_argument('--manifest',required=True)
         if name=='record':
             item.add_argument('--plan');item.add_argument('--phase',choices=['full','capture','evidence'],default='full')
@@ -859,7 +1115,11 @@ def main(argv=None):
         elif args.command=='publish':result=publish(args.workspace,args.destination)
         else:
             workspace,output,run=state(args.workspace)
-            if args.command=='clean-data':
+            if args.command=='check-build':
+                from contracts import construction_checks
+                result=construction_checks(workspace,run,args.plan)
+            elif args.command=='status':result=workflow_status(workspace,output,run,args.plan,args.evidence)
+            elif args.command=='clean-data':
                 cleanup_ready(workspace);result=clean_csv(workspace,output,args.manifest)
             elif args.command=='check-data':result=check_data_quality(workspace,output,update=True)
             elif args.command=='pack-source': result=pack_source(workspace,output,args.manifest)

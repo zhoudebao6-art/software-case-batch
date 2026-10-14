@@ -127,7 +127,14 @@ function readinessFixture(){
    state.browserLoads++;return {chromium:{launch:async()=>{state.browserLaunches++;throw Error('Readiness rejection must precede browser launch');}}};
   }
   if(name==='node:child_process')return {spawnSync:(exe,args)=>{
-   assert.equal(exe,'fixture-python');assert.equal(path.basename(args[0]),'process_guard.py');assert.equal(args[1],'inspect');
+   assert.equal(exe,'fixture-python');
+   if(path.basename(args[0])==='proflow.py'){
+    assert.equal(args[1],'check-build');assert.equal(args[args.indexOf('--workspace')+1],root);
+    assert.equal(args[args.indexOf('--plan')+1],planPath);state.commands.push(args);
+    return state.constructionError?{status:2,stdout:'',stderr:state.constructionError}:
+      {status:0,stdout:JSON.stringify(state.constructionResult??{required:true,status:'ready',run_id:run.run_id})};
+   }
+   assert.equal(path.basename(args[0]),'process_guard.py');assert.equal(args[1],'inspect');
    assert.equal(args[args.indexOf('--workspace')+1],root);state.commands.push(args);return {status:0,stdout:state.inspectRaw??JSON.stringify({owned:state.owned})};
   }};
   return require(name);
@@ -154,6 +161,22 @@ function readinessFixture(){
  return {fs,path,root,control,run,runPath,plan,planPath,listener,state,secret,save,hash,registry,registryPath,snapshot,api:sandbox.module.exports,
   close:()=>{assert.equal(path.dirname(fs.realpathSync(root)),fs.realpathSync(os.tmpdir()));fs.rmSync(root,{recursive:true,force:true});}};
 }
+test('current-run readiness and direct capture share the construction gate before health and browser work',async()=>{
+ const f=readinessFixture();
+ try{
+  f.run.construction_check_policy_version='dependency-bound-v1';f.save(f.runPath,f.run);
+  const before=f.snapshot();f.state.constructionError='Construction dependency changed: algorithm / app.py';
+  await assert.rejects(f.api.checkReady(f.root,f.planPath),/Construction dependency changed/);
+  await assert.rejects(f.api.record(f.root,f.planPath,'capture'),/Construction dependency changed/);
+  assert.deepEqual(f.snapshot(),before);assert.equal(f.state.requests.length,0);
+  assert.equal(f.state.browserLoads,0);assert.equal(f.state.browserLaunches,0);
+  f.state.constructionError=null;const facts=await f.api.checkReady(f.root,f.planPath);
+  assert.equal(facts.construction_checks.required,true);assert.equal(facts.construction_checks.status,'ready');
+  assert.deepEqual(f.snapshot(),before);assert.equal(f.state.browserLoads,0);
+  f.state.constructionResult={required:false,status:'historical-contract'};
+  await assert.rejects(f.api.checkReady(f.root,f.planPath),/self-check admission required/);
+ }finally{f.close();}
+});
 test('read-only readiness returns current neutral hashes and listener facts without acquiring a lock or exposing session contents',async()=>{
  const f=readinessFixture();
  try{
@@ -167,6 +190,19 @@ test('read-only readiness returns current neutral hashes and listener facts with
   assert.equal(JSON.stringify(facts).includes(f.secret),false);assert.equal('passed' in facts,false);assert.deepEqual(f.snapshot(),before);
   assert.equal(f.state.browserLoads,0);assert.equal(f.state.browserLaunches,0);assert.equal(f.state.commands.length,1);
   delete f.plan.storage_state;f.save(f.planPath,f.plan);assert.equal((await f.api.checkReady(f.root,f.planPath)).storage_state,null);
+ }finally{f.close();}
+});
+test('new-run evidence rejects stale construction dependencies before any encoder or decoder command',()=>{
+ const f=readinessFixture();
+ try{
+  f.run.construction_check_policy_version='dependency-bound-v1';f.save(f.runPath,f.run);
+  const capture=f.path.join(f.control,'capture.json');f.save(capture,{plan_path:f.planPath,construction_checks:{status:'ready',run_id:f.run.run_id}});
+  f.save(f.path.join(f.control,'capture-pending.json'),{path:capture,sha256:f.hash(capture)});
+  const before=f.snapshot();f.state.constructionError='Construction dependency changed: api / shared.py';
+  assert.throws(()=>f.api.finishRecording(f.root),/Construction dependency changed: api/);
+  assert.deepEqual(f.snapshot(),before);assert.equal(f.state.commands.length,1);
+  assert.equal(f.path.basename(f.state.commands[0][0]),'proflow.py');assert.equal(f.state.commands[0][1],'check-build');
+  assert.equal(f.state.requests.length,0);assert.equal(f.state.browserLoads,0);
  }finally{f.close();}
 });
 test('readiness keeps Python integer creation ticks above 2^53 exact and normalizes integer and string registries',async()=>{

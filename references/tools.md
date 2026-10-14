@@ -60,6 +60,16 @@ PID 必须来自本次实际启动，每个专属进程逐项登记；录制器�
 
 健康接口返回实际 `run_id`（run.json）、`workspace`（案件绝对目录）、`version`（启动时冻结，匹配计划）与 `pid`（实际监听进程）。录制前后与当前 OS 和登记记录核对；Windows venv 的启动器和实际监听子进程可能不同，两者都要登记。选择器和操作必须来自本案实际界面；无需为了符合示例命名修改业务。此计划只是格式示例，不能把“已保存”文本当持久化验证。当前录制工具支持同一浏览器页内操作；需要弹窗或新标签业务时先扩展工具和相应测试，不悄悄改成假流程。不能自动把不足一分钟的内容补长。
 
+## 接续状态与建设证据
+
+status仅在新会话接续、阶段完成或实际依赖变化后用于决策，同轮有效状态直接沿用，不把状态查询变成忙轮询。`next_actions`按现有依赖给当前可执行建议；`remaining_stages`只列未齐项。capture/evidence先于在线工作结束后的cleanup，再清洗数据/打包；源码与最终ZIP启动的六类当前事实未齐，不直接建议独立完整验收。查询不证明当前OS后台状态，cleanup记录只显示last_completed，后续既有工具仍按真实身份保护。只缺MP4且原capture未变推荐evidence；存在变动MP4先保留旧draft，原capture不明或capturing时先定位状态，不盲目重复业务动作。
+
+`proflow.py status --workspace 案件目录 [--plan 本案计划] [--evidence 已有独立proof]`只读汇总现有收据与下一步，不执行阶段或新增台账。`technical_ready`表示录制和技术证据已有绑定记录，尚未finalized时独立视觉仍为pending；核验范围只含video/receipt/timeline，帧文件本次不重核。输出unknown/stale不能当失败视频自动重录，先处理指明依赖；只有缺失或改变的技术timeline走evidence，实际record-plan业务输入改变才需要新capture。published成品及final/proof/publication绑定相同返回空next_actions。proof指针保留原reviewed_evidence值，不追加已阅ID或独立签字。
+
+新完整`prepare`冻结`construction_check_policy_version=dependency-bound-v1`；无该字段的旧run保持历史合同，未知值拒绝，文档/包继承修订不补写历史政策。建设沿`.product-v2/build-checks.json`保存`run_id/source_docx_sha256/implementation_hashes/checks`，checks对象至少有`algorithm/api/persistence/browser/build`五类；其他数据事实可保留。每类使用现有`command/exit_code/log/sha256`，另加非空`input_files:{工作区相对文件:SHA256}`和`test_files:[本项实际测试脚本及固定夹具路径]`；test_files均须在input_files中。动态DB、当前业务操作/持续日志不是不可变输入，以测试中准备的固定输入和实际结果日志留证。
+
+implementation_hashes完整对应source-manifest打包有效成员；五类依赖并集覆盖它们及record-plan.input_files，单类依赖由实际代码调用范围决定，不机械要求五类都绑定全部项目。未变项保留原日志和依赖快照，变更共享依赖使引用该依赖的项失效；新增/删除源码成员或漏覆盖录制输入拒绝。独立审查仍核依赖范围和业务含义，不以hash门禁替代真实边界测试。`proflow.py check-build --workspace 本案 [--plan 当前计划]`只读机械核验，不执行业务命令、不写ready或pass。Node --check-ready及直接capture/full共用此函数，evidence和finalize也重核当前gate；录制保存当时gate来源但新补测试日志不要求旧新gate整字节相同，视频按实际plan/input_files绑定，finalize完整门禁不减。
+
 ## 最终验证
 
 新版默认正式根`D:\研发图表\批次\案件`；`prepare --output`仍必须显式提供，默认路线的私有候选为`D:\研发图表\.staging\本批-本案-唯一版本`，与正式根同卷。`local.config.json.output_root`和当前进程`SCB_PRO_OUTPUT_ROOT/SCB_OUTPUT_ROOT`明确该默认根，不静默改变显式输出路径。用户明确其他目录优先；工作区方案采用`总工作区/成品/...`，每案执行目录为`总工作区/cases/...`，两者隔离。旧成果和冻结原规范中的D路径保留历史，不自动迁移。
