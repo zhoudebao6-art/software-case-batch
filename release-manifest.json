@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r11-trial-lessons-20261013",
+  "release": "r12-workflow-recovery-20261014",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -34,8 +34,8 @@
     },
     {
       "relative_path": "SKILL.md",
-      "sha256": "cc51f8f24e31dbb07f3e1641e5cc750ab1801ca488860612f4f2eed59ab06c66",
-      "size": 18087
+      "sha256": "61e835ef76d13f966b447d5469ce58344f2e28a2730e9bf2f31a643091571477",
+      "size": 18420
     },
     {
       "relative_path": "agents/openai.yaml",
@@ -94,8 +94,8 @@
     },
     {
       "relative_path": "references/execution.md",
-      "sha256": "ea82b30a96e8d4222128fcbef74c7414acde23eaf9ff16c269dd83ab834a3717",
-      "size": 17421
+      "sha256": "b504ad56f4bbf38dad2f27e5230e4eeb0663ed6896934b48f5435513b212f4a4",
+      "size": 18691
     },
     {
       "relative_path": "references/expedited-routing.md",
@@ -389,8 +389,8 @@
     },
     {
       "relative_path": "scripts/proflow.py",
-      "sha256": "bad11db5ec332737754a926c821b7a579639e027c53170a4b01d6dee2d4f1ae8",
-      "size": 75817
+      "sha256": "e0d29d00a1f9f1d5061067411b651214fb9a09615d8e6bfe5d225cfeedf82692",
+      "size": 76060
     },
     {
       "relative_path": "scripts/record.cjs",
