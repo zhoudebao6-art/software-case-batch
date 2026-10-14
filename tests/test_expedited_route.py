@@ -160,6 +160,114 @@ class ExpeditedRouteTests(unittest.TestCase):
         record={'run_id':'run-'+case_id,'workspace':str(self.root/('work'+case_id[1:])),'scope_name':scope_name,'statement':statement,'session_log':str(log),'user_message_sha256':hashlib.sha256(actual.encode()).hexdigest()}
         if context:record['scope_context']=context
         path=self.root/(case_id+'-natural-authorization.json');write_json(path,record);return path
+    def question_card_authorization(self,answers=None,actual=None,role='user',request=True,parent=True):
+        statement='加急modern/c1';call_id='call_question_card';answers=answers or [statement]
+        replies=[{'questionItemId':json.dumps(['request_user_input_async',call_id,index],separators=(',',':')),
+                  'question':'请只回复这一行：'+answer,'answer':answer} for index,answer in enumerate(answers)]
+        text=actual if actual is not None else '<send_user_message_question_reply>\n'+json.dumps(replies,ensure_ascii=False,separators=(',',':'))+'\n</send_user_message_question_reply>\n'
+        meta={'type':'session_meta','payload':{'id':'parent-card-fixture','thread_source':'user' if parent else 'subagent'}}
+        ask={'type':'response_item','payload':{'type':'function_call','name':'request_user_input_async','call_id':call_id,
+             'arguments':json.dumps({'questions':[{'title':reply['question']} for reply in replies]},ensure_ascii=False)}}
+        message={'type':'response_item','payload':{'type':'message','role':role,'content':[{'type':'input_text','text':text}]}}
+        events=[meta]+([ask] if request else [])+[message]
+        log=self.sessions/'c1-question-card.jsonl';log.write_text(''.join(json.dumps(event,ensure_ascii=False)+'\n' for event in events),encoding='utf-8')
+        record={'run_id':'run-c1','workspace':str(self.root/'work1'),'scope_name':'modern/c1','statement':statement,
+                'session_log':str(log),'user_message_sha256':hashlib.sha256(text.encode()).hexdigest()}
+        path=self.root/'c1-question-card-authorization.json';write_json(path,record);return path,replies,events
+    def save_question_card(self,path,replies,events):
+        text='<send_user_message_question_reply>\n'+json.dumps(replies,ensure_ascii=False,separators=(',',':'))+'\n</send_user_message_question_reply>\n'
+        events[-1]['payload']['content'][0]['text']=text
+        record=read_json(path);record['user_message_sha256']=hashlib.sha256(text.encode()).hexdigest();write_json(path,record)
+        Path(record['session_log']).write_text(''.join(json.dumps(event,ensure_ascii=False)+'\n' for event in events),encoding='utf-8')
+    def test_actual_breaker_question_card_shape_and_entire_message_hash_select_astra_low(self):
+        batch_id='1014胡长浩_20261014';case_id='breaker_method';scope=batch_id+'/'+case_id;statement='加急'+scope
+        call_id='call_712a98c7cde849e09b2e5c7d959c6fe3';question='请只回复这一行，不加句号或说明：'+statement
+        reply={'questionItemId':json.dumps(['request_user_input_async',call_id,0],ensure_ascii=False,separators=(',',':')),'question':question,'answer':statement}
+        actual='<send_user_message_question_reply>\n'+json.dumps([reply],ensure_ascii=False,separators=(',',':'))+'\n</send_user_message_question_reply>\n'
+        self.assertEqual(hashlib.sha256(actual.encode()).hexdigest(),'51b6bf8211ef39e0b8a772c28216c8c8a081a7f4ebe15076276488a304bde448')
+        work=self.root/'breaker-work';work.mkdir();source=work/'source.docx';source.write_bytes(b'isolated real-card shape fixture')
+        write_json(work/'.product-v2/run.json',{'workspace':str(work),'run_id':'breaker-run'})
+        cases=self.root/'breaker-cases.json';write_json(cases,{'cases':[{'case_id':case_id,'workspace':str(work),'source_docx':str(source),'source_sha256':digest(source)}]})
+        batch.register(self.pool,batch_id,cases,'isolated real-card regression',4,2);batch.claim(self.pool,batch_id,203)
+        call=lambda action,**kw:batch.mutate(self.pool,batch_id,203,action,case_id,**kw)
+        call('preflight',value=self.preflight)
+        log=self.sessions/'actual-breaker-card.jsonl';events=[{'type':'session_meta','payload':{'id':'actual-card-parent-fixture','thread_source':'user','source':'vscode'}},
+          {'type':'response_item','payload':{'type':'function_call','name':'request_user_input_async','call_id':call_id,'arguments':json.dumps({'questions':[{'title':question}]},ensure_ascii=False)}},
+          {'type':'response_item','payload':{'type':'message','role':'user','content':[{'type':'input_text','text':actual}]}}]
+        log.write_text(''.join(json.dumps(event,ensure_ascii=False)+'\n' for event in events),encoding='utf-8')
+        path=self.root/'breaker-card-authorization.json';write_json(path,{'run_id':'breaker-run','workspace':str(work),'scope_name':scope,'statement':statement,'session_log':str(log),'user_message_sha256':hashlib.sha256(actual.encode()).hexdigest()})
+        call('expedite',authorization=path);ticket=call('queue',stage='review');active=call('acquire',token=ticket['token'])
+        self.assertEqual(active['stage'],'expedited');permit=call('verify-review',token=active['token'],value=work)
+        self.assertEqual([permit['model'],permit['effort']],['gpt-6-astra','low'])
+        verified=read_json(self.pool/batch_id/'state.json')['cases'][case_id]['expedited_authorization']['verified']
+        self.assertEqual(verified['user_message_sha256'],hashlib.sha256(actual.encode()).hexdigest());self.assertEqual(verified['batch_binding']['case_id'],case_id)
+    def test_question_card_selects_unique_answer_in_multiple_questions(self):
+        path,_,_=self.question_card_authorization(['资料已核对','加急modern/c1','加急modern/c2'])
+        self.call('expedite','c1',authorization=path);self.assertEqual(self.queue('c1')['stage'],'expedited')
+    def test_question_prompt_or_other_roles_cannot_authorize(self):
+        for answer in ('先按普通独立验收','不要加急modern/c1','如果批准，加急modern/c1','示例：加急modern/c1','加急modern/c1。额外说明','加急modern/c1\n其他要求','',{'answer':'加急modern/c1'}):
+            with self.subTest(answer=answer):
+                path,replies,events=self.question_card_authorization();replies[0]['answer']=answer;self.save_question_card(path,replies,events)
+                with self.assertRaisesRegex(ValueError,'real user message'):self.call('expedite','c1',authorization=path)
+        for role in ('assistant','tool'):
+            with self.subTest(role=role):
+                path,_,_=self.question_card_authorization(role=role)
+                with self.assertRaisesRegex(ValueError,'real user message'):self.call('expedite','c1',authorization=path)
+        for answer in ('加急\nmodern/c1','加急\r\nmodern/c1','加急\u2028modern/c1'):
+            with self.subTest(multiline_statement=answer):
+                path,replies,events=self.question_card_authorization();record=read_json(path);record['statement']=answer;write_json(path,record)
+                replies[0]['answer']=answer;self.save_question_card(path,replies,events)
+                with self.assertRaisesRegex(ValueError,'real user message'):self.call('expedite','c1',authorization=path)
+    def test_question_card_requires_actual_prior_parent_request_and_matching_question(self):
+        for fault in ('missing_request','child_session','wrong_call','wrong_index','boolean_index','wrong_question','late_request','duplicate_call'):
+            with self.subTest(fault=fault):
+                path,replies,events=self.question_card_authorization(request=fault!='missing_request',parent=fault!='child_session')
+                if fault=='wrong_call':replies[0]['questionItemId']='["request_user_input_async","call_missing",0]'
+                if fault=='wrong_index':replies[0]['questionItemId']='["request_user_input_async","call_question_card",1]'
+                if fault=='boolean_index':replies[0]['questionItemId']='["request_user_input_async","call_question_card",false]'
+                if fault=='wrong_question':replies[0]['question']='伪造提问'
+                if fault=='late_request':events.insert(1,events.pop())
+                if fault=='duplicate_call':events.insert(2,copy.deepcopy(events[1]))
+                if fault=='late_request':
+                    record=read_json(path);Path(record['session_log']).write_text(''.join(json.dumps(event,ensure_ascii=False)+'\n' for event in events),encoding='utf-8')
+                else:self.save_question_card(path,replies,events)
+                with self.assertRaisesRegex(ValueError,'real user message'):self.call('expedite','c1',authorization=path)
+    def test_question_card_rejects_duplicate_ambiguous_nested_or_quoted_payloads(self):
+        for answers in (['加急modern/c1','加急modern/c1'],['加急modern/c1','modern/c1不要加急']):
+            with self.subTest(answers=answers):
+                path,_,_=self.question_card_authorization(answers)
+                with self.assertRaisesRegex(ValueError,'real user message'):self.call('expedite','c1',authorization=path)
+        for fault in ('duplicate_id','duplicate_key','nested_answer','nested_wrapper','material_prefix','code_fence','truncated_json','object_payload'):
+            with self.subTest(fault=fault):
+                path,replies,events=self.question_card_authorization(['加急modern/c1','资料已核对'])
+                if fault=='duplicate_id':replies[1]['questionItemId']=replies[0]['questionItemId']
+                if fault=='nested_answer':replies[0]['answer']='<send_user_message_question_reply>加急modern/c1</send_user_message_question_reply>'
+                self.save_question_card(path,replies,events);record=read_json(path);actual=events[-1]['payload']['content'][0]['text']
+                if fault=='duplicate_key':actual=actual.replace('"answer":"加急modern/c1"','"answer":"不要加急modern/c1","answer":"加急modern/c1"')
+                if fault=='nested_wrapper':actual='<send_user_message_question_reply>'+actual+'</send_user_message_question_reply>'
+                if fault=='material_prefix':actual='材料引用：\n'+actual
+                if fault=='code_fence':actual='```json\n'+actual+'```'
+                if fault=='truncated_json':actual=actual.replace('}]','}')
+                if fault=='object_payload':actual='<send_user_message_question_reply>'+json.dumps(replies[0],ensure_ascii=False)+'</send_user_message_question_reply>'
+                events[-1]['payload']['content'][0]['text']=actual;record['user_message_sha256']=hashlib.sha256(actual.encode()).hexdigest();write_json(path,record)
+                Path(record['session_log']).write_text(''.join(json.dumps(event,ensure_ascii=False)+'\n' for event in events),encoding='utf-8')
+                with self.assertRaisesRegex(ValueError,'real user message'):self.call('expedite','c1',authorization=path)
+    def test_question_card_entire_hash_run_workspace_scope_and_request_remain_bound(self):
+        for fault in ('answer_hash','wrong_hash','run','workspace','cross_case','cross_batch'):
+            with self.subTest(fault=fault):
+                path,_,_=self.question_card_authorization();record=read_json(path)
+                if fault=='answer_hash':record['user_message_sha256']=hashlib.sha256(record['statement'].encode()).hexdigest()
+                if fault=='wrong_hash':record['user_message_sha256']='0'*64
+                if fault=='run':record['run_id']='another-run'
+                if fault=='workspace':record['workspace']=str(self.root/'work2')
+                if fault=='cross_case':record.update(run_id='run-c2',workspace=str(self.root/'work2'),scope_name='modern/c2',statement='加急modern/c2')
+                if fault=='cross_batch':record.update(scope_name='other/c1',statement='加急other/c1')
+                write_json(path,record)
+                with self.assertRaises(ValueError):self.call('expedite','c2' if fault=='cross_case' else 'c1',authorization=path)
+        path,_,events=self.question_card_authorization();self.call('expedite','c1',authorization=path);ticket=self.queue('c1')
+        events[1]['payload']['arguments']=json.dumps({'questions':[{'title':'changed request'}]})
+        Path(read_json(path)['session_log']).write_text(''.join(json.dumps(event,ensure_ascii=False)+'\n' for event in events),encoding='utf-8')
+        with self.assertRaisesRegex(ValueError,'real user message'):self.acquire(ticket)
     def test_plain_case_and_named_batch_expedite_commands_select_astra_low(self):
         for case_id,statement,scope in (('c1','c1加急','c1'),('c2','modern 这批加急','modern'),('c3','加急c3','c3'),('c4','c4请加急','c4')):
             self.call('expedite',case_id,authorization=self.natural_authorization(case_id,statement,scope));active=self.acquire(self.queue(case_id)) if case_id=='c1' else self.queue(case_id)

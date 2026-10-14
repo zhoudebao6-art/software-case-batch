@@ -422,6 +422,45 @@ def _exact_current_batch(text):
     value=match.group(1) if match else ''
     return value if value and all(c.isalnum() or c in '-_' for c in value) else None
 
+def _question_reply_command(actual,statement,scope_name,requests):
+    """Use one exact answer from a real question card, never its prompt."""
+    if statement.strip()!=statement or len(statement.splitlines())!=1 or _direct_user_lines(statement)!=[statement]:return False
+    tag='send_user_message_question_reply'
+    match=re.fullmatch(r'\s*<'+tag+r'>\s*(.*?)\s*</'+tag+r'>\s*',actual,re.S)
+    if not match or actual.count('<'+tag+'>')!=1 or actual.count('</'+tag+'>')!=1:return False
+    def unique_object(pairs):
+        result={}
+        for key,value in pairs:
+            if key in result:raise ValueError('Duplicate question reply key')
+            result[key]=value
+        return result
+    try:
+        replies=json.loads(match.group(1),object_pairs_hook=unique_object)
+        if not isinstance(replies,list) or not replies:return False
+        identities=set();answers=[]
+        for reply in replies:
+            if not isinstance(reply,dict) or set(reply)!={'questionItemId','question','answer'}:return False
+            if not all(isinstance(value,str) for value in reply.values()):return False
+            if any('<'+tag in value or '</'+tag in value for value in reply.values()):return False
+            identity=json.loads(reply['questionItemId'])
+            if (not isinstance(identity,list) or len(identity)!=3 or identity[0]!='request_user_input_async' or
+                    not isinstance(identity[1],str) or type(identity[2]) is not int or identity[2]<0):return False
+            key=(identity[1],identity[2])
+            if key in identities:return False
+            identities.add(key)
+            request=requests.get(identity[1])
+            if not request:return False
+            arguments=json.loads(request['arguments'],object_pairs_hook=unique_object)
+            if not isinstance(arguments,dict):return False
+            questions=arguments.get('questions')
+            if (not isinstance(questions,list) or identity[2]>=len(questions) or
+                    not isinstance(questions[identity[2]],dict) or questions[identity[2]].get('title')!=reply['question']):return False
+            answers.append(reply['answer'])
+        # Multiple questions may have different scoped answers. A second answer
+        # mentioning this scope is ambiguous, even when only one is an exact match.
+        return answers.count(statement)==1 and all(answer==statement or scope_name not in answer for answer in answers)
+    except (ValueError,TypeError,KeyError):return False
+
 def expedited_authorization(workspace,record):
     """Explicit original expedited-mode request in a real scoped user message."""
     run=read_json(inside(workspace,'.product-v2/run.json'))
@@ -451,6 +490,7 @@ def expedited_authorization(workspace,record):
                         scope_name in authorization_scope_names(other,case) for case in other.get('cases',[])):
                         ambiguous=True;break
     context=record.get('scope_context');found=False;last_batch_context=None;authorized_context=None
+    question_requests={};parent_session=False
     if implicit and (not isinstance(context,dict) or context.get('batch_id')!=scope_name):
         raise ValueError('Implicit batch expedite needs the frozen real current-batch context')
     with path.open(encoding='utf-8') as stream:
@@ -458,10 +498,21 @@ def expedited_authorization(workspace,record):
             try:event=json.loads(line)
             except json.JSONDecodeError:continue
             payload=event.get('payload',{})
-            if event.get('type')!='response_item' or payload.get('type')!='message' or payload.get('role')!='user':continue
+            if event.get('type')=='session_meta':
+                source=payload.get('source')
+                parent_session=bool(payload.get('id') and payload.get('thread_source') in (None,'user') and
+                                    not (isinstance(source,dict) and 'subagent' in source))
+                continue
+            if event.get('type')!='response_item':continue
+            if payload.get('type')=='function_call' and payload.get('name')=='request_user_input_async':
+                call_id=payload.get('call_id')
+                if isinstance(call_id,str):question_requests[call_id]=None if call_id in question_requests else payload
+                continue
+            if payload.get('type')!='message' or payload.get('role')!='user':continue
             actual='\n'.join(part.get('text','') for part in payload.get('content',[]));lines=_direct_user_lines(actual)
             if (hashlib.sha256(actual.encode()).hexdigest()==record.get('user_message_sha256') and
-                len(lines)==1 and actual.strip()==statement and lines[0]==statement):
+                ((len(lines)==1 and actual.strip()==statement and lines[0]==statement) or
+                 (not implicit and parent_session and _question_reply_command(actual,statement,scope_name,question_requests)))):
                 if not implicit:
                     # Bare case IDs/aliases inherit an explicit actual batch
                     # context. Reused names need that context or a batch-qualified
