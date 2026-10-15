@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r19-artifact-flow-20261015",
+  "release": "r20-compact-controller-20261015",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -34,8 +34,8 @@
     },
     {
       "relative_path": "SKILL.md",
-      "sha256": "c779ab53a9ef5f460bc1137946a96993450d32b480ae1ed7dd438fb20058cf92",
-      "size": 9095
+      "sha256": "451b8405e53299b8644b0aeb1624cd1e4a59c30fe142202e3192e44736670701",
+      "size": 9367
     },
     {
       "relative_path": "agents/openai.yaml",
@@ -99,8 +99,8 @@
     },
     {
       "relative_path": "references/execution.md",
-      "sha256": "6c166503522d75a4fc15ac014db646507ce12a860a35bbbef79326f84def1749",
-      "size": 30800
+      "sha256": "f74dbe6b4c962768e388a5dbdde8780ba7f96725c759af05fd47321b6cf9a972",
+      "size": 33983
     },
     {
       "relative_path": "references/expedited-routing.md",
@@ -304,8 +304,8 @@
     },
     {
       "relative_path": "references/tools.md",
-      "sha256": "2dbb6a933606db818f684b5557ba93cddfc8e7152f2c9399c242bb0e7035bd0c",
-      "size": 38008
+      "sha256": "eb44aa9126732b39b98f454ebc03612b66c6fff4603db1137203dbf6f1718cef",
+      "size": 38547
     },
     {
       "relative_path": "references/ui-policy.json",
@@ -349,8 +349,8 @@
     },
     {
       "relative_path": "scripts/batch_control.py",
-      "sha256": "76d09dbefccde251c3a2243e836bd97d0fa2213dd3065d09cfbc64fb764ac47d",
-      "size": 72312
+      "sha256": "bef1c492ce94874b40fc2bc613b6d42a5aa89213eeb1b625eba6fd0fe7a2296e",
+      "size": 85808
     },
     {
       "relative_path": "scripts/common.py",
@@ -511,6 +511,11 @@
       "relative_path": "tests/test_capacity_defer.py",
       "sha256": "4ac19c40f4785e529af546e8c04f7a9a7acf84fead6e1c50c357bd0632e45a76",
       "size": 7856
+    },
+    {
+      "relative_path": "tests/test_compact_status.py",
+      "sha256": "cf63eba2fcca3adafac62d0a86b08a81811fce1da64eb646dee83e9d44b29720",
+      "size": 20161
     },
     {
       "relative_path": "tests/test_construction_progress.py",

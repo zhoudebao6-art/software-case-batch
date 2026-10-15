@@ -84,6 +84,8 @@ PID 必须来自本次实际启动，每个专属进程逐项登记；录制器�
 
 ## 接续状态与建设证据
 
+总控日常查询使用`batch_control.py status --root 原调度根 --batch-id 原批ID --compact`；只看某案时再加`--case-id 原案ID`。它输出已登记阶段、当前阻塞和有效票据的简报并给原记录定位，省去累计calls/usage及控制历史；不是实时验收、模型启动或准入证明。完整status保持兼容，异常需要详细内容时定向读取原记录，不能因简报中没有历史错误就推断已修复。完成数须来自实际发布收据，不能仅按phase计数报已交付。
+
 status仅在新会话接续、阶段完成或实际依赖变化后用于决策，同轮有效状态直接沿用，不把状态查询变成忙轮询。`next_actions`按现有依赖给当前可执行建议；`remaining_stages`只列未齐项。capture/evidence先于在线工作结束后的cleanup，再清洗数据/打包；源码与最终ZIP启动的六类当前事实未齐，不直接建议独立完整验收。查询不证明当前OS后台状态，cleanup记录只显示last_completed，后续既有工具仍按真实身份保护。只缺MP4且原capture未变推荐evidence；存在变动MP4先保留旧draft，原capture不明或capturing时先定位状态，不盲目重复业务动作。
 
 `proflow.py status --workspace 案件目录 [--plan 本案计划] [--evidence 已有独立proof]`只读汇总现有收据与下一步，不执行阶段或新增台账。`technical_ready`表示录制和技术证据已有绑定记录，尚未finalized时独立视觉仍为pending；核验范围只含video/receipt/timeline，帧文件本次不重核。输出unknown/stale不能当失败视频自动重录，先处理指明依赖；只有缺失或改变的技术timeline走evidence，未完成录制的实际输入变化仍按原恢复规则处理；已合格视频后续一般软件/数据变化不触发capture。published成品及final/proof/publication绑定相同返回空next_actions。proof指针保留原reviewed_evidence值，不追加已阅ID或独立签字。

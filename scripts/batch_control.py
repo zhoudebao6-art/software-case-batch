@@ -883,10 +883,174 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
         else:raise ValueError('Unsupported mutation')
         write_json(target/'state.json',state);return state
 
+def status_fields(value,keys,label,warnings,valid=None):
+    if not isinstance(value,dict):
+        warnings.append(label+' must be an object; inspect recorded source')
+        preview=value if isinstance(value,str) else json.dumps(value,ensure_ascii=False)
+        return {'invalid_record_type':type(value).__name__,'invalid_record_preview':preview[:2000],
+                'truncated':len(preview)>2000}
+    projected={key:value[key] for key in keys if key in value}
+    if not projected or valid is False:
+        warnings.append(label+' has unsupported recorded schema; inspect recorded source')
+        preview=json.dumps(value,ensure_ascii=False)
+        projected.update(invalid_record_type='dict',invalid_record_preview=preview[:2000],
+                         truncated=len(preview)>2000)
+    return projected
+
+
+def compact_status(root,path,result,pool,case_id=None):
+    """Project already loaded records. No acceptance checks or dispatch prediction."""
+    manifest,state,settings=result['manifest'],result['state'],result['scheduler']
+    if not all(isinstance(value,dict) for value in (manifest,state,settings)):
+        raise ValueError('Recorded manifest, state and scheduler must be objects')
+    if not isinstance(manifest.get('batch_id'),str) or not manifest['batch_id'].strip() or manifest['batch_id']!=path.name:
+        raise ValueError('Recorded manifest batch_id must match the requested batch directory; inspect '+str(path/'manifest.json'))
+    if not isinstance(manifest.get('cases'),list) or not isinstance(state.get('cases'),dict):
+        raise ValueError('Recorded manifest cases must be a list and state cases an object')
+    registered={}
+    for case in manifest['cases']:
+        if not isinstance(case,dict) or not isinstance(case.get('case_id'),str) or not case['case_id'].strip() or case['case_id'] in registered:
+            raise ValueError('Invalid or duplicate recorded manifest case ID')
+        registered[case['case_id']]=case
+    if case_id is not None and case_id not in registered:raise ValueError('Unknown registered case_id: '+case_id)
+    warnings=[];counts={};rows=[];states=state['cases']
+    known={'prepared','building','repairing','waiting_record','recording','waiting_review','reviewing','blocked','delivered'}
+    ticket_fields=('token','batch_id','case_id','stage','status','priority','owner','model','effort',
+                   'model_kind','work_kind','submitted_ns','acquired_ns','scheduler_lane','scheduler_admission',
+                   'review_admission','review_dispatch_permit','repair_binding','capacity_retry','retry_after_ns',
+                   'not_before_ns','error','errors','last_error','reason','message','fatal')
+    call_fields=('stage','status','model','effort','agent_id','call_id','token','session_log',
+                 'review_session_log','review_evidence','review_evidence_sha256','handoff','handoff_sha256',
+                 'error','reason','message','fatal','started_ns','completed_ns')
+    terminal={'released','interrupted_released','released_paused','completed','cancelled','canceled'}
+    if not isinstance(pool,list):raise ValueError('Recorded queue must be a list; inspect queue.json')
+    queue_tokens={};current_tickets=[]
+    for index,ticket in enumerate(pool):
+        source='queue.json['+str(index)+']'
+        if not isinstance(ticket,dict) or not isinstance(ticket.get('batch_id'),str) or not ticket['batch_id']:
+            raise ValueError('Invalid recorded queue batch identity; inspect '+source)
+        if ticket['batch_id']!=manifest['batch_id']:continue
+        valid=all(isinstance(ticket.get(key),str) and ticket[key] for key in ('token','case_id','stage'))
+        if isinstance(ticket.get('token'),str) and ticket['token']:
+            queue_tokens.setdefault(ticket['token'],[]).append(ticket)
+        if case_id is not None and isinstance(ticket.get('case_id'),str) and ticket['case_id']!=case_id:continue
+        if not valid:
+            warnings.append('Invalid recorded queue token/case/stage identity retained; inspect '+source)
+            current_tickets.append(status_fields(ticket,ticket_fields,'Current ticket',warnings,False));continue
+        status=ticket.get('status')
+        if not isinstance(status,str) or status not in terminal|{'waiting','active','paused','orphaned'}:
+            warnings.append('Unknown recorded ticket status retained; inspect '+source)
+        if ticket['case_id'] not in registered:
+            warnings.append('Queue case is absent from the frozen manifest; inspect '+source)
+        if ticket['stage'] not in CAPACITIES:
+            warnings.append('Unknown recorded ticket stage retained; inspect '+source)
+        if not isinstance(status,str) or status not in terminal:
+            current_tickets.append(status_fields(ticket,ticket_fields,'Current ticket',warnings))
+    for token,tickets in queue_tokens.items():
+        if len(tickets)>1:warnings.append('Duplicate recorded queue token '+token+'; pending resolution disabled; inspect queue.json')
+    for cid in list(registered)+[cid for cid in states if cid not in registered]:
+        item=states.get(cid);phase=item.get('phase') if isinstance(item,dict) else None
+        count_key=phase if isinstance(phase,str) else 'unknown'
+        counts[count_key]=counts.get(count_key,0)+1
+        if case_id is not None and cid!=case_id:continue
+        local=[]
+        row={'case_id':cid,'registered':cid in registered,'state_present':cid in states,'phase':phase}
+        if cid in registered:row['workspace']=registered[cid].get('workspace')
+        if cid not in registered:local.append('State case is absent from the frozen manifest')
+        if not isinstance(item,dict):
+            local.append('Missing or invalid recorded case state; inspect state.json')
+        else:
+            if not isinstance(phase,str) or phase not in known:local.append('Unknown recorded phase; no readiness inferred')
+            # Current blockers remain verbatim: do not truncate actionable reasons.
+            for key in ('blocker','blockers','blocked_reason','blocked_fingerprint','specific_issue','next_action',
+                        'error','errors','last_error','error_evidence',
+                        'execution_status','recovery','recovery_evidence','evidence_pointer','publication_receipt',
+                        'checkpoint','pause_checkpoint','completed_report','executor','recording_pending',
+                        'capacity_retry','retry_after_ns','not_before_ns','status_note','maintenance_pause',
+                        'resume_action','interrupted_at','priority','final_receipt','publish_receipt','final_path'):
+                if key in item:row[key]=item[key]
+            if 'pending' not in item:local.append('Missing recorded pending collection; legacy absence does not prove no pending work')
+            pending=item.get('pending',[])
+            if isinstance(pending,list):
+                latest={}
+                for index,entry in enumerate(pending):
+                    token=entry.get('token') if isinstance(entry,dict) else None
+                    latest[token if isinstance(token,str) else ('entry',index)]=entry
+                current=[]
+                for entry in latest.values():
+                    if isinstance(entry,dict):
+                        token=entry.get('token');matches=queue_tokens.get(token,[]) if isinstance(token,str) else []
+                        saved=matches[0] if len(matches)==1 and matches[0].get('case_id')==cid and isinstance(matches[0].get('stage'),str) and matches[0]['stage'] else None
+                        invalid_token=not isinstance(token,str) or not token
+                        inconsistent=invalid_token or (bool(matches) and saved is None)
+                        if any(key in entry and entry[key]!=expected for key,expected in
+                               (('batch_id',manifest['batch_id']),('case_id',cid))):inconsistent=True
+                        if saved and 'stage' in entry and entry['stage']!=saved['stage']:inconsistent=True
+                        if inconsistent:
+                            saved=None;local.append('Pending token has inconsistent queue identity or duplicate records; retained; inspect queue.json and state.json')
+                        if invalid_token:local.append('Pending token identity is invalid; retained; inspect state.json')
+                        status=saved.get('status') if saved else entry.get('status')
+                        if not isinstance(status,str) or status not in terminal|{'waiting','active','paused','orphaned'}:
+                            local.append('Unknown recorded pending status retained; inspect state.json and queue.json')
+                        if not inconsistent and isinstance(status,str) and status in terminal:continue
+                        entry=dict(entry)
+                        if saved:entry['status']=status
+                    else:local.append('Unstructured pending entry retained; inspect state.json')
+                    current.append(entry)
+                row['pending']=current;row['pending_record_count']=len(pending)
+            else:
+                row['pending']=pending;local.append('Invalid pending collection retained; inspect state.json')
+            if 'calls' not in item:local.append('Missing recorded calls collection; legacy absence does not prove no call history')
+            calls=item.get('calls',[])
+            if isinstance(calls,list):
+                row['call_count']=len(calls)
+                latest=calls[-1] if calls else None
+                valid=isinstance(latest,dict) and any(isinstance(latest.get(key),str) and latest[key]
+                      for key in ('stage','status','agent_id','call_id','token','session_log','review_session_log','handoff'))
+                row['latest_call']=status_fields(latest,call_fields,'Latest call',local,valid) if calls else None
+            else:local.append('Invalid calls collection; inspect state.json')
+        if local:row['warnings']=local
+        rows.append(row)
+    drain=state.get('drain')
+    if type(drain) is not bool:warnings.append('Invalid or missing drain flag; do not infer admissions are enabled')
+    control=state.get('control_decision')
+    control=status_fields(control,('contract','revision','action','applied_ns','supersedes_revision','user_evidence'),
+                          'Current control decision',warnings) if control is not None else None
+    history=settings.get('history',[])
+    if not isinstance(history,list):warnings.append('Invalid scheduler history; current settings retained')
+    scheduler={key:settings[key] for key in ('mode','capacities','model_pool_capacity','aging_seconds','repair_extra_capacity') if key in settings}
+    scheduler['history_record_count']=len(history) if isinstance(history,list) else None
+    if isinstance(history,list) and history:
+        scheduler['latest_control']=status_fields(history[-1],('revision','action','at_ns','batch_id','owner'),
+                                                  'Latest scheduler control',warnings)
+    scheduler['scope']='local reservation ceilings only; not actual dispatch, readiness or external model availability'
+    if 'scheduler_reservations' in result:scheduler['reservations']=result['scheduler_reservations']
+    owner_path=path/'owner.json'
+    owner_exists=owner_path.exists()
+    owner=read_json(owner_path) if owner_exists else None
+    if owner_exists:
+        valid=isinstance(owner,dict) and all(type(owner.get(key)) is int and owner[key]>0 for key in ('pid','created_ticks'))
+        owner=status_fields(owner,('pid','created_ticks'),'Recorded owner',warnings,valid)
+    view={'view':'compact-recorded-state-v1','batch_id':manifest['batch_id'],
+          'scope':'Recorded state only; no fresh acceptance or admission. counts.phases are recorded values, not actual publication counts; delivered phase is not verified publication proof.',
+          'paths':{'manifest':str(path/'manifest.json'),'state':str(path/'state.json'),
+                   'queue':str(no_links(root)/'queue.json'),'owner':str(owner_path),
+                   'scheduler':str(no_links(root)/'scheduler-config.json')},
+          'counts':{'registered_cases':len(registered),'state_cases':len(states),'phases':counts,
+                    'missing_registered_states':sum(cid not in states for cid in registered),
+                    'unregistered_states':sum(cid not in registered for cid in states)},
+          'owner':owner,'drain':drain,'control_decision':control,'scheduler':scheduler,'cases':rows,
+          'current_tickets':current_tickets}
+    if warnings:view['warnings']=warnings
+    return view
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('action',choices=['register','claim','recover-owner','status','preflight','release-owner','priority','resume-case','expedite','drain','continue','update','queue','acquire','release-slot','defer-capacity','verify-record','verify-evidence','bind-media-runtime','verify-review','complete-review','configure-scheduler','bind-controller','bind-repair'],help='Scheduling controls require --value JSON and --authorization; complete-review authenticates and records an existing independent report before releasing; config affects future acquire only')
     p.add_argument('--root',required=True);p.add_argument('--batch-id',required=True);p.add_argument('--pid',type=int);p.add_argument('--cases');p.add_argument('--authorization');p.add_argument('--host-slots',type=int,default=4);p.add_argument('--recording-limit',choices=['2','3','4','auto'],default='auto');p.add_argument('--case-id');p.add_argument('--value');p.add_argument('--token');p.add_argument('--stage');p.add_argument('--runtime-pid',type=int)
+    p.add_argument('--compact',action='store_true',help='Read-only current recorded status summary; no fresh acceptance or dispatch')
     a=p.parse_args()
+    if a.compact and a.action!='status':p.error('--compact is supported only for status')
     try:
         if a.action=='register':result=register(a.root,a.batch_id,a.cases,a.authorization or '',a.host_slots,a.recording_limit)
         elif a.action in {'claim','recover-owner'}:result=claim(a.root,a.batch_id,a.pid,a.action=='recover-owner')
@@ -904,7 +1068,15 @@ def main():
             queue_path=no_links(a.root)/'queue.json';pool=read_json(queue_path) if queue_path.exists() else []
             if result['scheduler'].get('mode')==ADAPTIVE_CONTRACT:
                 result['scheduler_reservations']=scheduler_snapshot(a.root,pool,result['scheduler'])
-            result['current_tickets']=[q for q in pool if q['batch_id']==a.batch_id and q['status'] in {'waiting','active'}]
+            if a.compact:result=compact_status(a.root,path,result,pool,a.case_id)
+            else:
+                result['current_tickets']=[q for q in pool if q['batch_id']==a.batch_id and q['status'] in {'waiting','active'}]
+                if a.case_id is not None:
+                    selected=[c for c in manifest['cases'] if c['case_id']==a.case_id]
+                    if not selected:raise ValueError('Unknown registered case_id: '+a.case_id)
+                    result['manifest']=dict(manifest,cases=selected)
+                    result['state']=dict(result['state'],cases={a.case_id:result['state']['cases'].get(a.case_id)})
+                    result['current_tickets']=[q for q in result['current_tickets'] if q['case_id']==a.case_id]
         else:result=mutate(a.root,a.batch_id,a.pid,a.action,a.case_id,a.value,a.token,a.stage,a.authorization,a.runtime_pid)
         print(json.dumps(result,ensure_ascii=False,indent=2));return 0
     except (ValueError,OSError,KeyError,TypeError) as e:print('ERROR: '+str(e));return 2
