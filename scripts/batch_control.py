@@ -871,11 +871,13 @@ def main():
         if a.action=='register':result=register(a.root,a.batch_id,a.cases,a.authorization or '',a.host_slots,a.recording_limit)
         elif a.action in {'claim','recover-owner'}:result=claim(a.root,a.batch_id,a.pid,a.action=='recover-owner')
         elif a.action=='status':
-            from scheduler_policy import config as scheduler_config,ADAPTIVE_CONTRACT,DEFAULT_AGING_SECONDS,snapshot as scheduler_snapshot
+            from scheduler_policy import config as scheduler_config,ADAPTIVE_CONTRACT,DEFAULT_AGING_SECONDS,model_pool_capacity,snapshot as scheduler_snapshot
             path,manifest=batch(a.root,a.batch_id);result={'manifest':manifest,'state':read_json(path/'state.json'),'scheduler':scheduler_config(a.root)}
             if result['scheduler'].get('mode')==ADAPTIVE_CONTRACT:
                 result['scheduler_runtime_policy']={'sharing':'verified-live-parent-local',
-                    'max_model_children_per_parent':3,'fixed_stage_quotas':False,'repair_extra_budget_used':False,
+                    'model_pool_capacity':model_pool_capacity(result['scheduler']),
+                    'max_model_children_per_parent':'verified runtime capacity; legacy evidence fallback',
+                    'fixed_group_quotas':False,'fixed_stage_quotas':False,'repair_extra_budget_used':False,
                     'lanes':['review','repair','build'],'aging_seconds':result['scheduler'].get('aging_seconds',DEFAULT_AGING_SECONDS),
                     'selection_action':'selected owner acquires original token and dispatches; no cross-owner acquisition',
                     'capacity_scope':'reservation ceilings only; actual model service availability remains external'}

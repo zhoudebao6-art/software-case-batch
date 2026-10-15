@@ -12,9 +12,79 @@ CONTRACT = 'verified-controller-fair-v1'
 ADAPTIVE_CONTRACT = 'verified-controller-adaptive-v2'
 FAIR_MODES = {CONTRACT, ADAPTIVE_CONTRACT}
 DEFAULT_AGING_SECONDS = 300
+DEFAULT_MODEL_POOL_CAPACITY = 12
+LEGACY_PARENT_WORKERS = 3
 DEFAULT_CAPACITIES = {'build': 8, 'review': 3, 'expedited': 1}
 MAX_CAPACITIES = {'build': 8, 'review': 8, 'expedited': 4}
 MODEL_STAGES = set(DEFAULT_CAPACITIES)
+
+
+def model_pool_capacity(settings):
+    value = settings.get('model_pool_capacity', DEFAULT_MODEL_POOL_CAPACITY)
+    return value if type(value) is int and 1 <= value <= DEFAULT_MODEL_POOL_CAPACITY else 1
+
+
+def runtime_workers(event):
+    p = event.get('payload', {})
+    metadata = p.get('internal_chat_message_metadata_passthrough', {})
+    if (event.get('type') != 'response_item' or p.get('type') != 'message' or
+        p.get('role') != 'developer' or
+        'multi_agent.role_instructions' not in metadata.get('content_item_kinds', [])): return None
+    text = '\n'.join(item.get('text', '') for item in p.get('content', []) if item.get('type') == 'input_text')
+    matches = re.findall(r'There are ([1-9][0-9]*) available concurrency slots, meaning that up to \1 agents can be active at once, including you\.', text)
+    return int(matches[0]) - 1 if len(matches) == 1 and '<multi_agent_role>' in text else 0
+
+
+def runtime_capacity(log):
+    """Explicit owner bind/refresh only: freeze the latest platform developer fact.
+
+    Normal acquire/status only rechecks its bounded byte range. Runtime changes
+    require the original owner to refresh the same binding before dispatch.
+    """
+    result = None
+    with log.open('rb') as stream:
+        while True:
+            offset = stream.tell(); raw = stream.readline()
+            if not raw: break
+            try: event = json.loads(raw)
+            except (ValueError, UnicodeDecodeError): continue
+            workers = runtime_workers(event)
+            if workers is None: continue
+            result = {'worker_capacity': workers, 'event_offset': offset,
+                      'event_size': len(raw), 'event_sha256': hashlib.sha256(raw).hexdigest()}
+    return result
+
+
+def binding_workers(binding, manifest, settings):
+    if settings.get('mode') == ADAPTIVE_CONTRACT and binding and binding.get('runtime_capacity'):
+        return min(model_pool_capacity(settings), binding['runtime_capacity']['worker_capacity'])
+    return min(LEGACY_PARENT_WORKERS, manifest['execution_profile']['worker_capacity'],
+               binding['worker_capacity'] if binding else LEGACY_PARENT_WORKERS)
+
+
+def group_workers(root, binding, manifest, settings, cache):
+    adaptive = settings.get('mode') == ADAPTIVE_CONTRACT
+    if not binding:
+        if adaptive and manifest['batch_id'] in settings.get('bindings', {}): return 0
+        return binding_workers(None, manifest, settings)
+    import batch_control as batch
+    siblings = []; controls = []
+    for batch_id, reference in settings.get('bindings', {}).items():
+        other = verified_binding(root, batch_id, settings, cache)
+        if other and other['group'] == binding['group']: siblings.append(other)
+        if not adaptive: continue
+        control = other or reference
+        # Old references have no trusted group/order when their snapshot fails.
+        # They may be this parent, so cannot safely revive an older high runtime.
+        if not other and not all(key in reference for key in ('group', 'control_revision', 'bound_ns')): return 0
+        if control['group'] == binding['group']: controls.append((control, other))
+    if adaptive:
+        latest, verified = max(controls, key=lambda row: (row[0].get('control_revision', 0), row[0]['bound_ns']))
+        # The latest known control stays authoritative even when its evidence
+        # fails. A later valid owner refresh can restore capacity; active is intact.
+        if not verified: return 0
+        return binding_workers(latest, batch.batch(root, latest['batch_id'])[1], settings)
+    return min(binding_workers(row, batch.batch(root, row['batch_id'])[1], settings) for row in siblings)
 
 
 def config(root):
@@ -175,6 +245,7 @@ def verified_binding(root, batch_id, settings, cache=None):
                 raise ValueError('Controller binding snapshot changed')
             binding = read_json(path); proof = binding['proof']; log = no_links(proof['session_log'])
             if (binding['contract'] != CONTRACT or binding['batch_id'] != batch_id or binding['root'] != str(no_links(root)) or
+                any(reference.get(key, binding.get(key)) != binding.get(key) for key in ('group', 'control_revision', 'bound_ns')) or
                 binding['manifest_sha256'] != digest(target / 'manifest.json') or
                 binding['owner'] != read_json(target / 'owner.json') or batch.identity(binding['owner']['pid']) != binding['owner'] or
                 no_links(SESSION_ROOT) not in log.parents or not log.name.endswith('-' + proof['session_id'] + '.jsonl')):
@@ -183,6 +254,13 @@ def verified_binding(root, batch_id, settings, cache=None):
                 if hashlib.sha256(stream.readline()).hexdigest() != proof['meta_sha256']: raise ValueError('Session identity changed')
                 stream.seek(proof['event_offset'])
                 if hashlib.sha256(stream.read(proof['event_size'])).hexdigest() != proof['event_sha256']: raise ValueError('Session association changed')
+                saved = binding.get('runtime_capacity')
+                if saved:
+                    stream.seek(saved['event_offset'])
+                    raw_runtime = stream.read(saved['event_size'])
+                    if hashlib.sha256(raw_runtime).hexdigest() != saved['event_sha256']: raise ValueError('Runtime capacity evidence changed')
+                    workers = runtime_workers(json.loads(raw_runtime))
+                    if workers is None or workers != saved['worker_capacity']: raise ValueError('Runtime capacity evidence mismatch')
             result = binding
         except (ValueError, OSError, KeyError, TypeError):
             result = None  # Changed binding never creates capacity; it falls back conservatively.
@@ -194,7 +272,7 @@ def control(root, target, manifest, pid, action, value, authorization, pool, cas
     """Called under batch_control's existing shared transaction/owner check."""
     import batch_control as batch
     if not authorization or not authorization.strip(): raise ValueError('Explicit current scheduling authorization reference required')
-    settings = config(root); previous = deepcopy({key: settings.get(key) for key in ('mode', 'capacities', 'bindings', 'active_groups', 'repair_extra_capacity', 'repair_bindings', 'aging_seconds')})
+    settings = config(root); previous = deepcopy({key: settings.get(key) for key in ('mode', 'capacities', 'bindings', 'active_groups', 'repair_extra_capacity', 'repair_bindings', 'aging_seconds', 'model_pool_capacity')})
     if action == 'configure-scheduler':
         update = read_json(value)
         if update.get('mode') not in {'legacy', *FAIR_MODES}: raise ValueError('Unknown scheduling policy; use verified-controller-adaptive-v2, verified-controller-fair-v1 or legacy')
@@ -205,11 +283,15 @@ def control(root, target, manifest, pid, action, value, authorization, pool, cas
         if type(extra) is not int or not 0 <= extra <= 2: raise ValueError('Verified repair extra capacity must be 0, 1 or 2')
         aging = update.get('aging_seconds', DEFAULT_AGING_SECONDS)
         if type(aging) is not int or not 1 <= aging <= 3600: raise ValueError('Aging seconds must be an integer from 1 to 3600')
-        settings.update(mode=update['mode'], capacities=capacities, repair_extra_capacity=extra, aging_seconds=aging)
+        total = update.get('model_pool_capacity', DEFAULT_MODEL_POOL_CAPACITY)
+        if type(total) is not int or not 1 <= total <= DEFAULT_MODEL_POOL_CAPACITY: raise ValueError('Model pool capacity must be an integer from 1 to 12')
+        settings.update(mode=update['mode'], capacities=capacities, repair_extra_capacity=extra, aging_seconds=aging, model_pool_capacity=total)
     elif action == 'bind-controller':
         request = read_json(value); proof = session_proof(root, manifest['batch_id'], pid, request)
-        if 'worker_capacity' in request and request['worker_capacity'] != min(3, manifest['execution_profile']['worker_capacity']):
-            raise ValueError('Controller capacity is derived from the frozen host and capped at three; it cannot be supplied')
+        if any(key in request for key in ('runtime_capacity', 'host_total_slots', 'model_pool_capacity')):
+            raise ValueError('Runtime capacity must come from platform developer evidence, not request JSON')
+        if 'worker_capacity' in request and request['worker_capacity'] != min(LEGACY_PARENT_WORKERS, manifest['execution_profile']['worker_capacity']):
+            raise ValueError('Controller capacity cannot be supplied; legacy fallback capped at three, runtime evidence is required')
         group = proof['session_id']; active_groups = settings.setdefault('active_groups', {})
         for ticket in pool:
             if ticket['batch_id'] != manifest['batch_id'] or ticket['status'] != 'active': continue
@@ -217,11 +299,14 @@ def control(root, target, manifest, pid, action, value, authorization, pool, cas
             if recorded and recorded != group: raise ValueError('Active reservations cannot move to a different controller group')
         binding = {'contract': CONTRACT, 'root': str(no_links(root)), 'batch_id': manifest['batch_id'],
                    'manifest_sha256': digest(target / 'manifest.json'), 'owner': batch.identity(pid), 'proof': proof,
-                   'group': group, 'worker_capacity': min(3, manifest['execution_profile']['worker_capacity']),
+                   'group': group, 'worker_capacity': min(LEGACY_PARENT_WORKERS, manifest['execution_profile']['worker_capacity']),
+                   'runtime_capacity': runtime_capacity(no_links(proof['session_log'])),
+                   'control_revision': len(settings.get('history', [])) + 1,
                    'bound_ns': time.time_ns(), 'authorization': authorization}
         path = target / 'scheduler-bindings' / (uuid.uuid4().hex + '.json')
         batch.new_json(path, binding)
-        settings.setdefault('bindings', {})[manifest['batch_id']] = {'path': str(path), 'sha256': digest(path)}
+        settings.setdefault('bindings', {})[manifest['batch_id']] = {'path': str(path), 'sha256': digest(path),
+            **{key: binding[key] for key in ('group', 'control_revision', 'bound_ns')}}
         for ticket in pool:
             if ticket['batch_id'] == manifest['batch_id'] and ticket['status'] == 'active': active_groups[ticket['token']] = group
     elif action == 'bind-repair':
@@ -250,15 +335,19 @@ def snapshot(root, pool, settings):
     for batch_id in settings.get('bindings', {}):
         binding = verified_binding(root, batch_id, settings, cache)
         if not binding: continue
+        target, manifest = batch.batch(root, batch_id)
+        workers = group_workers(root, binding, manifest, settings, cache)
         row = groups.setdefault(binding['group'], {'group': binding['group'], 'batch_ids': [],
-            'accepting_batch_ids': [], 'worker_ceiling': 3})
-        row['batch_ids'].append(batch_id); row['worker_ceiling'] = min(row['worker_ceiling'], binding['worker_capacity'])
+            'accepting_batch_ids': [], 'worker_ceiling': workers})
+        row['batch_ids'].append(batch_id); row['worker_ceiling'] = min(row['worker_ceiling'], workers)
         try:
             target, _ = batch.batch(root, batch_id); state = read_json(target / 'state.json')
             if not state['drain'] and any(c.get('phase') not in {'blocked', 'delivered'} for c in state['cases'].values()):
                 row['accepting_batch_ids'].append(batch_id)
         except (ValueError, OSError, KeyError, TypeError): pass
     active = [q for q in pool if q['status'] == 'active']
+    model_count = sum(q['stage'] in MODEL_STAGES for q in active)
+    global_free = max(0, model_pool_capacity(settings) - model_count)
     for ticket in active:
         if ticket['batch_id'] not in profiles: profiles[ticket['batch_id']] = batch.batch(root, ticket['batch_id'])[1]['execution_profile']
     for group, row in groups.items():
@@ -267,13 +356,15 @@ def snapshot(root, pool, settings):
             live_group = active_group(root, ticket, settings)
             if live_group is not None and live_group != group: continue
             profile = profiles[ticket['batch_id']]
-            row['worker_ceiling'] = min(row['worker_ceiling'], min(3, profile['worker_capacity']))
+            if live_group is None:
+                row['worker_ceiling'] = min(row['worker_ceiling'], LEGACY_PARENT_WORKERS, profile['worker_capacity'])
             if ticket['stage'] in MODEL_STAGES or profile.get('resource_accounting') != 'separate-model-media-v1':
                 row['reserved_model_slots'] += 1
                 if live_group is None: row['unknown_active_slots'] += 1
-        row['unreserved_model_slots'] = max(0, row['worker_ceiling'] - row['reserved_model_slots']) if row['accepting_batch_ids'] else 0
+        row['unreserved_model_slots'] = min(global_free, max(0, row['worker_ceiling'] - row['reserved_model_slots'])) if row['accepting_batch_ids'] else 0
     return {'groups': sorted(groups.values(), key=lambda row: row['group']),
-            'active_model_reservations': sum(q['stage'] in MODEL_STAGES for q in active),
+            'model_pool_capacity': model_pool_capacity(settings), 'unreserved_global_model_slots': global_free,
+            'active_model_reservations': model_count,
             'unknown_active_model_reservations': sum(q['stage'] in MODEL_STAGES and active_group(root, q, settings) is None for q in active),
             'scope': 'local reservations only; readiness gates and external model capacity not included'}
 
@@ -282,7 +373,7 @@ def limits(root, manifest, active, stage, settings, cache):
     import batch_control as batch
     binding = verified_binding(root, manifest['batch_id'], settings, cache)
     group = binding['group'] if binding else None
-    workers = binding['worker_capacity'] if binding else min(3, manifest['execution_profile']['worker_capacity'])
+    workers = group_workers(root, binding, manifest, settings, cache)
     profiles = [manifest['execution_profile']]; count = 0
     for ticket in active:
         live_group = active_group(root, ticket, settings)
@@ -291,18 +382,17 @@ def limits(root, manifest, active, stage, settings, cache):
         if group is None or live_group is None or live_group == group:
             profile = batch.batch(root, ticket['batch_id'])[1]['execution_profile']; profiles.append(profile)
             if ticket['stage'] in MODEL_STAGES or profile.get('resource_accounting') != 'separate-model-media-v1': count += 1
-            workers = min(workers, min(3, profile['worker_capacity']))
-    # All bindings for one real session share its lowest frozen worker allowance.
-    if group:
-        for batch_id in settings.get('bindings', {}):
-            other = verified_binding(root, batch_id, settings, cache)
-            if other and other['group'] == group: workers = min(workers, other['worker_capacity'])
+            if live_group is None or group is None or settings.get('mode') != ADAPTIVE_CONTRACT:
+                workers = min(workers, LEGACY_PARENT_WORKERS, profile['worker_capacity'])
+    # Same-parent batches use one latest verified runtime refresh, never a sum.
     # Adaptive sharing removes stage partitions ONLY for a verified live owner.
     # No aggregate of bindings is used: duplicate, drained or completed groups
     # cannot lend fictional slots to another group. Unbound owners retain the
     # conservative fallback and unknown active work still counts in every group.
     if settings.get('mode') == ADAPTIVE_CONTRACT:
         limit = None if binding else DEFAULT_CAPACITIES[stage]
+        if sum(q['stage'] in MODEL_STAGES for q in active) >= model_pool_capacity(settings):
+            return limit, False, group
     else:
         limit = settings['capacities'][stage] + (settings.get('repair_extra_capacity', 0) if stage == 'build' else 0)
     return limit, count < workers, group

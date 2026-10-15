@@ -10,7 +10,7 @@
 
 `expedite`在同一控制事务把本案priority设为原设计的10，更新本案所有waiting票据的priority；waiting review改到expedited，保留token、submitted_ns及历史。未来`queue --stage review`自动解析本案当前授权，选择普通或加急route；waiting acquire再次核真实授权/path/hash、源与预检。active有效普通审核及其准入快照不重写、不打断，未来审核/复验采用新授权路线。calls/usage一直追加，不因切换、负责人恢复或重排归零。
 
-默认加急审核单槽、普通review3槽；所有MODEL stage（build/review/expedited）共享真实父聊天worker容量，媒体不占新profile模型位。未显式启用r14配置时保留较高priority合格候选优先下一位的旧策略。r14经本轮授权绑定真实session后，普通/priority>=10两边持续合格时交替（首次加急先行），空闲份额立即借用；组/批轮转，再按priority/原submitted_ns/token排序，满组/满stage不挡空组。审核限额可独立配置（本次普通4、加急4），每真实聊天仍最多3子任务。建设仍high、返修仍独立ultra；priority10建设不等于Astra授权。候选仍须当前owner有效、未drain、案件未blocked/delivered、源hash/零模型预检/真实授权有效，新review合同须当前prepared run_id/workspace有效并冻结admission。已有active建设或审核不抢占、不重写，冻结授权/dispatch permit门禁保持；录制、证据和媒体互斥合同保持。受控接入/回退及证明见 [真实聊天调度](scheduler-policy.md)。
+旧legacy历史默认加急审核单槽、普通review3槽；所有MODEL stage（build/review/expedited）共享真实父聊天worker容量，媒体不占新profile模型位。历史未配置批次保留较高priority合格候选优先下一位的旧策略。旧r14/fair-v1经授权绑定真实session后，普通/priority>=10两边持续合格时交替（首次加急先行），空闲份额立即借用；组/批轮转，再按priority/原submitted_ns/token排序，满组/满stage不挡空组。旧fair-v1审核限额可独立配置（历史普通4、加急4），旧模式每真实聊天最多3子任务。r18新授权批次默认adaptive-v2，请求为`{"mode":"verified-controller-adaptive-v2","model_pool_capacity":12,"aging_seconds":300}`：总模型池理论上限12，无固定组或stage业务配额；建设、返修、普通及已授权加急审核按各父已验证runtime真实能力和实际就绪需求动态借用，同父多批共享且不能叠加扩容。当前runtime为4槽含父时实际最多3子任务，只是平台事实；后续真实runtime更新后原owner刷新同父绑定，可在12总池内增长。建设仍high、返修仍独立ultra；priority10建设不等于Astra授权。候选仍须当前owner有效、未drain、案件未blocked/delivered、源hash/零模型预检/真实授权有效，新review合同须当前prepared run_id/workspace有效并冻结admission。已有active建设或审核不抢占、不重写，冻结授权/dispatch permit门禁保持；录制、证据和媒体互斥合同保持。受控接入/回退及证明见 [真实聊天调度](scheduler-policy.md)。
 
 新票在共享root持锁登记时分配严格递增的submitted_ns；宿主时钟同tick或倒退也不会把后提交票因随机UUID排到先票前。既有票、优先级调整、负责人恢复的submitted_ns保持原值。
 

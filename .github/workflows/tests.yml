@@ -38,13 +38,22 @@ jobs:
           node-version: '22'
       - name: Install unit-test dependency
         run: python -m pip install -r requirements-ci.txt
+      - name: Install pinned Playwright and Chromium
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & npm.cmd install --prefix 'D:\codex+\dependencies\scb-ci' --no-save --package-lock=false playwright@1.62.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & node.exe 'D:\codex+\dependencies\scb-ci\node_modules\playwright\cli.js' install chromium
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & node.exe -e 'const fs=require("node:fs"),p=process.argv[1]; if(require(p+"/package.json").version!=="1.62.1")throw new Error("Unexpected Playwright version"); const pw=require(p); if(!fs.existsSync(pw.chromium.executablePath()))throw new Error("Chromium install missing"); console.log("Playwright 1.62.1 module and Chromium ready");' 'D:\codex+\dependencies\scb-ci\node_modules\playwright'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Create non-secret CI configuration
         run: |
           $TaskSettings = [ordered]@{
             output_root = 'D:\研发图表'
             python = (Get-Command python.exe).Source
             node = (Get-Command node.exe).Source
-            playwright_module = 'not-used-by-unit-ci'
+            playwright_module = 'D:\codex+\dependencies\scb-ci\node_modules\playwright'
             ffmpeg = 'not-used-by-unit-ci'
             ffprobe = 'not-used-by-unit-ci'
           }
