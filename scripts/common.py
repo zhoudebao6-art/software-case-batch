@@ -18,6 +18,45 @@ TEXT_SUFFIXES = {'.py','.js','.cjs','.mjs','.jsx','.ts','.tsx','.html','.htm','.
                  '.java','.kt','.c','.h','.cpp','.cs','.go','.rs','.lock','.properties','.conf',
                  '.ipynb','.r','.example'}
 
+LEGACY_DELIVERY_LAYOUT = 'legacy-v1'
+DEFAULT_DELIVERY_LAYOUT = 'system-materials-v2'
+_DELIVERY_LAYOUTS = {
+    LEGACY_DELIVERY_LAYOUT: ('模拟系统', '项目源码.zip', '演示视频.mp4'),
+    DEFAULT_DELIVERY_LAYOUT: ('系统材料', '源代码.zip', '操作视频.mp4'),
+}
+
+
+def delivery_paths(run, output=None):
+    """Resolve only the run's frozen layout, including historical missing fields.
+
+    Stored absolute aliases belong to the original output, even when an archive
+    locator supplies a different current output. They may never override layout.
+    """
+    version = run.get('delivery_layout_version', LEGACY_DELIVERY_LAYOUT)
+    if not isinstance(version, str) or version not in _DELIVERY_LAYOUTS:
+        raise ValueError(f'Unknown frozen delivery layout: {version!r}')
+    system, source, video = _DELIVERY_LAYOUTS[version]
+    if not isinstance(run.get('output'),str) or not Path(run['output']).is_absolute():
+        raise ValueError('Frozen delivery output must be an explicit absolute path')
+    original = no_links(run['output'])
+    root = no_links(output) if output is not None else original
+    relative = {'system': system, 'source_zip': system+'/'+source,
+                'video': system+'/'+video, 'data_dir': system+'/数据'}
+    if 'word_name' in run:
+        name = run['word_name']
+        if (not isinstance(name, str) or not name or name in {'.', '..'}
+                or any(char in name for char in ('/', '\\', ':'))
+                or Path(name).suffix.lower() != '.docx'):
+            raise ValueError('Frozen Word name must be the original simple .docx filename')
+        relative['word'] = name
+    for key, rel in relative.items():
+        if key in run and (not isinstance(run[key], str) or not Path(run[key]).is_absolute()
+                           or no_links(run[key]) != inside(original, rel, must_exist=False)):
+            raise ValueError(f'Frozen delivery path differs from layout: {key}')
+    return {'version': version, 'system_name': system, 'source_name': source,
+            'video_name': video, 'output': root,
+            **{key: inside(root, rel, must_exist=False) for key, rel in relative.items()}}
+
 def digest(path):
     h = hashlib.sha256()
     with Path(path).open('rb') as stream:
@@ -78,6 +117,7 @@ def state(workspace):
     if run['workspace'] != str(workspace):
         raise ValueError('Workspace identity differs from preparation record')
     output = product_location(workspace,run)
+    delivery_paths(run, output)
     if output == workspace or output in workspace.parents or workspace in output.parents:
         raise ValueError('Delivery and work directories must be disjoint')
     return workspace, output, run
@@ -86,6 +126,7 @@ def product_location(workspace,run):
     """Resolve a verified weekly archive without rewriting the frozen run."""
     workspace=no_links(workspace)
     original=no_links(run['output'])
+    delivery_paths(run)
     if run.get('status')!='published':return original
     config_path=Path(__file__).resolve().parents[1]/'local.config.json'
     config=read_json(config_path) if config_path.exists() else {}
@@ -94,6 +135,8 @@ def product_location(workspace,run):
     state_root=no_links(state_root)
     if not (state_root/'current-locations.json').exists():return original
     receipt=read_json(inside(workspace,'.product-v2/final-receipt.json'))
+    if ('delivery_layout_version' in receipt and receipt['delivery_layout_version']!=delivery_paths(run)['version']):
+        raise ValueError('Archive layout differs from the frozen acceptance receipt')
     from archive_products import resolve_location
     target=resolve_location(state_root,original,receipt['files'])
     if target!=original:
@@ -124,3 +167,14 @@ def file_map(root):
         if path.is_file():
             found[path.relative_to(root).as_posix()] = digest(path)
     return found
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='Read the frozen delivery paths without mutation')
+    parser.add_argument('--delivery-paths', required=True, metavar='WORKSPACE')
+    args = parser.parse_args()
+    workspace, output, run = state(args.delivery_paths)
+    result = delivery_paths(run, output)
+    result['run_sha256'] = digest(workspace / '.product-v2/run.json')
+    print(json.dumps({key: str(value) if isinstance(value, Path) else value for key, value in result.items()}, ensure_ascii=False))

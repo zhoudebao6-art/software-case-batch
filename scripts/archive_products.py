@@ -10,7 +10,7 @@ import shutil
 import stat
 import time
 
-from common import digest, inside, no_links, read_json, write_json
+from common import digest, inside, no_links, read_json, write_json, delivery_paths
 from batch_control import identity, transaction
 
 
@@ -153,6 +153,9 @@ def receipt_case(source_root, destination_root, target, manifest, case):
     final_path = inside(workspace, '.product-v2/final-receipt.json')
     publish_path = inside(workspace, '.product-v2/publish-receipt.json')
     run, final, published = map(read_json, (run_path, final_path, publish_path))
+    delivery=delivery_paths(run)
+    if ('delivery_layout_version' in final and final['delivery_layout_version']!=delivery['version']):
+        raise ValueError('Current layout differs from frozen acceptance')
     if (run.get('workspace') != str(workspace) or run.get('status') != 'published'
             or final.get('status') != 'complete' or
             final.get('delivery_state') != 'verified-candidate' or

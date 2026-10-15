@@ -578,7 +578,7 @@ def defer_capacity(root,target,manifest,state,pool,entry,pid,value):
 def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=None,authorization=None,runtime_pid=None):
     # Concurrent Node captures can perform launch checks together. Wait only for
     # this exact short-lived lock contention, never remove or steal a live lock.
-    with transaction(root,wait_seconds=3 if action in {'verify-record','verify-evidence','bind-media-runtime','verify-review','release-slot','defer-capacity'} else 0):
+    with transaction(root,wait_seconds=3 if action in {'verify-record','verify-evidence','bind-media-runtime','verify-review','complete-review','release-slot','defer-capacity'} else 0):
         target,manifest=batch(root,batch_id);owner_check(target,pid);state=read_json(target/'state.json')
         if case_id is not None and case_id not in state['cases']:raise ValueError('Control is restricted to this batch registered cases')
         if action in {'configure-scheduler','bind-controller','bind-repair'}:
@@ -600,8 +600,8 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
             if any(q['batch_id']==batch_id and q['status']=='active' for q in pool):raise ValueError('Release stage slots first')
             (target/'owner.json').unlink();return {'released':True}
         elif action in {'drain','continue'}:
-            if not authorization:raise ValueError('Drain/continue require the existing explicit user pause or maintenance request reference')
-            state['drain']=action=='drain';state['control_authorization']=authorization
+            from control_decisions import apply
+            apply(state,batch_id,action,value,authorization)
         elif action in {'priority','resume-case','expedite','update'}:
             if not case_id:raise ValueError('Use explicit case_id; loop the confirmed list for batch-wide controls')
             item=state['cases'][case_id]
@@ -652,7 +652,7 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
                         if published.get('status')!='published' or published.get('files')!=receipt['files']:raise ValueError('Atomic publication receipt required before delivered')
                 for key in ('calls','usage'):item.setdefault(key,[]).extend(update.pop(key,[]))
                 item.update(update)
-        elif action in {'queue','acquire','release-slot','defer-capacity','verify-record','verify-evidence','bind-media-runtime','verify-review'}:
+        elif action in {'queue','acquire','release-slot','defer-capacity','verify-record','verify-evidence','bind-media-runtime','verify-review','complete-review'}:
             queue_path=Path(root)/'queue.json';pool=read_json(queue_path) if queue_path.exists() else []
             admission_files=[]
             if action=='queue':
@@ -676,7 +676,22 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
             matching=[q for q in pool if q['token']==token and q['batch_id']==batch_id]
             if len(matching)!=1:raise ValueError('Slot token does not belong to this batch')
             entry=matching[0]
-            if action=='defer-capacity':
+            if action=='complete-review':
+                if entry['status']=='released' and entry.get('review_completion'):
+                    request=read_json(value);saved=entry['review_completion']
+                    if saved.get('outcome'):
+                        if saved.get('request_sha256')==digest(no_links(value)):return entry
+                        raise ValueError('Completed review exit retry must retain its exact original request')
+                    if (request.get('review_evidence')==saved['review_evidence'] and
+                        request.get('review_evidence_sha256')==saved['review_evidence_sha256'] and
+                        digest(no_links(saved['review_evidence']))==saved['review_evidence_sha256']):return entry
+                    raise ValueError('Completed review retry must name the same unchanged independent report')
+                if entry['status']!='active' or entry['stage'] not in {'review','expedited'} or entry['owner']!=identity(pid):
+                    raise ValueError('Current active owned review lease required for completion')
+                if case_id!=entry['case_id']:raise ValueError('Review completion belongs to a different registered case')
+                from review_packet import complete_handoff
+                return complete_handoff(root,target,manifest,state,pool,entry,value,authorization)
+            elif action=='defer-capacity':
                 if case_id!=entry['case_id']:raise ValueError('Capacity attempt belongs to a different registered case')
                 return defer_capacity(root,target,manifest,state,pool,entry,pid,value)
             elif action=='verify-review':
@@ -745,6 +760,11 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
                 return {**result,'token':entry['token'],'case_id':entry['case_id'],'workspace':case['workspace']}
             elif action=='release-slot':
                 if entry['status'] not in {'waiting','active'}:raise ValueError('Only a current waiting or active ticket can release')
+                if entry['status']=='active' and entry['stage'] in {'review','expedited'} and entry.get('review_dispatch_permit'):
+                    from review_packet import recorded_review_dispatch
+                    work=next(c for c in manifest['cases'] if c['case_id']==entry['case_id'])['workspace']
+                    if recorded_review_dispatch(work,state['cases'][entry['case_id']],entry):
+                        raise ValueError('Dispatched review must complete-review with authenticated report metadata before release')
                 if entry['status']=='active' and entry['stage'] in {'record','evidence'}:
                     if manifest.get('media_lease_contract')=='windows-job-v1':
                         from media_job import job_name,job_pids
@@ -864,7 +884,7 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
         write_json(target/'state.json',state);return state
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('action',choices=['register','claim','recover-owner','status','preflight','release-owner','priority','resume-case','expedite','drain','continue','update','queue','acquire','release-slot','defer-capacity','verify-record','verify-evidence','bind-media-runtime','verify-review','configure-scheduler','bind-controller','bind-repair'],help='Scheduling controls require --value JSON and --authorization; bind-repair value names case_id and authenticates actual revise evidence; config affects future acquire only')
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('action',choices=['register','claim','recover-owner','status','preflight','release-owner','priority','resume-case','expedite','drain','continue','update','queue','acquire','release-slot','defer-capacity','verify-record','verify-evidence','bind-media-runtime','verify-review','complete-review','configure-scheduler','bind-controller','bind-repair'],help='Scheduling controls require --value JSON and --authorization; complete-review authenticates and records an existing independent report before releasing; config affects future acquire only')
     p.add_argument('--root',required=True);p.add_argument('--batch-id',required=True);p.add_argument('--pid',type=int);p.add_argument('--cases');p.add_argument('--authorization');p.add_argument('--host-slots',type=int,default=4);p.add_argument('--recording-limit',choices=['2','3','4','auto'],default='auto');p.add_argument('--case-id');p.add_argument('--value');p.add_argument('--token');p.add_argument('--stage');p.add_argument('--runtime-pid',type=int)
     a=p.parse_args()
     try:

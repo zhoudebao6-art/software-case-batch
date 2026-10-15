@@ -92,6 +92,8 @@ class ReviewPacketTests(unittest.TestCase):
     def test_private_new_directory_only_and_no_review_authority(self):
         result = draft(self.work, self.execution, self.target)
         self.assertEqual(result['status'], 'draft_created')
+        self.assertEqual((result['facts_path'], result['facts_sha256']),
+                         (str(self.target / 'facts.json'), digest(self.target / 'facts.json')))
         value = read_json(self.target / 'review-draft.json')
         self.assertEqual(value['checks'], self.checks)
         for key in ('decision', 'reviewer_agent_id', 'passed', 'review_evidence_sha256'):

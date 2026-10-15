@@ -25,7 +25,7 @@ import uuid
 import zipfile
 import zlib
 
-from common import digest, inside, no_links, read_json, state, write_json
+from common import digest, inside, no_links, read_json, state, write_json, delivery_paths
 
 MAX_MEMBERS = 20000
 MAX_BYTES = 1024 * 1024 * 1024
@@ -182,7 +182,7 @@ def probe(workspace, probe_script, receipt, timeout=120, keep_extracted=False):
     python = no_links(os.environ.get('SCB_PRO_PYTHON', ''))
     if not python.is_file():
         raise ValueError('Load installed Enter-Environment.ps1 to select SCB_PRO_PYTHON')
-    archive = no_links(output / '模拟系统/项目源码.zip')
+    archive = delivery_paths(run,output)['source_zip']
     package = read_json(inside(workspace, '.product-v2/source-package.json'))
     if not isinstance(package, dict):
         raise ValueError('source-package.json must contain a JSON object')

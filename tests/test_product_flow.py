@@ -42,7 +42,7 @@ class FlowTests(unittest.TestCase):
         with self.assertRaises(ValueError):prepare(self.work,self.work/'delivery','任务管理',self.source)
     def test_prompt_embeds_exact_paths_and_latest_layout(self):
         text=(self.work/'.product-v2/深化命令词.txt').read_text(encoding='utf8')
-        self.assertIn(str(self.out/SYSTEM/'数据'),text);self.assertIn(str(self.out/SYSTEM/'项目源码.zip'),text)
+        self.assertIn(str(self.out/SYSTEM/'数据'),text);self.assertIn(str(self.out/SYSTEM/'源代码.zip'),text)
         for item in ['references/web-design.md','source_trace','calculation_trace_map','coverage_matrix','references/ui-policy.json']:
             self.assertIn(item,text)
     def test_clean_drops_whole_metadata_columns_preserves_other_cells(self):
@@ -92,15 +92,15 @@ class FlowTests(unittest.TestCase):
             p=self.work/rel;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text,encoding='utf8')
         before={r:digest(self.work/r) for r in files}
         receipt=pack_source(self.work,self.out,self.manifest('package',{'files':list(files)}))
-        with zipfile.ZipFile(self.out/SYSTEM/'项目源码.zip') as z:self.assertEqual(set(z.namelist()),{'app/main.py','app/parser.py','app/.env.example'})
+        with zipfile.ZipFile(self.out/SYSTEM/'源代码.zip') as z:self.assertEqual(set(z.namelist()),{'app/main.py','app/parser.py','app/.env.example'})
         self.assertEqual(before,{r:digest(self.work/r) for r in files});self.assertEqual(len(receipt['excluded']),6)
     def test_archive_unicode_escaped_word_detected(self):
         p=self.work/'app.py';p.write_text(r'x="\u6a21\u62df"',encoding='utf8')
         with self.assertRaisesRegex(ValueError,'semantic fix before packing'):
             pack_source(self.work,self.out,self.manifest('package',{'files':['app.py']}))
-        self.assertFalse((self.out/'模拟系统/项目源码.zip').exists())
-        (self.out/'模拟系统').mkdir(exist_ok=True)
-        with zipfile.ZipFile(self.out/'模拟系统/项目源码.zip','w') as archive:
+        self.assertFalse((self.out/'系统材料/源代码.zip').exists())
+        (self.out/'系统材料').mkdir(exist_ok=True)
+        with zipfile.ZipFile(self.out/'系统材料/源代码.zip','w') as archive:
             archive.writestr('app.py',(self.work/'app.py').read_bytes())
         self.assertFalse(scan_delivery(self.out)['passed'])
     def test_fixed_container_name_allowed(self):
@@ -109,11 +109,11 @@ class FlowTests(unittest.TestCase):
         self.assertTrue(scan_delivery(self.out)['passed'])
     def test_readme_in_handmade_archive_is_blocked(self):
         target=self.out/SYSTEM;target.mkdir()
-        with zipfile.ZipFile(target/'项目源码.zip','w') as z:z.writestr('nested/README.MD','text')
+        with zipfile.ZipFile(target/'源代码.zip','w') as z:z.writestr('nested/README.MD','text')
         self.assertFalse(scan_delivery(self.out)['passed'])
     def test_nested_archive_and_traversal_are_blocked(self):
         target=self.out/SYSTEM;target.mkdir()
-        with zipfile.ZipFile(target/'项目源码.zip','w') as z:z.writestr('../a.py','print(1)');z.writestr('payload.zip','bytes')
+        with zipfile.ZipFile(target/'源代码.zip','w') as z:z.writestr('../a.py','print(1)');z.writestr('payload.zip','bytes')
         self.assertEqual(len(scan_delivery(self.out)['hits']),2)
     def test_preserve_draft_retains_identical_bytes_for_retry(self):
         self.csv('a.csv',[['编号'],['1']]);self.clean([self.entry('a.csv')]);before=digest(self.out/SYSTEM/'数据/a.csv')

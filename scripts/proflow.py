@@ -15,13 +15,15 @@ import tempfile
 import uuid
 import zipfile
 from common import (TEXT_SUFFIXES, META_COLUMNS, digest, file_map, forbidden, inside,
-                    no_links, normalized, read_json, state, write_json)
+                    no_links, normalized, read_json, state, write_json, delivery_paths,
+                    DEFAULT_DELIVERY_LAYOUT)
 from source_intake import source_figure_numbers
 from contracts import ANALYTICAL_CHART_POLICY, BUILD_CHART_POLICY, chart_policy
 from review_packet import execution_checks
 
 ROOT = Path(__file__).resolve().parent.parent
-SYSTEM = '模拟系统'
+# Compatibility import only; operations resolve their own run's frozen layout.
+SYSTEM = delivery_paths({'output': str(ROOT), 'delivery_layout_version': DEFAULT_DELIVERY_LAYOUT})['system_name']
 DEFAULT_OUTPUT_ROOT = r'D:\研发图表'
 EXCLUDED_DIRS = {'.git','.product-v2','node_modules','.venv','venv','__pycache__',
                  '.pytest_cache','.cache','evidence','recording','recordings','logs',
@@ -53,6 +55,8 @@ def finalized_snapshot(output, receipt, allow_untracked=False, workspace=None):
         published=read_json(inside(workspace,'.product-v2/publish-receipt.json'))
         from common import product_location
         original_run=read_json(inside(workspace,'.product-v2/run.json'))
+        if ('delivery_layout_version' in receipt and receipt['delivery_layout_version']!=delivery_paths(original_run)['version']):
+            raise ValueError('Revision base layout differs from its frozen acceptance receipt')
         if (original_run.get('status')!='published' or original_run.get('workspace')!=str(no_links(workspace))
                 or published.get('status')!='published' or published.get('destination')!=original_run.get('output')
                 or product_location(workspace,original_run)!=output
@@ -83,10 +87,13 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
     source_hash = digest(source_docx)
     source_numbers = source_figure_numbers(source_docx)
     base=None
+    layout_version=DEFAULT_DELIVERY_LAYOUT
     if allow_untracked_base and (not revision_of or revision_scope!='package'):
         raise ValueError('Untracked-base allowance is limited to explicit package revisions')
     if revision_of:
         base_workspace,base_output,base_run=state(revision_of)
+        base_paths=delivery_paths(base_run,base_output)
+        layout_version=base_paths['version']
         chart_policy(base_run)
         base_receipt=inside(base_workspace,'.product-v2/final-receipt.json')
         prior=read_json(base_receipt)
@@ -94,13 +101,16 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
         if frozen_source and frozen_source!=source_hash:raise ValueError('Revision must preserve the previously finalized original Word source identity')
         untracked=finalized_snapshot(base_output,prior,allow_untracked_base,base_workspace)
         base={'workspace':str(base_workspace),'output':str(base_output),'receipt_sha256':digest(base_receipt),
-              'system_files':{k[len(SYSTEM)+1:]:v for k,v in prior['files'].items() if k.startswith(SYSTEM+'/')}}
+              'system_files':{k[len(base_paths['system_name'])+1:]:v for k,v in prior['files'].items() if k.startswith(base_paths['system_name']+'/')}}
+        if not base['system_files']:
+            raise ValueError('Revision base has no registered system artifacts for its frozen layout')
         if untracked: base['untracked_base_files']=untracked
         if revision_scope not in {'document','package'}:
             raise ValueError('Supported revision scope is document or package')
     record = workspace / '.product-v2/run.json'
     if record.exists():
         previous = read_json(record)
+        delivery_paths(previous)
         chart_policy(previous)
         if previous.get('schema_version') != 2:
             raise ValueError('Legacy run is frozen; prepare a separate revision workspace and output')
@@ -110,15 +120,17 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
             return previous
         raise ValueError('Workspace already has a different product-v2 run; preserve it')
     adopted=None
+    layout_run={'output':str(output),'word_name':source_docx.name,'delivery_layout_version':layout_version}
+    paths=delivery_paths(layout_run)
     if output.exists():
         if not adopt_draft or not base:
             raise ValueError('Delivery directory already exists; choose a new version directory')
         from contracts import delivery_layout
-        delivery_layout(output,{'schema_version':2,'word_name':source_docx.name})
-        candidate=file_map(output/SYSTEM)
+        delivery_layout(output,dict(layout_run,schema_version=2))
+        candidate=file_map(paths['system'])
         same=(candidate==base['system_files']) if revision_scope=='document' else (
-            {k:v for k,v in candidate.items() if k!='项目源码.zip'}==
-            {k:v for k,v in base['system_files'].items() if k!='项目源码.zip'})
+            {k:v for k,v in candidate.items() if k!=paths['source_name']}==
+            {k:v for k,v in base['system_files'].items() if k!=paths['source_name']})
         if not same:
             raise ValueError('Adopted revision draft must preserve the complete finalized system snapshot')
         adopted=file_map(output)
@@ -127,9 +139,8 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
     run = {'schema_version':2, 'profile':'product-v2', 'run_id':uuid.uuid4().hex,
            'workspace':str(workspace),'output':str(output),'title':title,'created_at':utc(),
            'source_docx':str(source_docx),'source_docx_sha256':source_hash,
-           'word_name':source_docx.name,'word':str(output/source_docx.name),
-           'data_dir':str(output/SYSTEM/'数据'),'source_zip':str(output/SYSTEM/'项目源码.zip'),
-           'video':str(output/SYSTEM/'演示视频.mp4'),'status':'prepared'}
+           'word_name':source_docx.name,'delivery_layout_version':layout_version,
+           **{key:str(paths[key]) for key in ('word','data_dir','source_zip','video')},'status':'prepared'}
     if not base or revision_scope=='document':
         run['chart_policy']=BUILD_CHART_POLICY
     elif 'chart_policy' in base_run:
@@ -166,9 +177,9 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
 录制就绪使用本案绝对.py启动文件登记launcher/listener，并确认process_guard inspect.owned含实际监听；high自检实际执行 & $env:SCB_PRO_NODE "{Path(__file__).with_name('record.cjs')}" --check-ready --workspace "{workspace}" --plan "{workspace/'.product-v2/record-plan.json'}"，只读核验计划、真实文件和服务/登记身份，检查通过后父再按既有槽/lease/Job进入capture。此检查不启动浏览器、不写录制状态、不代表录制或视觉通过，不替代真实登录及UI就绪实测，不新增模型或审批。
 建设与独立审查读取references/quality.md的交付质量分级：issues说明具体impact及affected_artifacts，阻交付缺陷定向修复，无实质影响的小细节记内部建议。按references/recording.md在原自检校验最终exact计划的完整value输入预算和timeout_ms，保留完整业务输入；同一次已有browser实测到达对应界面时，调用record.cjs.uniqueVisibleLocator核ready及实际动作的唯一可见定位，结果集合用只读断言，不新增完整replay或审核轮次。已合格视频和充分清洗数据继续按原规则复用，真实首次检查、失败证据和独立验收保持。
 录制和在线验证结束后核实并关闭本案全部专属后台，保留Codex/MCP、共享服务及其他项目。之后仅把白名单重要CSV清洗到上述数据目录；每个CSV整列删除“生成数据”“数据来源”及明确同义元数据列，保留其他字段和值，数据目录仅CSV，不删原工作区数据或数据库。
-本项目交付代码、Web和数据内容不得出现：模拟、虚拟、仿真、物理仿真、参考、源文件、公式、正文。固定容器目录“模拟系统”按用户指定保留；原技术Word原样保留，许可证单独核对。禁词命中按语义修复，不能转义藏词或破坏算法。
+本项目交付代码、Web和数据内容不得出现：模拟、虚拟、仿真、物理仿真、参考、源文件、公式、正文。固定容器目录“{paths['system_name']}”按run冻结布局保留；原技术Word原样保留，许可证单独核对。禁词命中按语义修复，不能转义藏词或破坏算法。
 将实际可运行的项目源码压成上述ZIP，排除所有层级README及任何针对原技术文档的解析、抽取、原文映射和分析文件，同时排除原技术文档、过程证据、日志、缓存、依赖目录与凭据。使用明确打包白名单，不复制整个工作区；业务软件必需的导入解析模块保留。原工作区被排除内容仍保留。压缩包不得依赖被排除文件或旧绝对路径。
-成品根目录只能有上述原名Word和“模拟系统”文件夹；模拟系统内只能有项目源码.zip、演示视频.mp4、数据/*.csv。使用/运行/安装/部署说明及制作/原件解析/数据构造来源说明留内部工作区，排除源码ZIP，不在外面交付图表、使用说明或其他文件。原Word名称即使包含禁词，只豁免这一冻结文件名和原Word，不扩大到代码、网页或数据。
+成品根目录只能有上述原名Word和“{paths['system_name']}”文件夹；该目录内只能有{paths['source_name']}、{paths['video_name']}、数据/*.csv。使用/运行/安装/部署说明及制作/原件解析/数据构造来源说明留内部工作区，排除源码ZIP，不在外面交付图表、使用说明或其他文件。原Word名称即使包含禁词，只豁免这一冻结文件名和原Word，不扩大到代码、网页或数据。
 按技能运行清洗、打包、扫描、真实录制与进程收尾工具，建设自检后由独立ultra实际检查最终Word页、图表、关键视频帧和完整交付，再执行finalize；只报告有证据的完成状态。当前任务不覆盖原技能、不改旧批次、不上传GitHub、不擅自公网部署。
 '''
     if base:
@@ -185,8 +196,8 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
 本次仅建设和自检Word、新增结果PNG、实施例红字说明、原式符号说明、图题和全页渲染。父会话实际分派spawn_agent(fork_turns=none, model=gpt-6.1-sol, reasoning_effort=high)，之后另一个明确gpt-6.1-sol/ultra独立会话只读审核当前修订；保存真实call_id、canonical task_name和原始session JSONL及当前产物hash，建设者只写建设自检事实，独立reviewer写review.json并在final给出其精确SHA256。调用目标不支持时不能静默降级或自行验收。
 结合源技术实施例实际读前文—红字—后文，逐图详细自然解释工况、读图、计算依据、可复核结果、原因和适用判断；有对应原式时自然引入关键符号并首次就地简释，保留上下标、帽号和希腊字母；无公式按实施例解释，不强塞数学、不凑字数。每图独立“请参考图N”，原文原式原图及位置保持不动，仅新增图和对应图下图题按图号放全部原文之后。新增PNG图内无顶部title/suptitle、表头、图N或说明框，正常轴和必要图例保留；核对最终PNG及Word实际尺寸图例/符号与数据一致。
 PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据都留本次修订工作区。按references/tools.md生成内部.product-v2/chart-manifest.json，核对Word嵌图同字节PNG、独立引用、图下caption和全页衔接，供独立ultra实际审核。
-旧系统按冻结system_files完整沿用：项目源码.zip、演示视频.mp4和全部数据CSV字节不变；旧源码、六类执行日志、ZIP启动证据、原充分清洗CSV及质量事实、原录制及技术证据、数据出处和旧complete收据均冻结继承；后续原始input_csv或data-plan变化不作废完成数据。旧软件的建设模型及执行身份保留历史事实，本轮high仅证明文档修订，不伪称旧软件由本轮high建设。无需新系统建设、重新取数或录制；原软件相关证据变化时此修订继承门禁拒绝通过，交负责人重新确定受影响范围。
-成品根目录仅上述原名Word和模拟系统，系统内仅项目源码.zip、演示视频.mp4、数据/*.csv，与旧系统hash完全一致。所有PNG、证据及说明在工作区；此次Word-only修订软件字节继承原包；若用户还要求删ZIP说明必须另走package revision，不扩大本次范围。源Word完整basename即使含禁词仅豁免该Word，代码、Web和CSV豁免范围不扩大。
+旧系统按冻结system_files完整沿用：{paths['source_name']}、{paths['video_name']}和全部数据CSV字节不变；旧源码、六类执行日志、ZIP启动证据、原充分清洗CSV及质量事实、原录制及技术证据、数据出处和旧complete收据均冻结继承；后续原始input_csv或data-plan变化不作废完成数据。旧软件的建设模型及执行身份保留历史事实，本轮high仅证明文档修订，不伪称旧软件由本轮high建设。无需新系统建设、重新取数或录制；原软件相关证据变化时此修订继承门禁拒绝通过，交负责人重新确定受影响范围。
+成品根目录仅上述原名Word和{paths['system_name']}，系统内仅{paths['source_name']}、{paths['video_name']}、数据/*.csv，与旧系统hash完全一致。所有PNG、证据及说明在工作区；此次Word-only修订软件字节继承原包；若用户还要求删ZIP说明必须另走package revision，不扩大本次范围。源Word完整basename即使含禁词仅豁免该Word，代码、Web和CSV豁免范围不扩大。
 在本次修订及旧工作区核对本案后台退出记录（process_guard stop，保留Codex/MCP及其他项目），执行scan；独立ultra实际核验当前Word全部页、PNG、正文衔接及未变系统继承证据。它写当前reviewed_files/visual_notes/limitations/reviewer_agent_id/decision/chart_snapshot/chart_reviews；完成后仅执行finalize-document-revision --workspace "{workspace}" --evidence "独立ultra当前review.json绝对路径"。保留旧finalized run、旧收据及旧交付，在本次新工作区另存document-revision收据，不重写历史通过。只报告实际证据支持的完成状态。
 '''
     if base and revision_scope=='package':
@@ -197,7 +208,7 @@ PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据
 明确冻结最近finalized父收据：{base['workspace']}（SHA256={base['receipt_sha256']}）
 保留原根Word、PNG、完整真实已阅全页证据、全部CSV及一分钟视频每个字节；只在新ZIP排除README和使用/运行/安装/部署说明、制作过程、数据构造/来源说明及原件解析材料。内部真实来源、参数、种子、生成性质和未验证范围完整保留，不伪称实测。必要第三方署名/入口/DOI/许可URL及变更指示保留，非必要制作用语不藏入LICENSES。应用成员字节不改，源码完整可启动。
 新版父会话真实分派gpt-6.1-sol/high建设自检；普通返修及录制准备修复另派gpt-6.1-sol/ultra，reviewer不实现；普通独立只读验收另一个gpt-6.1-sol/ultra。本次不启用Astra low。真实call_id/agent_id/session JSONL核验，配置不是执行证据。
-沿最近文档revision的inherited_system逐级追溯原完整case六类检查/录制输入/CSV输入/真实来源/旧完整审查，保留旧收据及原模型事实；不扫描全盘猜父关系。记录未登记父输出文件但不复制/删除它们。新输出严格只有原名Word和模拟系统三项，旧输出不改。
+沿最近文档revision的inherited_system逐级追溯原完整case六类检查/录制输入/CSV输入/真实来源/旧完整审查，保留旧收据及原模型事实；不扫描全盘猜父关系。记录未登记父输出文件但不复制/删除它们。新输出严格只有原名Word和{paths['system_name']}三项，旧输出不改。
 对最终新ZIP在隔离目录真实解压安装/启动并验证业务核心、部署入口、数据与导出，绑定最终ZIPhash及command/exit_code/log/sha256；记录launcher/listener身份、健康run/workspace/version和实际PID。线上验证结束后只关闭本案已核归属后台，保留Codex/MCP/共享/其他项目。只读Get-Content/rg命令不算本案后台。
 完整5fps视频接触页及frame_files映射、首尾和每交互前后0.2s原帧可对未变MP4解码补证据，无需重录；Word每页已有真实已阅按同hash继承，无需重新渲染。父保存短证据索引，独立ultra检查新ZIP、包启动实际log/结果/署名及完整继承链，声明本次实际打开与合法沿用范围，写review.json并final给精确proofhash。
 只执行finalize-package-revision --workspace "{workspace}" --evidence "独立ultra当前review.json"。出现任何应用代码/业务字符串、Word/PNG/视频/CSV字节变化，此专用gate拒绝；由负责人安排ultra定向返修和相应完整执行验证，不能强改hash或扩大继承。
@@ -236,6 +247,13 @@ def cleanup_ready(workspace):
     if owned_processes(workspace, inventory()):
         raise ValueError('Case processes are still live; cleanup receipt is stale')
 
+
+def current_delivery_paths(workspace,output):
+    """Mutation entries cannot redirect a prepared run to an arbitrary tree."""
+    _, current, run=state(workspace)
+    if current!=no_links(output):raise ValueError('Delivery output differs from the frozen run location')
+    return delivery_paths(run,current)
+
 def clean_csv(workspace, output, manifest_path):
     """Transactional, streaming CSV selection. Source bytes never change."""
     workspace, output = no_links(workspace), no_links(output)
@@ -243,7 +261,8 @@ def clean_csv(workspace, output, manifest_path):
     entries = spec.get('files', [])
     if not entries:
         raise ValueError('An explicit important-CSV allowlist is required')
-    system_dir = no_links(output/SYSTEM)
+    paths=current_delivery_paths(workspace,output)
+    system_dir = paths['system']
     system_dir.mkdir(parents=True, exist_ok=True)
     destination = no_links(system_dir/'数据')
     if destination.exists():
@@ -343,6 +362,7 @@ def completed_data_quality(workspace,cleaning,current_files):
 def check_data_quality(workspace,output,update=False):
     """Completed CSVs retain their actual original pass; first audits stay full."""
     run=read_json(inside(workspace,'.product-v2/run.json'));policy=run.get('data_policy_version')
+    delivery=delivery_paths(run,output)
     if policy is None:
         checks=workspace/'.product-v2/build-checks.json'
         if checks.is_file() and read_json(checks).get('data_material_error'):
@@ -351,7 +371,7 @@ def check_data_quality(workspace,output,update=False):
     if policy!='neutral-expanded-v1':raise ValueError('Unknown frozen data policy')
     cleaning_path=inside(workspace,'.product-v2/data-cleaning.json');cleaning=read_json(cleaning_path)
     if update and (workspace/'.product-v2/final-receipt.json').exists():raise ValueError('Finalized evidence is frozen')
-    directory=no_links(output/SYSTEM/'数据');paths=sorted(directory.iterdir())
+    directory=delivery['data_dir'];paths=sorted(directory.iterdir())
     if not paths or any(not p.is_file() or p.suffix.lower()!='.csv' for p in paths):
         raise ValueError('Selected important CSVs required for data quality checks')
     for path in paths:no_links(path)
@@ -404,7 +424,8 @@ def pack_source(workspace, output, manifest_path):
     files = spec.get('files',[])
     if not isinstance(files,list) or not files:
         raise ValueError('Explicit application file allowlist required')
-    target = no_links(output/SYSTEM/'项目源码.zip')
+    paths=current_delivery_paths(workspace,output)
+    target = paths['source_zip']
     target.parent.mkdir(parents=True,exist_ok=True)
     if target.exists():
         raise ValueError('Source archive exists; use a new delivery version')
@@ -465,15 +486,20 @@ def scan_text(name,data):
             if words: hits.append({'path':name,'line':number,'words':words})
     return hits
 
-def scan_delivery(output, word_name=None):
+def scan_delivery(output, word_name=None, run=None):
     output=no_links(output)
+    # The no-run API remains the historical scanner; real flows always pass run.
+    paths=delivery_paths(run or {'output':str(output)},output)
+    if run is not None:
+        if word_name is not None and word_name!=run.get('word_name'):raise ValueError('Scan Word name differs from frozen run')
+        word_name=run.get('word_name')
     hits, licenses=[],[]
     for path in sorted(output.rglob('*')):
         no_links(path)
         if not path.is_file(): continue
         relative=path.relative_to(output).as_posix()
         # This exact fixed container is the user's explicit exception.
-        checked='/'.join(p for i,p in enumerate(relative.split('/')) if not(i==0 and p==SYSTEM))
+        checked='/'.join(p for i,p in enumerate(relative.split('/')) if not(i==0 and p==paths['system_name']))
         original_word = word_name is not None and relative == word_name and path.suffix.lower()=='.docx'
         if not original_word and forbidden(checked): hits.append({'path':relative,'words':forbidden(checked)})
         if path.suffix.lower()=='.zip':
@@ -550,20 +576,21 @@ def finalize(workspace, output, evidence_path):
     execution_checks(proof.get('checks'))  # Fail before expensive artifact checks.
     from contracts import delivery_layout, chart_snapshot, model_review
     run=read_json(workspace/'.product-v2/run.json')
+    paths=current_delivery_paths(workspace,output)
     record=read_json(workspace/'.product-v2/recording.json')
     from contracts import construction_checks
     current_checks=construction_checks(workspace,run,record.get('plan_path'))
     word=delivery_layout(output,run)
     charts=chart_snapshot(workspace,word,run)
     cleanup_ready(workspace)
-    scanned=scan_delivery(output,run['word_name'])
+    scanned=scan_delivery(output,run['word_name'],run)
     if not scanned['passed']: raise ValueError('Delivery scan failed: '+json.dumps(scanned['hits'][:10],ensure_ascii=False))
     clean=read_json(workspace/'.product-v2/data-cleaning.json')
     check_data_quality(workspace,output)
-    actual=file_map(output/SYSTEM/'数据')
+    actual=file_map(paths['data_dir'])
     if actual!={f['name']:f['sha256'] for f in clean['files']}: raise ValueError('Clean CSV snapshot changed')
     package=read_json(workspace/'.product-v2/source-package.json')
-    if package['sha256']!=digest(output/SYSTEM/'项目源码.zip'): raise ValueError('Source archive changed')
+    if package['sha256']!=digest(paths['source_zip']): raise ValueError('Source archive changed')
     for rel,sha in package['files'].items():
         if digest(inside(workspace,rel))!=sha: raise ValueError('Source changed after packaging: '+rel)
     if current_checks['required']:
@@ -573,16 +600,16 @@ def finalize(workspace, output, evidence_path):
             raise ValueError('Recording lacks its original current-run construction admission')
     from media_evidence import validate_recording_duration
     validate_recording_duration(record,run.get('recording_policy_version','legacy-fixed-v1'))
-    if record.get('passed') is not True or record.get('sha256')!=digest(output/SYSTEM/'演示视频.mp4'):
+    if record.get('passed') is not True or record.get('sha256')!=digest(paths['video']):
         raise ValueError('Current successful one-minute recording required')
     proof=read_json(evidence_path)
-    completed_recording(workspace,record,output/SYSTEM/'演示视频.mp4')
+    completed_recording(workspace,record,paths['video'])
     controlled=read_json(workspace/'.product-v2/controlled-video.json')
     from media_evidence import validate as validate_video_evidence
     timeline=no_links(controlled['timeline'])
     if proof.get('video_timeline_sha256')!=controlled['sha256'] or digest(timeline)!=controlled['sha256']:
         raise ValueError('Final review must bind the complete controlled 5fps timeline')
-    validate_video_evidence(workspace,timeline,output/SYSTEM/'演示视频.mp4',workspace/'.product-v2/recording.json')
+    validate_video_evidence(workspace,timeline,paths['video'],workspace/'.product-v2/recording.json')
     needed={'algorithm','api','persistence','browser','build','package_startup'}
     checks=proof.get('checks',[])
     execution_checks(checks)
@@ -599,7 +626,7 @@ def finalize(workspace, output, evidence_path):
     if not provenance.get('nature') or not provenance.get('sources') or not provenance.get('validation'):
         raise ValueError('Internal data nature, sourcing attempts and validation record required')
     dispatch=model_review(workspace,proof,scanned['files'],charts,evidence_path)
-    receipt={'status':'complete','delivery_state':'verified-candidate','at':utc(),'files':scanned['files'],
+    receipt={'status':'complete','delivery_state':'verified-candidate','delivery_layout_version':paths['version'],'at':utc(),'files':scanned['files'],
              'schema_version':2,'source_docx_sha256':run['source_docx_sha256'],
              'chart_snapshot':charts,'verified_dispatch':dispatch,
              'execution_evidence':str(evidence_path),'evidence_sha256':digest(evidence_path),
@@ -614,6 +641,7 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
     receipt/video/timeline bindings; finalization still checks all frame bytes.
     """
     hashes={};steps={};pointers=[];prior_execution_doc={}
+    paths=delivery_paths(run,output)
     def sha(path):
         path=no_links(path)
         if path not in hashes:hashes[path]=digest(path)
@@ -652,6 +680,8 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
             proof_matches=bound(proof_path,final.get('evidence_sha256'),workspace)
             if proof_matches:proof=read_json(proof_path)
             if (final.get('status')=='complete' and current_files==final.get('files') and proof_matches):
+                if ('delivery_layout_version' in final and final['delivery_layout_version']!=paths['version']):
+                    raise ValueError('Final acceptance belongs to a different frozen delivery layout')
                 from contracts import delivery_layout, final_review_binding
                 if (not isinstance(proof,dict) or proof.get('reviewed_files')!=current_files or
                         not proof.get('visual_notes') or not proof.get('limitations') or
@@ -673,7 +703,7 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
                                 not check.get('command') or log.stat().st_size==0 or
                                 not bound(log,check.get('sha256'),workspace)):
                             raise ValueError('Final review execution fact is missing/failed/changed: '+check['kind'])
-                    if proof.get('source_zip_sha256')!=current_files.get(SYSTEM+'/项目源码.zip'):
+                    if proof.get('source_zip_sha256')!=current_files.get(paths['source_zip'].relative_to(output).as_posix()):
                         raise ValueError('Final review archive binding changed')
                 if scope is None:
                     controlled,_=receipt('controlled-video.json')
@@ -725,8 +755,8 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
         if value.get('status')!='cleaned' or not files:return {'state':'failed'}
         changed=[]
         for item in files:
-            if not bound(output/SYSTEM/'数据'/item['name'],item['sha256'],output):changed.append('数据/'+item['name'])
-        directory=output/SYSTEM/'数据'
+            if not bound(paths['data_dir']/item['name'],item['sha256'],output):changed.append('数据/'+item['name'])
+        directory=paths['data_dir']
         actual={p.name for p in directory.iterdir()} if directory.is_dir() else set()
         if actual!={item['name'] for item in files}:changed.append('CSV member set')
         if changed:return {'state':'stale','changed_dependencies':changed,'receipt':str(path)}
@@ -741,7 +771,7 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
         if not value:return {'state':'not_started'}
         if '_read_error' in value:return {'state':'unknown','reason':value['_read_error']}
         changed=inputs_current(value.get('files'))
-        if not bound(output/SYSTEM/'项目源码.zip',value.get('sha256'),output):changed.append('项目源码.zip')
+        if not bound(paths['source_zip'],value.get('sha256'),output):changed.append(paths['source_name'])
         return {'state':'stale' if changed else 'completed','changed_dependencies':changed,'receipt':str(path)}
     summarize('data',data);summarize('source_package',package)
     recording,recording_path=receipt('recording.json')
@@ -800,7 +830,7 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
                     timeline_value.get('sample_fps')!=5 or binding.get('sha256')!=sha(recording_path) or
                     no_links(binding.get('path',''))!=no_links(recording_path)):
                 return {'state':'captured','next_action':'evidence','reason':'Technical timeline bindings incomplete','last_completed':'recorded'}
-            completed_recording(workspace,recording,output/SYSTEM/'演示视频.mp4',hash_file=sha)
+            completed_recording(workspace,recording,paths['video'],hash_file=sha)
             return {'state':'technical_ready','last_completed':'technical_evidence','receipt':str(recording_path),
                     'timeline':str(timeline),'video_completed':True,
                     'verification_scope':'Video, operation receipt and timeline hashes; frame files were not rechecked or visually viewed.'}
@@ -832,7 +862,7 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
                     not bound(inside(workspace,check['log'],must_exist=False),check.get('sha256'),workspace)):
                 return {'state':'stale','reason':'Current execution fact is missing/failed/changed: '+kind}
         package_hash=execution_doc.get('source_zip_sha256') or checks['package_startup'].get('source_zip_sha256')
-        if not bound(output/SYSTEM/'项目源码.zip',package_hash,output):return {'state':'pending','reason':'ZIP startup facts are not bound to this final archive'}
+        if not bound(paths['source_zip'],package_hash,output):return {'state':'pending','reason':'ZIP startup facts are not bound to this final archive'}
         return {'state':'completed','scope':'Recorded current log/archive hashes only; no business or independent pass is inferred'}
     summarize('execution_evidence',execution)
     if steps['execution_evidence']['state']!='completed':remaining.append('final-zip-startup-and-execution-evidence')
@@ -846,9 +876,9 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
         if steps['cleanup']['last_completed']!='stopped':next_actions=['cleanup-after-required-online-work']
         elif steps['data']['state']=='cleaned':next_actions=['check-data']
         elif steps['data']['state']!='completed':
-            next_actions=['inspect-data-receipt'] if steps['data']['state']=='unknown' else ['preserve-data-draft then clean-data' if (output/SYSTEM/'数据').exists() else 'clean-data']
+            next_actions=['inspect-data-receipt'] if steps['data']['state']=='unknown' else ['preserve-data-draft then clean-data' if (paths['data_dir']).exists() else 'clean-data']
         elif steps['source_package']['state']!='completed':
-            next_actions=['inspect-source-package-receipt'] if steps['source_package']['state']=='unknown' else ['preserve-source-draft then pack-source' if (output/SYSTEM/'项目源码.zip').exists() else 'pack-source']
+            next_actions=['inspect-source-package-receipt'] if steps['source_package']['state']=='unknown' else ['preserve-source-draft then pack-source' if (paths['source_zip']).exists() else 'pack-source']
         elif steps['execution_evidence']['state']!='completed':next_actions=['verify-final-zip-startup-and-execution-evidence']
         else:next_actions=['independent-review-changed-or-unread-evidence']
     if steps['independent_review']['state']=='verified':next_actions=['publish']
@@ -859,7 +889,8 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
 
 def preserve_draft(workspace,output,artifact):
     """Move one exact generated draft into verified internal history for retry."""
-    choices={'data':output/SYSTEM/'数据','source':output/SYSTEM/'项目源码.zip','video':output/SYSTEM/'演示视频.mp4'}
+    paths=current_delivery_paths(workspace,output)
+    choices={'data':paths['data_dir'],'source':paths['source_zip'],'video':paths['video']}
     current=no_links(choices[artifact])
     if not current.exists(): raise ValueError('No draft artifact to preserve')
     if (workspace/'.product-v2/final-receipt.json').exists():
@@ -881,22 +912,25 @@ def finalize_document_revision(workspace,output,evidence_path):
         raise ValueError('Finalized receipt is immutable; create a separate revision')
     from contracts import delivery_layout,chart_snapshot,model_review
     run=read_json(workspace/'.product-v2/run.json')
+    paths=current_delivery_paths(workspace,output)
     if run.get('revision_scope','document')!='document':
         raise ValueError('Package revisions must use their dedicated revision gate')
     base=run.get('revision_of')
     if not base: raise ValueError('Explicit prepare --revision-of is required')
-    base_workspace,base_output,_=state(base['workspace'])
+    base_workspace,base_output,base_run=state(base['workspace'])
+    base_paths=delivery_paths(base_run,base_output)
+    if paths['version']!=base_paths['version']:raise ValueError('Revision must inherit its parent frozen delivery layout')
     receipt_path=inside(base_workspace,'.product-v2/final-receipt.json')
     prior=read_json(receipt_path)
     if digest(receipt_path)!=base['receipt_sha256']:
         raise ValueError('Finalized base receipt or artifact snapshot changed')
     finalized_snapshot(base_output,prior,workspace=base_workspace)
     word=delivery_layout(output,run);charts=chart_snapshot(workspace,word,run)
-    if file_map(output/SYSTEM)!=base['system_files'] or file_map(base_output/SYSTEM)!=base['system_files']:
+    if file_map(paths['system'])!=base['system_files'] or file_map(base_paths['system'])!=base['system_files']:
         raise ValueError('Document-only revision requires byte-identical source ZIP, video and CSV files')
     cleanup_ready(base_workspace)
     cleanup_ready(workspace)
-    scanned=scan_delivery(output,run['word_name'])
+    scanned=scan_delivery(output,run['word_name'],run)
     if not scanned['passed']: raise ValueError('Delivery scan failed')
     chain=revision_chain(workspace,base)
     runtime_base=chain[-1]['workspace']
@@ -923,9 +957,9 @@ def finalize_document_revision(workspace,output,evidence_path):
         if check.get('exit_code')!=0 or not check.get('command') or digest(log)!=check.get('sha256') or log.stat().st_size==0:
             raise ValueError('Inherited execution log failed or changed')
     package=read_json(runtime_base/'.product-v2/source-package.json')
-    if digest(chain[-1]['output']/SYSTEM/'项目源码.zip')!=package['sha256'] or previous_proof.get('source_zip_sha256')!=package['sha256']:
+    if digest(delivery_paths(chain[-1]['run'],chain[-1]['output'])['source_zip'])!=package['sha256'] or previous_proof.get('source_zip_sha256')!=package['sha256']:
         raise ValueError('Inherited package startup archive changed')
-    current_zip=digest(output/SYSTEM/'项目源码.zip')
+    current_zip=digest(paths['source_zip'])
     if current_zip!=package['sha256']:
         latest_package=next((entry for entry in chain if entry['receipt'].get('scope')=='package-revision'),None)
         if not latest_package or latest_package['proof'].get('source_zip_sha256')!=current_zip:
@@ -933,17 +967,17 @@ def finalize_document_revision(workspace,output,evidence_path):
         check=latest_package['proof']['checks'][0];log=inside(latest_package['workspace'],check['log'])
         if check.get('kind')!='package_startup' or check.get('exit_code')!=0 or not check.get('command') or digest(log)!=check.get('sha256'):
             raise ValueError('Inherited latest package startup failed or changed')
-        package_only_delta(chain[-1]['output']/SYSTEM/'项目源码.zip',output/SYSTEM/'项目源码.zip')
+        package_only_delta(delivery_paths(chain[-1]['run'],chain[-1]['output'])['source_zip'],paths['source_zip'])
     for rel,sha in package['files'].items():
         if digest(inside(runtime_base,rel))!=sha: raise ValueError('Inherited application source changed')
     recording=read_json(runtime_base/'.product-v2/recording.json')
     from media_evidence import validate_recording_duration
     validate_recording_duration(recording,run.get('recording_policy_version','legacy-fixed-v1'))
-    if recording.get('passed') is not True or digest(output/SYSTEM/'演示视频.mp4')!=recording.get('sha256'):
+    if recording.get('passed') is not True or digest(paths['video'])!=recording.get('sha256'):
         raise ValueError('Inherited successful recording changed')
-    completed_recording(runtime_base,recording,output/SYSTEM/'演示视频.mp4')
+    completed_recording(runtime_base,recording,paths['video'])
     clean=read_json(runtime_base/'.product-v2/data-cleaning.json')
-    if file_map(output/SYSTEM/'数据')!={f['name']:f['sha256'] for f in clean['files']}:
+    if file_map(paths['data_dir'])!={f['name']:f['sha256'] for f in clean['files']}:
         raise ValueError('Inherited CSV snapshot changed')
     check_data_quality(runtime_base,output)
     provenance=read_json(runtime_base/'.product-v2/data-provenance.json')
@@ -953,7 +987,7 @@ def finalize_document_revision(workspace,output,evidence_path):
     if proof.get('reviewed_files')!=scanned['files'] or not proof.get('visual_notes') or not proof.get('limitations'):
         raise ValueError('Current document revision review snapshot and limits required')
     dispatch=model_review(workspace,proof,scanned['files'],charts,evidence_path)
-    receipt={'schema_version':2,'status':'complete','delivery_state':'verified-candidate','at':utc(),'scope':'document-revision',
+    receipt={'schema_version':2,'status':'complete','delivery_state':'verified-candidate','delivery_layout_version':paths['version'],'at':utc(),'scope':'document-revision',
         'files':scanned['files'],'chart_snapshot':charts,'verified_dispatch':dispatch,
         'execution_evidence':str(evidence_path),'evidence_sha256':digest(evidence_path),
         'inherited_system':base,'inherited_checks':checks,
@@ -966,6 +1000,8 @@ def revision_chain(workspace, base):
     chain=[];seen={str(no_links(workspace))};link=base
     while link:
         original,output,run=state(link['workspace'])
+        if chain and delivery_paths(chain[-1]['run'])['version']!=delivery_paths(run)['version']:
+            raise ValueError('Revision inheritance must preserve the frozen delivery layout')
         if str(original) in seen: raise ValueError('Revision inheritance cycle')
         seen.add(str(original))
         receipt_path=inside(original,'.product-v2/final-receipt.json')
@@ -1026,6 +1062,7 @@ def package_only_delta(old_zip,new_zip):
 def inherited_execution(root):
     original,output,proof=root['workspace'],root['output'],root['proof']
     run=read_json(original/'.product-v2/run.json')
+    paths=delivery_paths(run,output)
     check_data_quality(original,output)
     checks=proof.get('checks',[])
     if (not isinstance(checks,list) or len(checks)!=6 or not all(isinstance(c,dict) for c in checks)
@@ -1036,18 +1073,18 @@ def inherited_execution(root):
         if check.get('exit_code')!=0 or not check.get('command') or digest(log)!=check.get('sha256') or not log.stat().st_size:
             raise ValueError('Inherited execution log failed or changed')
     package=read_json(original/'.product-v2/source-package.json')
-    if package['sha256']!=digest(output/SYSTEM/'项目源码.zip') or proof.get('source_zip_sha256')!=package['sha256']:
+    if package['sha256']!=digest(paths['source_zip']) or proof.get('source_zip_sha256')!=package['sha256']:
         raise ValueError('Inherited package and original startup proof changed')
     for rel,sha in package['files'].items():
         if digest(inside(original,rel))!=sha: raise ValueError('Inherited source changed: '+rel)
     recording=read_json(original/'.product-v2/recording.json')
     from media_evidence import validate_recording_duration
     validate_recording_duration(recording,run.get('recording_policy_version','legacy-fixed-v1'))
-    if not recording.get('passed') or recording.get('sha256')!=digest(output/SYSTEM/'演示视频.mp4'):
+    if not recording.get('passed') or recording.get('sha256')!=digest(paths['video']):
         raise ValueError('Inherited recording changed')
-    completed_recording(original,recording,output/SYSTEM/'演示视频.mp4')
+    completed_recording(original,recording,paths['video'])
     clean=read_json(original/'.product-v2/data-cleaning.json')
-    if file_map(output/SYSTEM/'数据')!={f['name']:f['sha256'] for f in clean['files']}:
+    if file_map(paths['data_dir'])!={f['name']:f['sha256'] for f in clean['files']}:
         raise ValueError('Inherited CSV output changed')
     provenance=read_json(original/'.product-v2/data-provenance.json')
     if not all(provenance.get(key) for key in ('nature','sources','validation')): raise ValueError('Inherited data provenance missing')
@@ -1058,9 +1095,12 @@ def finalize_package_revision(workspace,output,evidence_path):
     if (workspace/'.product-v2/final-receipt.json').exists(): raise ValueError('Finalized receipt is immutable')
     from contracts import delivery_layout,chart_snapshot,model_review
     run=read_json(workspace/'.product-v2/run.json')
+    paths=current_delivery_paths(workspace,output)
     if run.get('revision_scope')!='package' or not run.get('revision_of'): raise ValueError('Explicit package revision prepare required')
     chain=revision_chain(workspace,run['revision_of']);base=chain[0];root=chain[-1]
-    current=file_map(output);old=base['receipt']['files'];zip_name=SYSTEM+'/项目源码.zip'
+    if paths['version']!=delivery_paths(base['run'])['version']:
+        raise ValueError('Revision must inherit its parent frozen delivery layout')
+    current=file_map(output);old=base['receipt']['files'];zip_name=paths['source_zip'].relative_to(output).as_posix()
     if {k:v for k,v in current.items() if k!=zip_name}!={k:v for k,v in old.items() if k!=zip_name}:
         raise ValueError('Package-only revision requires byte-identical Word, video and every CSV')
     word=delivery_layout(output,run);charts=chart_snapshot(workspace,word,run)
@@ -1070,7 +1110,7 @@ def finalize_package_revision(workspace,output,evidence_path):
     cleanup_ready(workspace)
     inherited=inherited_execution(root)
     delta=package_only_delta(base['output']/zip_name,output/zip_name)
-    scanned=scan_delivery(output,run['word_name'])
+    scanned=scan_delivery(output,run['word_name'],run)
     if not scanned['passed']: raise ValueError('Delivery scan failed')
     package=read_json(workspace/'.product-v2/source-package.json')
     if package['sha256']!=digest(output/zip_name): raise ValueError('New source archive changed')
@@ -1080,7 +1120,7 @@ def finalize_package_revision(workspace,output,evidence_path):
     from media_evidence import validate as validate_video_evidence
     timeline=inside(workspace,proof['video_timeline'])
     if proof.get('video_timeline_sha256')!=digest(timeline):raise ValueError('Package review must bind current complete video evidence')
-    validate_video_evidence(workspace,timeline,output/SYSTEM/'演示视频.mp4',root['workspace']/'.product-v2/recording.json')
+    validate_video_evidence(workspace,timeline,paths['video'],root['workspace']/'.product-v2/recording.json')
     if not isinstance(checks,list) or len(checks)!=1 or not isinstance(checks[0],dict) or checks[0].get('kind')!='package_startup': raise ValueError('New independent archive startup check required')
     check=checks[0];log=inside(workspace,check['log'])
     if not check.get('command') or check.get('exit_code')!=0 or check.get('sha256')!=digest(log) or not log.stat().st_size:
@@ -1091,19 +1131,32 @@ def finalize_package_revision(workspace,output,evidence_path):
     expected=[{'workspace':str(e['workspace']),'receipt_sha256':e['receipt_sha256'],'proof_sha256':e['proof_sha256']} for e in chain]
     if proof.get('inherited_evidence_chain')!=expected: raise ValueError('Review must bind the full explicit inheritance chain')
     dispatch=model_review(workspace,proof,scanned['files'],charts,evidence_path)
-    receipt={'schema_version':2,'status':'complete','delivery_state':'verified-candidate','at':utc(),'scope':'package-revision','files':scanned['files'],
+    receipt={'schema_version':2,'status':'complete','delivery_state':'verified-candidate','delivery_layout_version':paths['version'],'at':utc(),'scope':'package-revision','files':scanned['files'],
              'chart_snapshot':charts,'verified_dispatch':dispatch,'execution_evidence':str(evidence_path),
              'evidence_sha256':digest(evidence_path),'inherited_system':run['revision_of'],
              'inherited_checks':inherited,'checks':checks,'package_delta':delta,'inherited_evidence_chain':expected,
              'limitations':proof['limitations'],'source_docx_sha256':run['source_docx_sha256']}
     write_json(workspace/'.product-v2/final-receipt.json',receipt);return receipt
 
+def publication_run(run,destination):
+    """Relocate the resolver's path aliases consistently, including optional ones."""
+    paths=delivery_paths(run,destination)
+    updated=dict(run)
+    updated.update({key:str(value) for key,value in paths.items()
+                    if isinstance(value,Path) and (key!='system' or key in run)})
+    updated['status']='published'
+    return updated
+
+
 def publish(workspace,destination):
     """Atomic same-volume directory publication with durable, resumable intent."""
     workspace=no_links(workspace);destination=no_links(destination)
     run_path=inside(workspace,'.product-v2/run.json');run=read_json(run_path)
+    delivery_paths(run)
     if run['workspace']!=str(workspace):raise ValueError('Current run workspace identity differs')
     receipt_path=inside(workspace,'.product-v2/final-receipt.json');receipt=read_json(receipt_path)
+    if ('delivery_layout_version' in receipt and receipt['delivery_layout_version']!=delivery_paths(run)['version']):
+        raise ValueError('Publication layout differs from the frozen acceptance receipt')
     if receipt.get('status')!='complete' or receipt.get('delivery_state')!='verified-candidate':
         raise ValueError('Only a newly verified candidate can be atomically published; old finalized deliveries remain frozen')
     if destination==workspace or workspace in destination.parents or destination in workspace.parents:
@@ -1120,10 +1173,7 @@ def publish(workspace,destination):
         candidate=no_links(intent['candidate'])
         initial=intent.get('run_snapshot')
         if not isinstance(initial,dict):raise ValueError('Publication recovery requires the frozen initial run snapshot')
-        expected=dict(initial)
-        expected.update({'output':str(destination),'word':str(destination/initial['word_name']),
-                         'data_dir':str(destination/SYSTEM/'数据'),'source_zip':str(destination/SYSTEM/'项目源码.zip'),
-                         'video':str(destination/SYSTEM/'演示视频.mp4'),'status':'published'})
+        expected=publication_run(initial,destination)
         if (intent.get('workspace')!=str(workspace) or initial.get('workspace')!=str(workspace)
                 or candidate!=no_links(initial['output']) or candidate.anchor.casefold()!=destination.anchor.casefold()
                 or candidate==destination or candidate==workspace or workspace in candidate.parents or candidate in workspace.parents):
@@ -1141,6 +1191,9 @@ def publish(workspace,destination):
         intent={'schema_version':1,'candidate':str(candidate),'destination':str(destination),'workspace':str(workspace),
                 'files':receipt['files'],'source_receipt_sha256':digest(receipt_path),'run_sha256':digest(run_path),'run_snapshot':run,'at':utc()}
         write_json(intent_path,intent)
+    if run.get('schema_version')==2 and run.get('word_name'):
+        from contracts import delivery_layout
+        delivery_layout(candidate if candidate.exists() else destination,run)
     if candidate.exists():
         if destination.exists():raise ValueError('Destination exists while candidate remains; no overwrite or merge permitted')
         if file_map(candidate)!=intent['files']:raise ValueError('Publication candidate changed after intent freezing')
@@ -1148,9 +1201,7 @@ def publish(workspace,destination):
         candidate.rename(destination)
     elif not destination.exists():raise ValueError('Neither intended candidate nor intended destination exists; keep recovery intent')
     if file_map(destination)!=intent['files']:raise ValueError('Published file verification failed; keep intent and all files')
-    run.update({'output':str(destination),'word':str(destination/run['word_name']),
-                'data_dir':str(destination/SYSTEM/'数据'),'source_zip':str(destination/SYSTEM/'项目源码.zip'),
-                'video':str(destination/SYSTEM/'演示视频.mp4'),'status':'published'})
+    run=publication_run(run,destination)
     write_json(run_path,run)
     result={'schema_version':1,'status':'published','destination':str(destination),'candidate':str(candidate),
             'files':intent['files'],'source_receipt_sha256':digest(receipt_path),'intent_sha256':digest(intent_path),'at':utc()}
@@ -1186,7 +1237,7 @@ def main(argv=None):
             elif args.command=='check-data':result=check_data_quality(workspace,output,update=True)
             elif args.command=='pack-source': result=pack_source(workspace,output,args.manifest)
             elif args.command=='scan':
-                result=scan_delivery(output,run.get('word_name'));write_json(workspace/'.product-v2/scan.json',result)
+                result=scan_delivery(output,run.get('word_name'),run);write_json(workspace/'.product-v2/scan.json',result)
                 if not result['passed']:
                     print(json.dumps(result,ensure_ascii=False,indent=2));return 2
             elif args.command=='record':

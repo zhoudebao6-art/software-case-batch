@@ -22,7 +22,20 @@ def check(index,ids,workspace=None):
     actual=set(ids);return {'complete':actual==expected,'missing':sorted(expected-actual),'unknown':sorted(actual-expected),
         'note':'IDs must come from actual review or legal unchanged prior review. This command never signs or adds IDs.'}
 
-def review_input(workspace,index,destination):
+def index_summary(index, spec=None):
+    """Short directory for model input; all evidence remains in the full index."""
+    index=no_links(index);spec=read_json(index) if spec is None else spec
+    kinds={}
+    for row in spec['evidence']:
+        extension=Path(row['path']).suffix.lower() or '(no extension)'
+        kinds[extension]=kinds.get(extension,0)+1
+    return {'kind':'neutral-evidence-directory','path':str(index),'sha256':digest(index),
+            'evidence_items':len(spec['evidence']),'by_extension':dict(sorted(kinds.items())),
+            'coverage_claim':False,
+            'instruction':'Read the referenced complete index in bounded chunks as needed. Every required item still needs actual review or separately authenticated legal prior review. Counts and unchanged hashes never establish viewed coverage; first Word/video review remains complete.'}
+
+
+def review_input(workspace,index,destination,compact=False):
     """Current neutral bindings; no decision, viewed IDs or reviewer signature."""
     workspace=no_links(workspace)
     check(index,[],workspace)  # Rehash every declared evidence item.
@@ -42,9 +55,13 @@ def review_input(workspace,index,destination):
         if digest(inside(workspace,figure['png']))!=figure['sha256']:raise ValueError('Chart input changed')
     facts={'schema_version':1,'kind':'review-input-facts','workspace':str(workspace),
            'run_id':run['run_id'],'index':{'path':str(no_links(index)),'sha256':digest(index)},
-           'evidence':spec['evidence'],'current_artifacts':artifacts,
+           'current_artifacts':artifacts,
            'current_charts':{'manifest_sha256':digest(manifest),'figures':{str(f['figure_id']):f['sha256'] for f in charts['figures']}},
            'instruction':'Reviewer must inspect the required evidence and write independent conclusions, actual reviewed IDs and final proof hash. These bindings are not a review.'}
+    from review_packet import current_admitted_metadata
+    facts.update(current_admitted_metadata(workspace))
+    if compact:facts['evidence_directory']=index_summary(index,spec)
+    else:facts['evidence']=spec['evidence']
     facts['review_sequence']={'first':'Use the actual source mappings and algorithm/API/persistence evidence to check applicable acceptance/rejection boundaries and final-engine derived results in references/system-data.md before expensive visual coverage.',
         'on_blocking_defect':'Report the concrete source-bound defect as revise and disclose unread evidence; never invent coverage.',
         'for_pass':'Complete the full required source, document, chart, UI and video review; no visual scope or independent role is reduced. A video already actually reviewed and accepted may inherit its original viewed conclusion while its final media and technical evidence remain unchanged; later minor code, data or copy edits do not require another video review. A video never actually accepted still requires the complete first review.'}
@@ -64,8 +81,8 @@ def review_input(workspace,index,destination):
     write_json(destination,facts);return {'facts':str(destination),'sha256':digest(destination),'evidence_items':len(spec['evidence'])}
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('action',choices=['create','check','review-input']);p.add_argument('--workspace');p.add_argument('--manifest');p.add_argument('--index',required=True);p.add_argument('--output');p.add_argument('--ids',nargs='*',default=[]);a=p.parse_args()
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('action',choices=['create','check','review-input']);p.add_argument('--workspace');p.add_argument('--manifest');p.add_argument('--index',required=True);p.add_argument('--output');p.add_argument('--compact',action='store_true');p.add_argument('--ids',nargs='*',default=[]);a=p.parse_args()
     try:
-        result=create(a.workspace,a.manifest,a.index) if a.action=='create' else (review_input(a.workspace,a.index,a.output) if a.action=='review-input' else check(a.index,a.ids,a.workspace))
+        result=create(a.workspace,a.manifest,a.index) if a.action=='create' else (review_input(a.workspace,a.index,a.output,a.compact) if a.action=='review-input' else check(a.index,a.ids,a.workspace))
         print(json.dumps(result,ensure_ascii=False,indent=2));raise SystemExit(0 if result.get('complete',True) else 2)
     except (OSError,ValueError,KeyError) as e:print('ERROR: '+str(e));raise SystemExit(2)

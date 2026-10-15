@@ -256,7 +256,8 @@ def inspect(workspace, execution, index=None, manifest=None):
             raise ValueError('Product and workspace must be disjoint')
         if not output.is_dir() or not any(p.is_file() for p in output.rglob('*')):
             issue('missing', output, 'Current product output is missing or empty')
-        archive = output / '模拟系统/项目源码.zip'
+        from common import delivery_paths
+        archive = delivery_paths(run, output)['source_zip']
         if not archive.is_file():
             issue('missing', archive, 'Current final source ZIP required')
         elif digest(archive) != proof.get('source_zip_sha256') or digest(archive) != package.get('sha256'):
@@ -286,7 +287,7 @@ def inspect(workspace, execution, index=None, manifest=None):
                      'No commands executed, visuals viewed, review approved or receipt modified.'}
 
 
-def draft(workspace, execution, destination, index=None, manifest=None):
+def draft(workspace, execution, destination, index=None, manifest=None, root=None, batch_id=None, token=None, compact=False):
     workspace = no_links(workspace); destination = no_links(destination)
     private = workspace / '.product-v2/review-inputs'
     if private not in destination.parents or destination.exists():
@@ -294,6 +295,12 @@ def draft(workspace, execution, destination, index=None, manifest=None):
     report = inspect(workspace, execution, index, manifest)
     if report['errors']:
         return report  # No partial artifacts on failed preflight.
+    metadata = {}
+    if any(value is not None for value in (root, batch_id, token)):
+        if not all((root, batch_id, token)): raise ValueError('Admitted draft requires --root, --batch-id and --token together')
+        metadata = admitted_metadata(workspace, root, batch_id, token)
+    else:
+        metadata = current_admitted_metadata(workspace)
     destination.mkdir(parents=True, exist_ok=False)
     records = report['evidence']
     snapshot = {'schema_version': 1, 'workspace': str(workspace), 'evidence': records,
@@ -305,9 +312,9 @@ def draft(workspace, execution, destination, index=None, manifest=None):
             json.dump(value, stream, ensure_ascii=False, indent=2); stream.write('\n')
     save('index.json', snapshot)
     facts_path = destination / 'facts.json'
-    review_input(workspace, destination / 'index.json', facts_path)
+    review_input(workspace, destination / 'index.json', facts_path, compact)
     save('preflight.json', report)
-    save('review-draft.json', {'kind': 'non-authoritative-review-draft', 'run_id': report['run_id'],
+    save('review-draft.json', {**metadata, 'kind': 'non-authoritative-review-draft', 'run_id': report['run_id'],
          'checks': report['execution_checks'], 'source_zip_sha256': report['source_zip_sha256'],
          'video_timeline_sha256': report['video_timeline_sha256'],
          'reviewed_files': read_json(facts_path)['current_artifacts'],
@@ -316,7 +323,179 @@ def draft(workspace, execution, destination, index=None, manifest=None):
                         'write independent findings, actual coverage and identity, then attest the final proof hash. '
                         'This draft has no decision or signature and cannot finalize.'})
     return {'status': 'draft_created', 'directory': str(destination), 'evidence_items': len(records),
+            'facts_path': str(facts_path), 'facts_sha256': digest(facts_path),
             'scope': report['scope']}
+
+
+def admitted_metadata(workspace, root, batch_id, token):
+    """Copy machine-owned routing facts, never reviewer conclusions or identity."""
+    from batch_control import batch, load_review_admission, load_review_dispatch_permit
+    workspace = no_links(workspace); _, manifest = batch(root, batch_id)
+    tickets = [q for q in read_json(no_links(root) / 'queue.json')
+               if q.get('token') == token and q.get('batch_id') == batch_id]
+    if len(tickets) != 1 or tickets[0].get('stage') not in {'review', 'expedited'} or tickets[0].get('status') != 'active':
+        raise ValueError('Neutral review metadata requires the current active review ticket')
+    ticket = tickets[0]
+    case = next(c for c in manifest['cases'] if c['case_id'] == ticket['case_id'])
+    if no_links(case['workspace']) != workspace:
+        raise ValueError('Review ticket belongs to a different workspace')
+    reference, permit_reference = ticket.get('review_admission'), ticket.get('review_dispatch_permit')
+    if not isinstance(reference, dict) or not isinstance(permit_reference, dict):
+        raise ValueError('Acquire and verify-review before preparing admitted review metadata')
+    admission = load_review_admission(workspace, reference)
+    load_review_dispatch_permit(workspace, reference, permit_reference)
+    return {'review_admission': reference, 'review_dispatch_permit': permit_reference,
+            'run_id': admission['run_id']}
+
+
+def current_admitted_metadata(workspace):
+    """Bind an existing verified attempt automatically; do not require a future one."""
+    from batch_control import media_binding
+    binding = media_binding(workspace)
+    if not binding: return {}
+    queue = no_links(binding['root']) / 'queue.json'
+    if not queue.is_file(): return {}
+    tickets = [q for q in read_json(queue)
+               if q.get('batch_id') == binding['batch_id'] and q.get('case_id') == binding['case_id']
+               and q.get('stage') in {'review', 'expedited'} and q.get('status') == 'active']
+    if len(tickets) > 1: raise ValueError('Ambiguous active review attempt; preserve existing leases')
+    if not tickets or not tickets[0].get('review_dispatch_permit'): return {}
+    return admitted_metadata(workspace, binding['root'], binding['batch_id'], tickets[0]['token'])
+
+
+def recorded_review_dispatch(workspace, item, entry):
+    """Locate only an already recorded actual dispatch, including old call records."""
+    path = no_links(workspace) / '.product-v2/model-dispatch.json'
+    if path.is_file():
+        record = read_json(path).get('stages', {}).get('review', {})
+        if (isinstance(record, dict) and record.get('review_admission') == entry.get('review_admission')
+                and record.get('call_id')):
+            return dict(record, stage=entry['stage'], status='dispatched')
+    dispatched = [c for c in item.get('calls', []) if c.get('stage') in {'review', 'expedited'}
+                  and c.get('status') == 'dispatched' and c.get('call_id')]
+    for record in reversed(dispatched):
+        if record.get('token', entry['token']) != entry['token']: continue
+        completed = [c for c in item.get('calls', []) if c.get('call_id') == record['call_id']
+                     and c.get('status', '').startswith('completed')]
+        if not completed: return record
+        latest = completed[-1]
+        if latest.get('token') == entry['token']: return record
+        proof_path = latest.get('review_evidence')
+        if proof_path:
+            proof = read_json(no_links(proof_path))
+            reference = proof.get('review_admission') if isinstance(proof, dict) else None
+            # A malformed current report is precisely the case that must keep
+            # its reservation. A prior valid attempt with a different admission
+            # does not block cancellation of an undispatched new attempt.
+            if reference is None or reference == entry.get('review_admission'): return record
+    return None
+
+
+def complete_handoff(root, target, manifest, state, pool, entry, request_path, authorization):
+    """Record an authenticated independent result before releasing its reservation.
+
+    Failure leaves state and queue intact. The independent proof is only read;
+    pass here records the reviewer's decision and does not finalize a product.
+    """
+    from copy import deepcopy
+    from common import write_json
+    from scheduler_policy import config
+    from scheduler_repair import authenticate, freeze_binding
+    request = read_json(request_path)
+    if not isinstance(request, dict): raise ValueError('Review completion request must be an object')
+    case_id = entry['case_id']; case = next(c for c in manifest['cases'] if c['case_id'] == case_id)
+    work = no_links(case['workspace']); metadata = admitted_metadata(work, root, manifest['batch_id'], entry['token'])
+    if request.get('outcome') in {'cancelled', 'diagnostic'}:
+        return exit_handoff(root, target, manifest, state, pool, entry, request_path, request)
+    proof_path = no_links(request.get('review_evidence', ''))
+    if work not in proof_path.parents or digest(proof_path) != request.get('review_evidence_sha256'):
+        raise ValueError('Exact independent report path/hash inside this workspace required')
+    proof = read_json(proof_path)
+    if not isinstance(proof, dict): raise ValueError('Independent review report must be an object')
+    for key in ('run_id', 'review_admission', 'review_dispatch_permit'):
+        if proof.get(key) != metadata[key]:
+            raise ValueError('Independent report missing or mismatched ' + key + '; preserve report and review lease')
+    decision = proof.get('decision')
+    if decision not in {'pass', 'revise', 'blocked'}:
+        raise ValueError('Actual independent pass/revise/blocked decision required')
+    item = state['cases'][case_id]; dispatched = recorded_review_dispatch(work, item, entry)
+    if not dispatched: raise ValueError('Record the actual independent dispatch before completing its review')
+    proposed = deepcopy(state); current = proposed['cases'][case_id]
+    # If this dispatch came from model-dispatch.json, retain that real call in
+    # batch state too. The common authenticator re-reads the real JSONL call.
+    if not any(c.get('call_id') == dispatched['call_id'] and c.get('status') == 'dispatched' for c in current.get('calls', [])):
+        current.setdefault('calls', []).append(dispatched)
+    completed = {'stage': entry['stage'], 'status': 'completed_' + decision,
+                 'call_id': dispatched['call_id'], 'agent_id': proof.get('reviewer_agent_id'),
+                 'review_evidence': str(proof_path), 'review_evidence_sha256': digest(proof_path),
+                 'token': entry['token']}
+    duplicates = [c for c in current.get('calls', []) if c.get('call_id') == dispatched['call_id'] and c.get('status', '').startswith('completed')]
+    if duplicates and any(c.get('review_evidence_sha256') != completed['review_evidence_sha256'] or c.get('status') != completed['status'] for c in duplicates):
+        raise ValueError('This actual dispatch already has a different completed result; preserve both records')
+    if not duplicates: current.setdefault('calls', []).append(completed)
+    current['phase'] = {'revise': 'repairing', 'pass': 'waiting_review', 'blocked': 'blocked'}[decision]
+    current['review_result'] = {'decision': decision, 'review_evidence': str(proof_path),
+                                'review_evidence_sha256': completed['review_evidence_sha256']}
+    if decision == 'blocked': current['blocked_fingerprint'] = completed['review_evidence_sha256']
+    settings = config(root)
+    authenticated = authenticate(root, target, manifest, proposed, case_id, settings, authorization, decision)
+    repair = freeze_binding(target, authenticated) if decision == 'revise' else None
+    if repair:
+        settings.setdefault('repair_bindings', {}).setdefault(manifest['batch_id'], {})[case_id] = repair
+    # Queue replacement is last. If either earlier persistence fails, the slot
+    # stays active and the same exact completed report can be retried safely.
+    write_json(target / 'state.json', proposed)
+    if repair: write_json(no_links(root) / 'scheduler-config.json', settings)
+    entry['review_completion'] = {'schema_version': 1, 'decision': decision, 'call_id': dispatched['call_id'],
+        'review_evidence': completed['review_evidence'], 'review_evidence_sha256': completed['review_evidence_sha256'],
+        'authenticated_group': authenticated['group'], 'repair_binding': repair}
+    entry['status'] = 'released'; entry['released_ns'] = __import__('time').time_ns()
+    write_json(no_links(root) / 'queue.json', pool)
+    return entry
+
+
+def exit_handoff(root, target, manifest, state, pool, entry, request_path, request):
+    """Safe cancellation/diagnostic bookkeeping; never manufacture a review report."""
+    from copy import deepcopy
+    from common import write_json
+    from scheduler_policy import config
+    from scheduler_repair import authenticate_exit
+    outcome = request['outcome']; reason = request.get('reason')
+    if not isinstance(reason, str) or not reason.strip(): raise ValueError('Actual cancellation/diagnostic reason required')
+    if outcome == 'cancelled' and not state['drain']:
+        raise ValueError('Cancellation requires the existing authorized drain; diagnostic exit still requires actual terminal evidence')
+    case_id = entry['case_id']; case = next(c for c in manifest['cases'] if c['case_id'] == case_id)
+    dispatched = recorded_review_dispatch(case['workspace'], state['cases'][case_id], entry)
+    if not dispatched: raise ValueError('Actual dispatched review required; undispatched cancellation uses release-slot')
+    verified = authenticate_exit(root, manifest, state, case_id, config(root), entry, dispatched)
+    proposed = deepcopy(state); item = proposed['cases'][case_id]
+    if not any(c.get('call_id') == dispatched['call_id'] and c.get('status') == 'dispatched' for c in item.get('calls', [])):
+        item.setdefault('calls', []).append(dispatched)
+    completed = {'stage': entry['stage'], 'status': 'completed_' + outcome, 'call_id': dispatched['call_id'],
+                 'agent_id': verified['reviewer_agent_id'], 'token': entry['token'], 'reason': reason,
+                 'termination_evidence': verified}
+    previous = [c for c in item.get('calls', []) if c.get('call_id') == dispatched['call_id'] and c.get('status', '').startswith('completed')]
+    differing = previous and any(c.get('status') != completed['status'] for c in previous)
+    if differing and outcome != 'cancelled':
+        raise ValueError('Existing independent result must be preserved; do not replace it with cancellation/diagnostic status')
+    if differing:
+        # An authorized stop may close a terminated attempt whose report still
+        # needs metadata correction. Retain its result verbatim, and append an
+        # exit fact rather than overwriting the independent decision.
+        completed['status'] = 'attempt_exit_cancelled'
+        if not any(c.get('call_id') == completed['call_id'] and c.get('status') == completed['status'] for c in item['calls']):
+            item['calls'].append(completed)
+    elif not previous:
+        item.setdefault('calls', []).append(completed)
+    if not differing: item['phase'] = 'waiting_review'
+    item['review_exit'] = {'outcome': outcome, 'reason': reason, 'token': entry['token'], 'termination_evidence': verified}
+    write_json(target / 'state.json', proposed)
+    entry['review_completion'] = {'schema_version': 1, 'outcome': outcome, 'call_id': dispatched['call_id'],
+        'request_sha256': digest(no_links(request_path)), 'termination_evidence': verified,
+        'scope': 'Attempt ended without a review decision; product review remains incomplete.'}
+    entry['status'] = 'released'; entry['released_ns'] = __import__('time').time_ns()
+    write_json(no_links(root) / 'queue.json', pool)
+    return entry
 
 
 def main(argv=None):
@@ -325,6 +504,8 @@ def main(argv=None):
     parser.add_argument('--workspace', required=True); parser.add_argument('--execution')
     parser.add_argument('--stage', choices=STAGES)
     parser.add_argument('--plan', help='Existing recording plan for build-complete/pre-review construction checks')
+    parser.add_argument('--root'); parser.add_argument('--batch-id'); parser.add_argument('--token')
+    parser.add_argument('--compact', action='store_true', help='Short neutral facts reference the complete unchanged evidence index; no coverage is inferred')
     scope = parser.add_mutually_exclusive_group()
     scope.add_argument('--index'); scope.add_argument('--manifest'); parser.add_argument('--output')
     args = parser.parse_args(argv)
@@ -338,7 +519,7 @@ def main(argv=None):
         elif args.action == 'draft':
             if not args.output:
                 raise ValueError('draft requires an explicit private --output directory')
-            result = draft(args.workspace, args.execution, args.output, args.index, args.manifest)
+            result = draft(args.workspace, args.execution, args.output, args.index, args.manifest, args.root, args.batch_id, args.token, args.compact)
         else:
             result = inspect(args.workspace, args.execution, args.index, args.manifest)
     except (ValueError, OSError, KeyError, TypeError) as exc:

@@ -6,6 +6,18 @@
 
 ## 本批登记与资源
 
+### r19 接续与交接优先规则
+
+模型只负责源材料理解、实现和独立业务判断。父不重新抄写完整证据：按当前阶段读取本节及对应参考，确定性缺项由已有脚本补齐；仅在阶段完成、资源释放、真实失败或新用户指令时推进，不定时重跑已通过检查。先派发已有就绪工作，再补不影响准入的后台记录；不能省略派发前必须核准的身份与材料。
+
+以下规则取代下文历史接口中笼统的 finally 放票和文本暂停说明：
+
+- 已派发 review 由 `batch_control.py complete-review --root 根目录 --batch-id 本批 --case-id 本案 --token 原票 --value 请求.json` 完成。请求含 `review_evidence` 与 `review_evidence_sha256`；脚本认证真实独立派发、最新 FINAL 和报告哈希，先记录结果及必需返修绑定，再释放原票。它不代写 pass、不发布成品。未派发的取消继续用 `release-slot`；其他阶段仍按已有实际退出和资源规则释放。
+- 已派发审核因真实停止或诊断退出、没有新判定时，请求用 `outcome: cancelled|diagnostic` 和 `reason`。须有真实 child 最新终态与父最新 `list_agents`，且无后来续派；取消另须已有授权 drain。缺证据保留票据，原判定原样保留，不能凭父一句“已结束”放票。
+- 新的 `drain/continue --value 控制事件.json` 包含 `batch_id`、`action`（或布尔 `drain`）、`user_evidence:{path,offset,size,sha256,timestamp}`，可附 `statement`。引用真正用户 JSONL 的原始片段，由父解释该批动作的授权范围；脚本核验事件真实性与时间，按已登记事件保存递增 revision 和 supersedes，较新的恢复不再被旧暂停覆盖。未来时间、模型转述和陈旧重放不得替代当前用户指令。未登记的新消息不会自动被脚本获知。
+- 没有版本记录的旧批仍兼容原 API；已采用版本控制后，状态改变须继续传真实事件。不得为迁移而伪造原始消息、重登记批次或重写历史证明。正常运行时重复 continue 只是幂等接续，不能借此改变授权。
+
+
 r18新授权批次按原流程register/claim/preflight后，默认`bind-controller`核真实父聊天并`configure-scheduler`为`verified-controller-adaptive-v2`，请求JSON为`{"mode":"verified-controller-adaptive-v2","model_pool_capacity":12,"aging_seconds":300}`；直接沿用当前用户批次自动化授权引用，不每批额外征求调度同意。按真实session而非共享PID去重，总模型池理论上限12，无固定组或stage业务配额；建设/返修/普通及已授权加急审核按已验证runtime真实能力和实际就绪需求动态借用，同父多批共享且不能叠加扩容。当前runtime为4槽含父时实际最多3子任务，这是平台事实；后续真实runtime更新后由原owner刷新同父绑定，可在总池12内增长；未知active保守扣容量，审核与返修等待老化并按批公平。返修仍ultra，未获真实revise额外预算绑定时仍保留原work_kind=build，不假造绑定。未中selected含实际owner及`selected_owner_acquire_then_dispatch`动作，只由其owner接续。旧未配置批次及legacy/fair-v1兼容如下，旧active、冻结manifest/run/permit和媒体合同不改；启用/回退仅影响后续acquire。准确绑定和命令见[真实聊天调度](scheduler-policy.md)。
 
 仅用户明确调用/点名并确认的清单运行，已确认不逐案重问。一个Word默认一案，多材料合并须清单明确；锁文件、加密/损坏/旧doc不能静默跳过。冻结原basename、绝对/相对路径、大小、采集时间和SHA256，source副本哈希核验，原目录只读。新增工作区为`cases/YYYY-MM/案件名`（同名中文序号），点名旧案只在其独立revision继续。管理在新版`cases/.batches`、运行状态在各案`.product-v2`/`.runtime`，每案独立端口、浏览器、D盘临时目录。用户指定工作区优先。

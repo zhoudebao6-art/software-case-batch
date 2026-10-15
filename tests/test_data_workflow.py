@@ -18,7 +18,7 @@ class DataWorkflowTests(unittest.TestCase):
             root=Path(directory);work=root/'work';out=root/'out';metadata=work/'.product-v2';metadata.mkdir(parents=True)
             data=out/'模拟系统/数据';data.mkdir(parents=True);path=data/'记录.csv'
             path.write_text('对象编号,时间,数值\nOBJ_001,2026-01-01T00:00:00,1\nOBJ_001,2026-01-02T00:00:00,2\n',encoding='utf-8-sig')
-            write_json(metadata/'run.json',{'data_policy_version':'neutral-expanded-v1'})
+            write_json(metadata/'run.json',{'output':str(out),'data_policy_version':'neutral-expanded-v1'})
             write_json(metadata/'data-cleaning.json',{'files':[{'name':path.name,'sha256':digest(path)}]})
             plan={'export_schema':{path.name:{'columns':{'对象编号':{'kind':'id','pattern':r'OBJ_\d{3}'},'时间':{'kind':'timestamp'},'数值':{'kind':'number'}},'primary_key':['对象编号','时间'],'effective_key':['对象编号','时间','数值'],'time_column':'时间','object_columns':['对象编号']}},
                   'name_review':{path.name:{'sha256':digest(path),'filename_checked':True,'columns_checked':True,'text_checked':True,'evidence':'真实逐项检查编号及固定业务字段，无专名'}},

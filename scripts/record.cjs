@@ -196,6 +196,16 @@ function command(exe,args,runner=spawnSync) {
   if(result.error || result.status!==0) throw Error(commandFailure(exe,args,result));
   return result.stdout;
 }
+function frozenDeliveryPaths(workspace,run) {
+  // Pre-product recording fixtures/runs keep their existing recorder contract.
+  // Every product-v2 run, including r18 without a layout field, uses Python's
+  // single frozen resolver. Unknown declared layouts cannot take the old route.
+  if(run.schema_version!==2&&!('delivery_layout_version' in run)&&!('output' in run))return {video:run.video};
+  if(!process.env.SCB_PRO_PYTHON)throw Error('Load Enter-Environment.ps1 first');
+  const result=JSON.parse(command(process.env.SCB_PRO_PYTHON,[path.join(__dirname,'common.py'),'--delivery-paths',workspace]));
+  if(result.run_sha256!==sha(fs.readFileSync(path.join(workspace,'.product-v2/run.json'))))throw Error('Run changed while resolving frozen delivery paths');
+  return result;
+}
 function batchBinding(workspace) {
   const file=path.join(workspace,'.product-v2/batch-binding.json');
   if(!fs.existsSync(file))return null;
@@ -348,11 +358,12 @@ function recordingSetup(workspace,planPath) {
   const inputs=Object.fromEntries(plan.input_files.map(rel=>[rel,sha(fs.readFileSync(safeFile(workspace,rel)))]));
   const storageState='storage_state' in plan?safeFile(workspace,plan.storage_state):undefined;
   const storageStateHash=storageState?sha(fs.readFileSync(storageState)):null;
+  const deliveryPaths=frozenDeliveryPaths(workspace,run);
   const constructionChecks='construction_check_policy_version' in run?
     JSON.parse(command(process.env.SCB_PRO_PYTHON,[path.join(__dirname,'proflow.py'),'check-build','--workspace',workspace,'--plan',planPath])):
     {required:false,status:'historical-contract'};
   if('construction_check_policy_version' in run&&(constructionChecks.status!=='ready'||constructionChecks.required!==true))throw Error('Current construction self-check admission required');
-  return {workspace,run,plan,estimatedDuration,recordingPolicy,planSha:sha(planBytes),runSha:sha(runBytes),inputs,storageState,storageStateHash,constructionChecks};
+  return {workspace,run,plan,estimatedDuration,recordingPolicy,planSha:sha(planBytes),runSha:sha(runBytes),inputs,storageState,storageStateHash,constructionChecks,deliveryPaths};
 }
 async function healthIdentity(workspace,run,plan,request=null) {
   const origin=new URL(plan.url),url=new URL(plan.health_path,origin.origin);
@@ -421,7 +432,7 @@ async function recordPhase(workspace, planPath, phase='full',lease=null) {
   if(phase==='evidence') return finishRecording(workspace,lease);
   const setup=recordingSetup(workspace,planPath),{run,plan,estimatedDuration,recordingPolicy,planSha,inputs,storageState}=setup;
   let duration=estimatedDuration,finalResultCompletion;
-  const final=run.video;
+  const final=setup.deliveryPaths.video;
   if(fs.existsSync(final)) throw Error('Final video already exists; preserve it before making a new version');
   const ffmpeg=process.env.SCB_PRO_FFMPEG, ffprobe=process.env.SCB_PRO_FFPROBE;
   if(!ffmpeg || !ffprobe || !process.env.SCB_PRO_PLAYWRIGHT || !process.env.TEMP?.toLowerCase().startsWith('d:\\codex+\\')) throw Error('Load Enter-Environment.ps1 first');
@@ -521,13 +532,14 @@ function finishRecording(workspace,lease=null) {
   const capturePath=safeFile(workspace,path.relative(workspace,pending.path));
   if(sha(fs.readFileSync(capturePath))!==pending.sha256) throw Error('Capture receipt changed');
   const c=load(capturePath),run=load(path.join(workspace,'.product-v2/run.json'));
+  const deliveryPaths=frozenDeliveryPaths(workspace,run);
   if(!fs.existsSync(c.final)&&'construction_check_policy_version' in run){
     const current=JSON.parse(command(process.env.SCB_PRO_PYTHON,[path.join(__dirname,'proflow.py'),'check-build','--workspace',workspace,
       ...(c.plan_path?['--plan',c.plan_path]:[])]));
     if(current.status!=='ready'||current.required!==true||c.construction_checks?.status!=='ready'||c.construction_checks?.run_id!==run.run_id)throw Error('Current construction admission required before evidence');
   }
   const {final,dir,rawPath,prelude,duration,inputs,identity,events,texts}=c;
-  if(c.status!=='captured'||c.workspace!==workspace||c.run_id!==run.run_id||final!==run.video||c.errors.length) throw Error('Capture belongs to a different or failed run');
+  if(c.status!=='captured'||c.workspace!==workspace||c.run_id!==run.run_id||final!==deliveryPaths.video||c.errors.length) throw Error('Capture belongs to a different or failed run');
   if('construction_check_policy_version' in run&&(c.construction_checks?.status!=='ready'||c.construction_checks?.run_id!==run.run_id))throw Error('Original construction admission required');
   const checksPath=path.join(workspace,'.product-v2/build-checks.json');
   if(fs.existsSync(final)&&fs.existsSync(checksPath)&&load(checksPath).video_material_change)throw Error('Video requires replacement for recorded major system/operation change');
@@ -600,4 +612,4 @@ if(require.main===module) {
     }catch(error){console.error(String(error));process.exitCode=2;}
   }
 }
-module.exports={validatePlan,checkReady,downloadRequestGuard,record,localUrl,auditUiText,finishRecording,leaseArgs,isolatedBrowserOptions,batchBinding,validateBatchPhase,executeTimeline,boundPolicy,validateMeasuredDuration,withActionableTarget,performRecordedAction,uniqueVisibleLocator,observeVisibleResult,movePointer,command,commandFailure};
+module.exports={frozenDeliveryPaths,validatePlan,checkReady,downloadRequestGuard,record,localUrl,auditUiText,finishRecording,leaseArgs,isolatedBrowserOptions,batchBinding,validateBatchPhase,executeTimeline,boundPolicy,validateMeasuredDuration,withActionableTarget,performRecordedAction,uniqueVisibleLocator,observeVisibleResult,movePointer,command,commandFailure};

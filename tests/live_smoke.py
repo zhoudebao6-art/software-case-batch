@@ -20,7 +20,7 @@ root=Path(tempfile.mkdtemp(prefix='product-v2-live-',dir=os.environ['TEMP']))
 work=root/'case';work.mkdir();out=root/'delivery'
 source_docx=work/'工具验证原件.docx'
 with zipfile.ZipFile(source_docx,'w') as z:z.writestr('word/document.xml','<document/>')
-prepare(work,out,'业务工具验证',source_docx)
+run=prepare(work,out,'业务工具验证',source_docx)
 server=work/'app.py';shutil.copyfile(Path(__file__).with_name('fixture_server.py'),server)
 with socket.socket() as probe:probe.bind(('127.0.0.1',0));port=probe.getsockname()[1]
 process=subprocess.Popen([sys.executable,str(server),str(port)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=subprocess.CREATE_NO_WINDOW)
@@ -60,7 +60,7 @@ try:
     (work/'extracted_text.txt').write_text('Internal extraction fixture',encoding='utf8')
     source=work/'.product-v2/source.json';write_json(source,{'files':['app.py','README.md','extracted_text.txt']})
     packaging=pack_source(work,out,source);scan=scan_delivery(out);assert scan['passed'],scan['hits']
-    result={'fixture':str(root),'workspace':str(work),'video':str(out/'模拟系统/演示视频.mp4'),
+    result={'fixture':str(root),'workspace':str(work),'video':run['video'],
             'rows':cleaning['files'][0]['rows'],'excluded':[x['path'] for x in packaging['excluded']],
             'process_status':cleanup['status'],'pid':process.pid,'port':port,'scan_passed':True,
             'scope':'Isolated tools fixture only; not a completed user case'}

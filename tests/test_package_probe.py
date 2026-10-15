@@ -100,6 +100,17 @@ class PackageProbeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'wholly new'):
             probe(self.work, self.case_probe, self.receipt)
 
+    def test_new_layout_real_extracted_service_core_chain_and_child_exit(self):
+        # Same real startup/probe/precise teardown through the new frozen path.
+        target=self.out/'系统材料'
+        (self.out/'模拟系统').rename(target)
+        (target/'项目源码.zip').rename(target/'源代码.zip')
+        self.archive=target/'源代码.zip'
+        run=read_json(self.work/'.product-v2/run.json')
+        run['delivery_layout_version']='system-materials-v2'
+        write_json(self.work/'.product-v2/run.json',run)
+        self.test_real_extracted_service_core_chain_and_child_exit()
+
     def test_timeout_closes_real_listener_and_retains_failed_tree(self):
         self.case_probe.write_text(CASE_PROBE + '\nwhile True: time.sleep(.1)\n', encoding='utf-8')
         result = probe(self.work, self.case_probe, self.receipt, timeout=1.5)

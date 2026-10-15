@@ -190,21 +190,24 @@ def chart_records(spec, run):
 
 def delivery_layout(output, run):
     """Exact user-facing names, including empty unexpected directories."""
+    from common import delivery_paths
+    paths = delivery_paths(run, output)
     if run.get('schema_version') != 2 or not run.get('word_name'):
         raise ValueError('Legacy run is frozen; create a new version with explicit source-docx')
-    expected = {run['word_name'], '模拟系统'}
+    expected = {run['word_name'], paths['system_name']}
     if {p.name for p in output.iterdir()} != expected:
-        raise ValueError('Delivery root must contain exactly the original Word filename and 模拟系统')
+        raise ValueError('Delivery root must contain exactly the original Word filename and '+paths['system_name'])
     word = inside(output, run['word_name'])
-    system = no_links(output/'模拟系统')
-    if not system.is_dir() or {p.name for p in system.iterdir()} != {'项目源码.zip','演示视频.mp4','数据'}:
-        raise ValueError('模拟系统 must contain exactly 项目源码.zip, 演示视频.mp4 and 数据')
-    for name in ('项目源码.zip','演示视频.mp4'):
+    system = paths['system']
+    if not system.is_dir() or {p.name for p in system.iterdir()} != {paths['source_name'],paths['video_name'],'数据'}:
+        raise ValueError(paths['system_name']+' must contain exactly '+paths['source_name']+', '+paths['video_name']+' and 数据')
+    for name in (paths['source_name'],paths['video_name']):
         if inside(system,name).stat().st_size == 0:
             raise ValueError('Empty deliverable: '+name)
     data=no_links(system/'数据')
     if not data.is_dir() or not list(data.iterdir()) or any(not p.is_file() or p.suffix.lower()!='.csv' for p in data.iterdir()):
         raise ValueError('数据 must contain nonempty selected CSV files only')
+    for path in data.iterdir():no_links(path)
     return word
 
 def chart_snapshot(workspace, word, run):
@@ -312,17 +315,20 @@ def chart_snapshot(workspace, word, run):
         snapshot['retained_results']={str(f['figure_id']):f['sha256'] for f in spec['retained_results']}
     return snapshot
 
-def _dispatch_events(path, call_id):
+def _dispatch_events(path, call_id, observe=None):
     path=no_links(path)
     root=no_links(SESSION_ROOT)
     if root not in path.parents or path.suffix.lower()!='.jsonl':
         raise ValueError('Dispatch must be verified against actual Codex session JSONL, not a hand-written workspace transcript')
     calls,outputs=[],[]
     sessions=[]
-    with path.open(encoding='utf-8') as stream:
-        for line in stream:
+    with path.open('rb') as stream:
+        while True:
+            position=stream.tell();line=stream.readline()
+            if not line:break
             try: event=json.loads(line)
             except json.JSONDecodeError: continue  # active final partial line is not evidence
+            if observe is not None:observe(event,position,line)
             if event.get('type')=='session_meta': sessions.append(event.get('payload',{}).get('id'))
             if event.get('type')!='response_item': continue
             payload=event.get('payload',{})
@@ -595,6 +601,8 @@ def _model_review(workspace, proof, files, charts, evidence_path, hash_file=dige
         verified['expedited_authorization']=expedited_authorization(workspace,authorization)
         review_model,review_effort='gpt-6-astra','low'
     review_parent=None;encrypted_binding=None;review_window=None
+    from scheduler_repair import ReviewFreshness
+    freshness=ReviewFreshness(stages['review'].get('agent_id'),stages['review'].get('call_id'))
     repairs=sorted((k for k in stages if k.startswith('repair-')),key=lambda k:int(k.split('-')[1]))
     if repairs!=['repair-'+str(i) for i in range(1,len(repairs)+1)]:
         raise ValueError('Repair dispatch sequence must be contiguous and retained')
@@ -619,7 +627,7 @@ def _model_review(workspace, proof, files, charts, evidence_path, hash_file=dige
                 raise ValueError('Frozen implementation completion snapshot changed')
             agents[stage]=agent_id;verified[stage]=saved
             continue
-        call,result,parent_id=_dispatch_events(record['session_log'],call_id)
+        call,result,parent_id=_dispatch_events(record['session_log'],call_id,freshness.parent if stage=='review' else None)
         if stage=='review': review_parent=parent_id
         payload=call['payload']
         if payload.get('name','').split('.')[-1] not in {'spawn_agent'}:
@@ -669,9 +677,10 @@ def _model_review(workspace, proof, files, charts, evidence_path, hash_file=dige
     child_sessions=[]
     proof_hash=hash_file(evidence_path)
     with review_log.open(encoding='utf-8') as stream:
-        for line in stream:
+        for position,line in enumerate(stream):
             try: event=json.loads(line)
             except json.JSONDecodeError: continue
+            freshness.child(event,position)
             payload=event.get('payload',{})
             if event.get('type')=='session_meta':
                 child_sessions.append(payload)
@@ -705,6 +714,7 @@ def _model_review(workspace, proof, files, charts, evidence_path, hash_file=dige
     if encrypted_binding and len(child_sessions)!=1:actual_identity=False
     if not actual_identity or not actual_attestation:
         raise ValueError('Independent reviewer final must attest the exact review JSON SHA256 and any encrypted dispatch binding; builder cannot self-sign pass')
+    freshness.verify()
     if _recorded_dispatch is not None:return verified
     reviews=proof.get('chart_reviews',[])
     if policy==BUILD_CHART_POLICY:

@@ -1,3 +1,7 @@
+## r19交付布局兼容
+
+新完整prepare冻结delivery_layout_version=system-materials-v2，本文新案示例均为系统材料/源代码.zip、操作视频.mp4、数据。历史run缺此字段按legacy-v1解释，原模拟系统/项目源码.zip、演示视频.mp4不迁移；合法document/package revision继承基案布局。路径统一由common.delivery_paths解析，未知布局或run路径别名漂移拒绝，不能混装新旧目录。旧独立证明、final/publish收据及其成员名不重写。
+
 # 工具和证据格式
 
 加载 `Enter-Environment.ps1` 后，`$env:SCB_PRO_PYTHON` 是已配置 Python。下面 `工具目录` 均指本技能 scripts；`案件目录` 是用户点名的原案件工作区。工具不调用模型；父会话实际分派high建设、ultra返修，普通独立审核ultra，真实当前批/案原加急授权后的独立审核Astra/low；不能把配置或自检当成调用证明。
@@ -14,7 +18,7 @@
 & $env:SCB_PRO_PYTHON '工具目录\proflow.py' scan --workspace '案件目录'
 ```
 
-`--source-docx` 必须指向一个明确原输入，检查Word包并冻结绝对路径、SHA256和完整basename（含中文、括号等）；不扫描多个Word任意选择。run schema 2的 `word_name`、`word` 是动态交付路径。成品根目录只允许该basename和 `模拟系统`；系统内只允许 `项目源码.zip`、`演示视频.mp4`、`数据`，数据目录直接存重要CSV。源码ZIP也排除使用/运行/安装/部署说明、制作过程、原件解析及数据构造/来源说明，不放揭示模拟性质的文案；启动脚本和必要许可证保留。run 1及旧收据保留，不能原地升级。
+`--source-docx` 必须指向一个明确原输入，检查Word包并冻结绝对路径、SHA256和完整basename（含中文、括号等）；不扫描多个Word任意选择。run schema 2的 `word_name`、`word` 是动态交付路径。成品根目录只允许该basename和 `系统材料`；系统内只允许 `源代码.zip`、`操作视频.mp4`、`数据`，数据目录直接存重要CSV。源码ZIP也排除使用/运行/安装/部署说明、制作过程、原件解析及数据构造/来源说明，不放揭示模拟性质的文案；启动脚本和必要许可证保留。run 1及旧收据保留，不能原地升级。
 
 清洗前须有本次 `process_guard.py stop` 的成功回执，清洗命令再次查询 OS，旧回执不能掩盖已重启后台。重要 CSV 清单（每项按本案实际替换，路径相对工作区）：
 
@@ -143,8 +147,8 @@ spawn_agent(task_name="本案独立验收", fork_turns="none", model="gpt-6.1-so
 {
   "schema_version":1,
   "stages":{
-    "build":{"session_log":"C:/Users/Administrator/.codex/sessions/.../父会话.jsonl","call_id":"实际建设call_id","agent_id":"/root/实际建设task_name","artifact_hashes":{"原名.docx":"SHA256","模拟系统/项目源码.zip":"SHA256","模拟系统/演示视频.mp4":"SHA256","模拟系统/数据/记录.csv":"SHA256"},"chart_snapshot":{"chart_policy":"analytical-v2","manifest_sha256":"SHA256","figures":{"3":"PNG_SHA256","4":"PNG_SHA256"}}},
-    "review":{"session_log":"C:/Users/Administrator/.codex/sessions/.../父会话.jsonl","call_id":"实际独立验收call_id","agent_id":"/root/实际独立验收task_name","review_session_log":"C:/Users/Administrator/.codex/sessions/.../验收子会话.jsonl","artifact_hashes":{"原名.docx":"SHA256","模拟系统/项目源码.zip":"SHA256","模拟系统/演示视频.mp4":"SHA256","模拟系统/数据/记录.csv":"SHA256"},"chart_snapshot":{"chart_policy":"analytical-v2","manifest_sha256":"SHA256","figures":{"3":"PNG_SHA256","4":"PNG_SHA256"}}}
+    "build":{"session_log":"C:/Users/Administrator/.codex/sessions/.../父会话.jsonl","call_id":"实际建设call_id","agent_id":"/root/实际建设task_name","artifact_hashes":{"原名.docx":"SHA256","系统材料/源代码.zip":"SHA256","系统材料/操作视频.mp4":"SHA256","系统材料/数据/记录.csv":"SHA256"},"chart_snapshot":{"chart_policy":"analytical-v2","manifest_sha256":"SHA256","figures":{"3":"PNG_SHA256","4":"PNG_SHA256"}}},
+    "review":{"session_log":"C:/Users/Administrator/.codex/sessions/.../父会话.jsonl","call_id":"实际独立验收call_id","agent_id":"/root/实际独立验收task_name","review_session_log":"C:/Users/Administrator/.codex/sessions/.../验收子会话.jsonl","artifact_hashes":{"原名.docx":"SHA256","系统材料/源代码.zip":"SHA256","系统材料/操作视频.mp4":"SHA256","系统材料/数据/记录.csv":"SHA256"},"chart_snapshot":{"chart_policy":"analytical-v2","manifest_sha256":"SHA256","figures":{"3":"PNG_SHA256","4":"PNG_SHA256"}}}
   }
 }
 ```
@@ -201,7 +205,7 @@ spawn_agent(task_name="本案独立验收", fork_turns="none", model="gpt-6.1-so
 & $env:SCB_PRO_PYTHON '工具目录\proflow.py' finalize-package-revision --workspace '新包修订工作区' --evidence '独立ultra本次review.json'
 ```
 
-`--allow-untracked-base`只在package prepare有效：父receipt登记每个文件逐项核hash，拒绝登记文件变动与链接；只按receipt白名单复制。额外Office owner临时文件/用户说明等分别记录`untracked_base_files`与hash，原位保留、不复制、不删除；finalize普通严格目录门禁不忽略杂物。最终新目录仍exact原名Word+模拟系统三项。
+`--allow-untracked-base`只在package prepare有效：父receipt登记每个文件逐项核hash，拒绝登记文件变动与链接；只按receipt白名单复制。额外Office owner临时文件/用户说明等分别记录`untracked_base_files`与hash，原位保留、不复制、不删除；finalize普通严格目录门禁不忽略杂物。最终新目录仍exact原名Word+系统材料三项。
 
 门禁沿显式`revision_of/inherited_system`验证每代receipt/proofhash与登记产物、原源文件、原六类测试日志、源码、录制依赖、CSV输入输出和出处，不扫描其他case。当前Word/视频/每CSV与最近父登记文件每字节相同，chart_snapshot包含manifest与PNG也相同；以前真实全页/逐图阅读合法继承并在coverage区别说明，不重新渲染/录制。
 

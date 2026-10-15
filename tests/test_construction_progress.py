@@ -47,9 +47,9 @@ class DependencyFixture(unittest.TestCase):
         with patch('subprocess.run',side_effect=AssertionError('Status must not run stages')),patch('subprocess.Popen',side_effect=AssertionError('Status must not start services')):
             return workflow_status(self.work,self.out,self.run,self.plan,evidence)
     def recorded(self,technical=True):
-        system=self.out/'模拟系统';system.mkdir(exist_ok=True)
+        system=self.out/'系统材料';system.mkdir(exist_ok=True)
         (system/'数据').mkdir(exist_ok=True)
-        video=system/'演示视频.mp4';video.write_bytes(b'unit fixture representing recorded video')
+        video=system/'操作视频.mp4';video.write_bytes(b'unit fixture representing recorded video')
         raw=self.file('evidence/original.webm','original continuous capture fixture')
         capture_path=self.control/'capture.json'
         write_json(capture_path,{'status':'captured','errors':[],'workspace':str(self.work),'run_id':self.run['run_id'],
@@ -133,7 +133,7 @@ class ProgressTests(DependencyFixture):
         self.recorded();self.assertEqual(self.status()['next_actions'],['cleanup-after-required-online-work'])
         write_json(self.control/'cleanup.json',{'status':'stopped','workspace':str(self.work),'remaining':[]})
         self.assertEqual(self.status()['next_actions'],['preserve-data-draft then clean-data'])
-        exported=self.out/'模拟系统/数据/input.csv';exported.write_bytes((self.work/'data/input.csv').read_bytes())
+        exported=self.out/'系统材料/数据/input.csv';exported.write_bytes((self.work/'data/input.csv').read_bytes())
         write_json(self.control/'data-cleaning.json',{'status':'cleaned','files':[{'input':str(self.work/'data/input.csv'),
             'input_sha256':digest(self.work/'data/input.csv'),'name':'input.csv','sha256':digest(exported)}]})
         self.assertEqual(self.status()['next_actions'],['check-data'])
@@ -142,7 +142,7 @@ class ProgressTests(DependencyFixture):
                             'expansion':{'expansion_status':'pass'}}
         write_json(self.control/'data-cleaning.json',cleaned)
         self.assertEqual(self.status()['next_actions'],['pack-source'])
-        archive=self.out/'模拟系统/项目源码.zip';archive.write_bytes(b'final package fixture')
+        archive=self.out/'系统材料/源代码.zip';archive.write_bytes(b'final package fixture')
         write_json(self.control/'source-package.json',{'sha256':digest(archive),'files':{'app.py':digest(self.work/'app.py')}})
         self.assertEqual(self.status()['next_actions'],['verify-final-zip-startup-and-execution-evidence'])
         startup=self.file('evidence/package-startup.log','isolated final zip startup fixture')
@@ -205,9 +205,9 @@ class ProgressTests(DependencyFixture):
         result=self.status();self.assertEqual(result['steps']['recording']['state'],'unknown')
         self.assertNotIn('check-build then capture',result['next_actions'])
     def test_data_and_package_hash_changes_are_local(self):
-        self.recorded();system=self.out/'模拟系统'
+        self.recorded();system=self.out/'系统材料'
         exported=system/'数据/input.csv';exported.write_text('编号,值\n001,10\n',encoding='utf8')
-        archive=system/'项目源码.zip';archive.write_bytes(b'package fixture')
+        archive=system/'源代码.zip';archive.write_bytes(b'package fixture')
         write_json(self.control/'data-cleaning.json',{'status':'cleaned','files':[{'input':str(self.work/'data/input.csv'),
             'input_sha256':digest(self.work/'data/input.csv'),'name':'input.csv','sha256':digest(exported)}]})
         write_json(self.control/'source-package.json',{'sha256':digest(archive),'files':{'app.py':digest(self.work/'app.py')}})
@@ -220,8 +220,8 @@ class ProgressTests(DependencyFixture):
         result=self.status();self.assertEqual(result['steps']['data']['state'],'stale');self.assertEqual(result['steps']['source_package']['state'],'stale')
         self.assertEqual(result['steps']['recording']['state'],'technical_ready')
     def test_incomplete_self_signed_final_never_attests_independent_acceptance(self):
-        self.recorded();system=self.out/'模拟系统'
-        Path(self.run['word']).write_bytes(self.source.read_bytes());(system/'项目源码.zip').write_bytes(b'zip fixture')
+        self.recorded();system=self.out/'系统材料'
+        Path(self.run['word']).write_bytes(self.source.read_bytes());(system/'源代码.zip').write_bytes(b'zip fixture')
         (system/'数据/records.csv').write_text('编号\n1\n',encoding='utf8')
         proof=self.control/'review.json';write_json(proof,{'reviewer_agent_id':'fixture-independent','reviewed_evidence':['E001']})
         final={'status':'complete','files':file_map(self.out),'verified_dispatch':{'review':{'agent_id':'fixture-independent'}},

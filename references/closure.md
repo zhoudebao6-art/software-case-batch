@@ -1,5 +1,11 @@
 # 标准阶段资料与隔离源码包探针
 
+## r19 单次审核交接
+
+父的新交接统一使用 `review_packet.py draft --compact`，只传返回的 facts 路径、哈希和本轮差异，不把完整索引抄入派发词。审核准入后，工具从绑定批次唯一且已验证的当前审核票机械填入 admission/permit；也可显式 `--root --batch-id --token`。提前准备、尚未取得审核票时仍可生成中性草稿。`--compact` 只将事实展开内容改为路径、哈希、计数等短索引，保留完整覆盖文件；不会填写 reviewer 决定、已阅 ID 或继承关系，不自动缩减首次 Word/视频范围。旧 CLI 不带开关的默认行为仅为接口兼容保留。审核者只展开本轮需要阅读的材料，机械缺字段不另派一轮模型补抄。
+
+审核结束统一使用 [父编排的 complete-review](execution.md#r19-接续与交接优先规则)，真实结果先落盘，必要返修关联后再放票。发布仍须真实独立通过及完整既有门禁；复验只处理未过、未读、受影响项，不重复计算未变的合格数据或重录合格视频。
+
 在原阶段已经完成相关工作时进行一次短交接检查；缺项只补真实缺项，不新建完整验收轮次。先在当前 PowerShell 加载已安装 `Enter-Environment.ps1`，使用 `$env:SCB_PRO_PYTHON`。以下工具不派发模型、不签独立通过，不改已完成生产案。
 
 ```powershell
@@ -22,7 +28,7 @@
 & $env:SCB_PRO_PYTHON scripts/package_probe.py run --workspace '原prepared案件绝对目录' --probe '原工作区内真实包业务探针.py' --receipt '原工作区内evidence\全新包检查.json' --timeout 120
 ```
 
-工具从原 run 的成品目录选择 `模拟系统/项目源码.zip`，核对 `source-package.json` 的最终哈希；在 `D:\codex+\temp` 自动建全新目录，完整校验 ZIP 路径、重复 Windows 名称、链接、成员数量与解包总大小后解包。它不会对隔离树执行 `prepare` 或 `process_guard register/stop`。该目录只承载这次试启动，不是新案件。
+工具从原 run 的成品目录选择 `系统材料/源代码.zip`，核对 `source-package.json` 的最终哈希；在 `D:\codex+\temp` 自动建全新目录，完整校验 ZIP 路径、重复 Windows 名称、链接、成员数量与解包总大小后解包。它不会对隔离树执行 `prepare` 或 `process_guard register/stop`。该目录只承载这次试启动，不是新案件。
 
 案件只需提供真正执行本案启动和核心业务链的 Python 探针。探针使用环境变量 `SCB_PACKAGE_ROOT` 访问最终 ZIP 的隔离内容，使用 `SCB_PACKAGE_RESULT` 写实际断言 JSON，`SCB_PACKAGE_RUN_ID` 是原 run 身份；通过 `subprocess.Popen` 的参数列表从隔离目录启动软件，配置独立数据库/端口，执行本案算法与持久化/查询操作。需要外部交付 CSV 的案件由其探针明确读取或复制本案已合格 CSV；通用工具不替代数据清洗和本案输入映射，不借用已在线的原服务冒充解包启动。
 

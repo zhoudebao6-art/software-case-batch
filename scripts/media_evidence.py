@@ -4,11 +4,21 @@ import json
 import math
 import os
 from pathlib import Path
-from common import digest,inside,no_links,read_json,write_json
+from common import digest,inside,no_links,read_json,write_json,state,delivery_paths
 from _video_evidence_core import generate as core_generate
 
 LEGACY_POLICY='legacy-fixed-v1'
 FLOW_POLICY='flow-complete-v1'
+
+
+def frozen_video(workspace,video):
+    """Prepared deliveries use their frozen path; standalone media stays generic."""
+    video=no_links(video)
+    if (workspace/'.product-v2/run.json').is_file():
+        _,output,run=state(workspace)
+        if video!=delivery_paths(run,output)['video']:
+            raise ValueError('Video path differs from the frozen delivery layout')
+    return video
 
 def validate_recording_duration(proof,run_policy=None,duration=None):
     """Validate measured media and completion facts against its frozen policy.
@@ -54,6 +64,7 @@ def validate_recording_duration(proof,run_policy=None,duration=None):
 
 def generate(workspace,video,recording,output,media_token=None,owner_pid=None,runtime_pid=None):
     workspace=no_links(workspace);video=no_links(video);recording=no_links(recording);output=no_links(output)
+    video=frozen_video(workspace,video)
     from batch_control import media_binding,mutate
     binding=media_binding(workspace)
     if binding:
@@ -85,6 +96,7 @@ def generate(workspace,video,recording,output,media_token=None,owner_pid=None,ru
 
 def validate(workspace,timeline_path,video,recording_path=None):
     workspace=no_links(workspace);timeline_path=no_links(timeline_path)
+    video=frozen_video(workspace,video)
     if workspace not in timeline_path.parents:raise ValueError('Video timeline escaped case workspace')
     report=read_json(timeline_path)
     if (report.get('video_sha256')!=digest(video) or report.get('sample_fps')!=5 or not report.get('decode_ok')
