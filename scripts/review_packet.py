@@ -8,11 +8,120 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
 
 from common import digest, inside, no_links, product_location, read_json
 from evidence_index import check, review_input
 
 EXECUTION_KINDS = ('algorithm', 'api', 'persistence', 'browser', 'build', 'package_startup')
+STAGES = ('build-start', 'build-complete', 'data-ready', 'pre-review')
+
+
+def stage_check(workspace, stage, execution=None, index=None, manifest=None, plan=None):
+    """Check materials when they become due, without creating missing evidence.
+
+    Pre-review deliberately does not require an independent review dispatch:
+    admission and the real review call happen after this preparation step.
+    Final review authentication remains contracts.model_review's responsibility.
+    """
+    workspace = no_links(workspace)
+    if stage not in STAGES:
+        raise ValueError('Unknown material handoff stage')
+    errors = []
+
+    def issue(location, message, action):
+        errors.append({'code': 'stage-material', 'location': str(location),
+                       'message': str(message)[:1000], 'action': action})
+
+    def document(name, action):
+        try:
+            value = read_json(inside(workspace, '.product-v2/' + name))
+            if not isinstance(value, dict):
+                raise ValueError('Expected a JSON object')
+            return value
+        except (ValueError, OSError, TypeError) as exc:
+            issue(name, exc, action); return {}
+
+    run = document('run.json', 'Use proflow.py prepare on the original case workspace; do not prepare the extracted package tree.')
+    if run.get('workspace') != str(workspace) or not run.get('run_id'):
+        issue('run.json', 'Current original workspace and run_id required', 'Read the current prepared run.json; preserve historical runs.')
+    if stage in {'build-start', 'build-complete', 'pre-review'}:
+        action = ('Record the actual spawn_agent session_log, call_id and returned task_name in model-dispatch.json; '
+                  'never invent a dispatch or fill in the future review call.')
+        spec = document('model-dispatch.json', action)
+        stages = spec.get('stages', {})
+        if (spec.get('schema_version') != 1 or not isinstance(stages, dict) or 'build' not in stages
+                or any(not isinstance(k, str) or (k not in {'build', 'review'}
+                       and not re.fullmatch(r'repair-[1-9][0-9]*', k)) for k in stages)):
+            issue('model-dispatch.json.stages', 'Actual build and retained contiguous repair dispatch records required', action)
+            stages = {}
+        repairs = sorted((k for k in stages if k.startswith('repair-')), key=lambda k: int(k.split('-')[1]))
+        if repairs != ['repair-' + str(i) for i in range(1, len(repairs) + 1)]:
+            issue('model-dispatch.json.stages', 'Repair sequence must be contiguous and retained', action)
+        seen_calls, seen_agents = set(), set()
+        for name in (['build'] + repairs if stages else []):
+            try:
+                from contracts import _dispatch_events
+                entry = stages[name]
+                if not isinstance(entry, dict) or not isinstance(entry.get('call_id'), str) or not entry['call_id']:
+                    raise ValueError('Actual distinct stage call_id required')
+                call_id = entry['call_id']
+                if call_id in seen_calls:
+                    raise ValueError('Distinct stage call IDs required')
+                seen_calls.add(call_id)
+                # Reuse the same authentic session root / call-output matcher as finalization.
+                call, result, _ = _dispatch_events(entry.get('session_log', ''), call_id)
+                payload = call['payload']; arguments = json.loads(payload['arguments'])
+                effort = 'high' if name == 'build' else 'ultra'
+                if (payload.get('name', '').split('.')[-1] != 'spawn_agent'
+                        or arguments.get('fork_turns') != 'none' or arguments.get('model') != 'gpt-6.1-sol'
+                        or arguments.get('reasoning_effort') != effort):
+                    raise ValueError('Actual ' + name + ' must use gpt-6.1-sol/' + effort + ' with fork_turns=none')
+                result = result['payload'].get('output')
+                if isinstance(result, str):
+                    result = json.loads(result)
+                if (not isinstance(result, dict) or not isinstance(result.get('task_name'), str)
+                        or not result['task_name'] or entry.get('agent_id') != result['task_name']
+                        or result['task_name'] in seen_agents
+                        or any(result.get(k) for k in ('error', 'isError', 'is_error'))):
+                    raise ValueError('Distinct actual successful returned task_name must match agent_id')
+                seen_agents.add(result['task_name'])
+                if stage != 'build-start' and (not isinstance(entry.get('artifact_hashes'), dict)
+                        or not entry['artifact_hashes'] or not isinstance(entry.get('chart_snapshot'), dict)
+                        or not entry['chart_snapshot']):
+                    raise ValueError('Retain each actual completed build/repair artifact_hashes and chart_snapshot')
+            except (ValueError, OSError, KeyError, TypeError, AttributeError) as exc:
+                issue('model-dispatch.json.stages.' + name, exc, action)
+        if stage != 'build-start' and run:
+            try:
+                from contracts import construction_checks
+                construction_checks(workspace, run, plan)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError) as exc:
+                issue('build-checks.json', exc, 'Use the existing proflow.py check-build to identify stale dependencies; rerun only failed or changed checks.')
+    if stage in {'data-ready', 'pre-review'}:
+        action = ('Save the actual internal data-provenance.json with nature, sources and validation from this case; '
+                  'retain truthful sourcing attempts and limitations. Reuse already qualified clean CSVs.')
+        provenance = document('data-provenance.json', action)
+        missing = [k for k in ('nature', 'sources', 'validation') if not provenance.get(k)]
+        if missing:
+            issue('data-provenance.json', 'Required internal provenance fields missing: ' + ', '.join(missing), action)
+        if provenance.get('run_id') not in (None, run.get('run_id')):
+            issue('data-provenance.json.run_id', 'Declared provenance belongs to a different run', action)
+    report = {'schema_version': 1, 'kind': 'stage-material-preflight', 'stage': stage,
+              'workspace': str(workspace), 'run_id': run.get('run_id'), 'errors': errors,
+              'status': 'blocked' if errors else 'inputs_ready',
+              'scope': 'Read-only due-stage metadata and authentic build/repair call checks; no future review dispatch required. '
+                       'No business commands, media decode, independent approval or fabricated evidence.'}
+    if stage == 'pre-review':
+        if not execution:
+            issue('execution', 'Six execution facts and final ZIP binding are due before review',
+                  'Supply --execution <existing six-check JSON>; package_probe.py can record actual final ZIP startup facts.')
+        else:
+            packet = inspect(workspace, execution, index, manifest)
+            report['review_inputs'] = packet
+            errors.extend(packet['errors'])
+        report['status'] = 'blocked' if errors else 'inputs_ready'
+    return report
 
 
 def execution_checks(value, kinds=EXECUTION_KINDS):
@@ -212,13 +321,21 @@ def draft(workspace, execution, destination, index=None, manifest=None):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['check', 'draft'])
-    parser.add_argument('--workspace', required=True); parser.add_argument('--execution', required=True)
+    parser.add_argument('action', choices=['check', 'draft', 'stage-check'])
+    parser.add_argument('--workspace', required=True); parser.add_argument('--execution')
+    parser.add_argument('--stage', choices=STAGES)
+    parser.add_argument('--plan', help='Existing recording plan for build-complete/pre-review construction checks')
     scope = parser.add_mutually_exclusive_group()
     scope.add_argument('--index'); scope.add_argument('--manifest'); parser.add_argument('--output')
     args = parser.parse_args(argv)
     try:
-        if args.action == 'draft':
+        if args.action == 'stage-check':
+            if not args.stage:
+                raise ValueError('stage-check requires an explicit --stage')
+            result = stage_check(args.workspace, args.stage, args.execution, args.index, args.manifest, args.plan)
+        elif not args.execution:
+            raise ValueError('check/draft requires --execution')
+        elif args.action == 'draft':
             if not args.output:
                 raise ValueError('draft requires an explicit private --output directory')
             result = draft(args.workspace, args.execution, args.output, args.index, args.manifest)

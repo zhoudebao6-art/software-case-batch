@@ -9,6 +9,9 @@ from copy import deepcopy
 from common import digest, no_links, read_json, write_json
 
 CONTRACT = 'verified-controller-fair-v1'
+ADAPTIVE_CONTRACT = 'verified-controller-adaptive-v2'
+FAIR_MODES = {CONTRACT, ADAPTIVE_CONTRACT}
+DEFAULT_AGING_SECONDS = 300
 DEFAULT_CAPACITIES = {'build': 8, 'review': 3, 'expedited': 1}
 MAX_CAPACITIES = {'build': 8, 'review': 8, 'expedited': 4}
 MODEL_STAGES = set(DEFAULT_CAPACITIES)
@@ -191,16 +194,18 @@ def control(root, target, manifest, pid, action, value, authorization, pool, cas
     """Called under batch_control's existing shared transaction/owner check."""
     import batch_control as batch
     if not authorization or not authorization.strip(): raise ValueError('Explicit current scheduling authorization reference required')
-    settings = config(root); previous = deepcopy({key: settings.get(key) for key in ('mode', 'capacities', 'bindings', 'active_groups', 'repair_extra_capacity', 'repair_bindings')})
+    settings = config(root); previous = deepcopy({key: settings.get(key) for key in ('mode', 'capacities', 'bindings', 'active_groups', 'repair_extra_capacity', 'repair_bindings', 'aging_seconds')})
     if action == 'configure-scheduler':
         update = read_json(value)
-        if update.get('mode') not in {'legacy', CONTRACT}: raise ValueError('Unknown scheduling policy; use verified-controller-fair-v1 or legacy')
+        if update.get('mode') not in {'legacy', *FAIR_MODES}: raise ValueError('Unknown scheduling policy; use verified-controller-adaptive-v2, verified-controller-fair-v1 or legacy')
         capacities = dict(DEFAULT_CAPACITIES); capacities.update(update.get('capacities', {}))
         if set(capacities) != MODEL_STAGES or any(type(v) is not int or v < 1 or v > MAX_CAPACITIES[k] for k, v in capacities.items()):
             raise ValueError('Bounded model capacities required: build<=8 review<=8 expedited<=4')
         extra = update.get('repair_extra_capacity', 0)
         if type(extra) is not int or not 0 <= extra <= 2: raise ValueError('Verified repair extra capacity must be 0, 1 or 2')
-        settings.update(mode=update['mode'], capacities=capacities, repair_extra_capacity=extra)
+        aging = update.get('aging_seconds', DEFAULT_AGING_SECONDS)
+        if type(aging) is not int or not 1 <= aging <= 3600: raise ValueError('Aging seconds must be an integer from 1 to 3600')
+        settings.update(mode=update['mode'], capacities=capacities, repair_extra_capacity=extra, aging_seconds=aging)
     elif action == 'bind-controller':
         request = read_json(value); proof = session_proof(root, manifest['batch_id'], pid, request)
         if 'worker_capacity' in request and request['worker_capacity'] != min(3, manifest['execution_profile']['worker_capacity']):
@@ -238,6 +243,41 @@ def active_group(root, ticket, settings):
     return ticket.get('scheduler_admission', {}).get('group') or settings.get('active_groups', {}).get(ticket['token'])
 
 
+def snapshot(root, pool, settings):
+    """Read-only local reservation census, never external model availability."""
+    import batch_control as batch
+    cache = {}; groups = {}; profiles = {}
+    for batch_id in settings.get('bindings', {}):
+        binding = verified_binding(root, batch_id, settings, cache)
+        if not binding: continue
+        row = groups.setdefault(binding['group'], {'group': binding['group'], 'batch_ids': [],
+            'accepting_batch_ids': [], 'worker_ceiling': 3})
+        row['batch_ids'].append(batch_id); row['worker_ceiling'] = min(row['worker_ceiling'], binding['worker_capacity'])
+        try:
+            target, _ = batch.batch(root, batch_id); state = read_json(target / 'state.json')
+            if not state['drain'] and any(c.get('phase') not in {'blocked', 'delivered'} for c in state['cases'].values()):
+                row['accepting_batch_ids'].append(batch_id)
+        except (ValueError, OSError, KeyError, TypeError): pass
+    active = [q for q in pool if q['status'] == 'active']
+    for ticket in active:
+        if ticket['batch_id'] not in profiles: profiles[ticket['batch_id']] = batch.batch(root, ticket['batch_id'])[1]['execution_profile']
+    for group, row in groups.items():
+        row['reserved_model_slots'] = 0; row['unknown_active_slots'] = 0
+        for ticket in active:
+            live_group = active_group(root, ticket, settings)
+            if live_group is not None and live_group != group: continue
+            profile = profiles[ticket['batch_id']]
+            row['worker_ceiling'] = min(row['worker_ceiling'], min(3, profile['worker_capacity']))
+            if ticket['stage'] in MODEL_STAGES or profile.get('resource_accounting') != 'separate-model-media-v1':
+                row['reserved_model_slots'] += 1
+                if live_group is None: row['unknown_active_slots'] += 1
+        row['unreserved_model_slots'] = max(0, row['worker_ceiling'] - row['reserved_model_slots']) if row['accepting_batch_ids'] else 0
+    return {'groups': sorted(groups.values(), key=lambda row: row['group']),
+            'active_model_reservations': sum(q['stage'] in MODEL_STAGES for q in active),
+            'unknown_active_model_reservations': sum(q['stage'] in MODEL_STAGES and active_group(root, q, settings) is None for q in active),
+            'scope': 'local reservations only; readiness gates and external model capacity not included'}
+
+
 def limits(root, manifest, active, stage, settings, cache):
     import batch_control as batch
     binding = verified_binding(root, manifest['batch_id'], settings, cache)
@@ -257,8 +297,62 @@ def limits(root, manifest, active, stage, settings, cache):
         for batch_id in settings.get('bindings', {}):
             other = verified_binding(root, batch_id, settings, cache)
             if other and other['group'] == group: workers = min(workers, other['worker_capacity'])
-    limit = settings['capacities'][stage] + (settings.get('repair_extra_capacity', 0) if stage == 'build' else 0)
+    # Adaptive sharing removes stage partitions ONLY for a verified live owner.
+    # No aggregate of bindings is used: duplicate, drained or completed groups
+    # cannot lend fictional slots to another group. Unbound owners retain the
+    # conservative fallback and unknown active work still counts in every group.
+    if settings.get('mode') == ADAPTIVE_CONTRACT:
+        limit = None if binding else DEFAULT_CAPACITIES[stage]
+    else:
+        limit = settings['capacities'][stage] + (settings.get('repair_extra_capacity', 0) if stage == 'build' else 0)
     return limit, count < workers, group
+
+
+def lane(ticket):
+    admitted = ticket.get('scheduler_admission', {})
+    if admitted.get('lane'): return admitted['lane']
+    if ticket['stage'] in {'review', 'expedited'}: return 'review'
+    return 'repair' if (ticket.get('model_kind') == 'repair' or
+                        ticket.get('work_kind', admitted.get('work_kind')) == 'repair') else 'build'
+
+
+def choose_adaptive(candidates, groups, pool, settings):
+    """Three eligible lanes share live group slots without stage quotas.
+
+    Least-recently-admitted lane wins, then alternating urgency and rotating
+    real groups/batches. Each continuously eligible lane gets a turn within
+    three successful admissions; this is conditional on owners acquiring and
+    active work finishing, not a wall-clock or actual-model capacity promise.
+    Aged FIFO within a group/batch prevents priority churn starving old work.
+    """
+    history = sorted((q for q in pool if q['stage'] in MODEL_STAGES and q.get('acquired_ns')),
+                     key=lambda q: (q.get('scheduler_turn') is not None,
+                                    q.get('scheduler_turn', q['acquired_ns']), q['token']))
+    turns = {q['token']: index for index, q in enumerate(history, 1)}
+    lane_last = {}
+    for ticket in history: lane_last[lane(ticket)] = turns[ticket['token']]
+    order = {'review': 0, 'repair': 1, 'build': 2}
+    selected_lane = min({lane(q) for q in candidates}, key=lambda k: (lane_last.get(k, 0), order[k]))
+    candidates = [q for q in candidates if lane(q) == selected_lane]
+    lane_history = [q for q in history if lane(q) == selected_lane]
+    urgent = lambda q: q['priority'] >= 10
+    classes = {urgent(q) for q in candidates}
+    selected_class = not urgent(lane_history[-1]) if lane_history and len(classes) == 2 else (True in classes)
+    candidates = [q for q in candidates if urgent(q) == selected_class]
+    group_last = {}; batch_last = {}
+    for ticket in lane_history:
+        if urgent(ticket) != selected_class: continue
+        group_last[active_group(None, ticket, settings)] = turns[ticket['token']]
+        batch_last[ticket['batch_id']] = turns[ticket['token']]
+    cutoff = time.time_ns() - settings.get('aging_seconds', DEFAULT_AGING_SECONDS) * 1_000_000_000
+    def rank(q):
+        aged = q['submitted_ns'] <= cutoff
+        return (group_last.get(groups[q['token']], 0), batch_last.get(q['batch_id'], 0),
+                not aged, 0 if aged else -q['priority'], q['submitted_ns'], q['token'])
+    chosen = min(candidates, key=rank)
+    chosen['scheduler_lane'] = selected_lane
+    chosen['scheduler_aged'] = chosen['submitted_ns'] <= cutoff
+    return chosen, groups[chosen['token']]
 
 
 def choose(root, ready, active, pool, settings):
@@ -283,11 +377,13 @@ def choose(root, ready, active, pool, settings):
             if reference:
                 candidate['work_kind'] = 'repair'; candidate['repair_binding'] = reference
             ordinary_builds = sum(q['stage'] == 'build' and q.get('scheduler_admission', {}).get('work_kind') != 'repair' for q in active)
-            if candidate['work_kind'] != 'repair' and ordinary_builds >= settings['capacities']['build']: continue
+            if settings.get('mode') != ADAPTIVE_CONTRACT and candidate['work_kind'] != 'repair' and ordinary_builds >= settings['capacities']['build']: continue
         limit, available, group = limits(root, manifest, active, ticket['stage'], settings, cache)
-        if available and sum(q['stage'] == ticket['stage'] for q in active) < limit:
+        if available and (limit is None or sum(q['stage'] == ticket['stage'] for q in active) < limit):
             candidates.append(candidate); groups[ticket['token']] = group
     if not candidates: return None, None
+    if settings.get('mode') == ADAPTIVE_CONTRACT:
+        return choose_adaptive(candidates, groups, pool, settings)
     history = sorted((q for q in pool if q.get('scheduler_admission') and q['stage'] in MODEL_STAGES),
                      key=lambda q: (q['acquired_ns'], q['token']))
     urgent = lambda q: q['priority'] >= 10

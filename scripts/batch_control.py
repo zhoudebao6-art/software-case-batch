@@ -788,8 +788,8 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
                 eligible=ready_models if entry['stage'] in MODEL_STAGES else runnable
                 waiting=sorted((q for q in eligible if q['stage']==entry['stage']),key=lambda q:(-q['priority'],q['submitted_ns'],q['token']))
                 limit,host_available=admission_limits(root,manifest,active,entry['stage'])
-                from scheduler_policy import config as scheduler_config,CONTRACT as SCHEDULER_CONTRACT,choose as choose_model
-                scheduling=scheduler_config(root);group=None;fair_models=entry['stage'] in MODEL_STAGES and scheduling.get('mode')==SCHEDULER_CONTRACT
+                from scheduler_policy import config as scheduler_config,FAIR_MODES,ADAPTIVE_CONTRACT,choose as choose_model
+                scheduling=scheduler_config(root);group=None;fair_models=entry['stage'] in MODEL_STAGES and scheduling.get('mode') in FAIR_MODES
                 if entry['stage']=='evidence' and any(q['stage']=='record' for q in active):
                     return {'acquired':False,'reason':'live capture must finish before heavy media evidence'}
                 if entry['stage']=='record' and any(q['stage']=='evidence' for q in active+runnable):
@@ -808,8 +808,12 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
                         selected=None
                         if chosen:
                             selected_model=MODELS[chosen.get('model_kind',chosen['stage'])]
-                            selected={key:chosen[key] for key in ('token','batch_id','case_id','stage')}
+                            selected={key:chosen[key] for key in ('token','batch_id','case_id','stage','owner')}
                             selected.update(work_kind=chosen.get('work_kind','build'),model=selected_model[0],effort=selected_model[1],reason='current eligible class, work kind, group and batch turn')
+                            selected.update(model_kind=chosen.get('model_kind',chosen['stage']),
+                                            lane=chosen.get('scheduler_lane',chosen.get('work_kind',chosen['stage'])),
+                                            action='selected_owner_acquire_then_dispatch',
+                                            requester_can_acquire=chosen['batch_id']==batch_id and chosen['owner']==identity(pid))
                         return {'acquired':False,'reason':'fair eligible model queue or controller/stage capacity',
                                 'priority_token':chosen['token'] if chosen else None,'selected':selected}
                 elif entry['stage'] in MODEL_STAGES:
@@ -830,12 +834,20 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
                     if not resources['acquired']:
                         write_json(queue_path,pool);return resources
                 entry['status']='active';entry['acquired_ns']=time.time_ns();entry['slot_wait_seconds']=(entry['acquired_ns']-entry['submitted_ns'])/1e9
+                if entry['stage'] in MODEL_STAGES:
+                    # Shared-lock sequence preserves adaptive fairness when the
+                    # Windows wall clock repeats or moves backwards. Historical
+                    # tickets are never rewritten, including after rollback.
+                    entry['scheduler_turn']=1+max((q.get('scheduler_turn',0) for q in pool),default=0)
                 if entry.get('capacity_retry'):
                     kind='repair' if entry['stage']=='build' and state['cases'][entry['case_id']].get('phase')=='repairing' else entry['stage']
                     if [entry['model'],entry['effort']]!=MODELS[kind]:raise ValueError('Capacity retry route changed; exact same model/effort required')
                 if fair_models:
-                    entry['scheduler_admission']={'contract':SCHEDULER_CONTRACT,'group':group,'capacities':deepcopy(scheduling['capacities']),
+                    entry['scheduler_admission']={'contract':scheduling['mode'],'group':group,'capacities':deepcopy(scheduling['capacities']),
                                                   'work_kind':chosen.get('work_kind','build'),'repair_extra_capacity':scheduling.get('repair_extra_capacity',0)}
+                    if scheduling['mode']==ADAPTIVE_CONTRACT:
+                        entry['scheduler_admission'].update(lane=chosen['scheduler_lane'],aged=chosen['scheduler_aged'],
+                                                            fixed_stage_quotas=False,repair_extra_budget_used=False)
                     if chosen.get('repair_binding'):
                         entry['scheduler_admission']['repair_binding']=deepcopy(chosen['repair_binding'])
                         entry['work_kind']='repair'
@@ -859,9 +871,17 @@ def main():
         if a.action=='register':result=register(a.root,a.batch_id,a.cases,a.authorization or '',a.host_slots,a.recording_limit)
         elif a.action in {'claim','recover-owner'}:result=claim(a.root,a.batch_id,a.pid,a.action=='recover-owner')
         elif a.action=='status':
-            from scheduler_policy import config as scheduler_config
+            from scheduler_policy import config as scheduler_config,ADAPTIVE_CONTRACT,DEFAULT_AGING_SECONDS,snapshot as scheduler_snapshot
             path,manifest=batch(a.root,a.batch_id);result={'manifest':manifest,'state':read_json(path/'state.json'),'scheduler':scheduler_config(a.root)}
+            if result['scheduler'].get('mode')==ADAPTIVE_CONTRACT:
+                result['scheduler_runtime_policy']={'sharing':'verified-live-parent-local',
+                    'max_model_children_per_parent':3,'fixed_stage_quotas':False,'repair_extra_budget_used':False,
+                    'lanes':['review','repair','build'],'aging_seconds':result['scheduler'].get('aging_seconds',DEFAULT_AGING_SECONDS),
+                    'selection_action':'selected owner acquires original token and dispatches; no cross-owner acquisition',
+                    'capacity_scope':'reservation ceilings only; actual model service availability remains external'}
             queue_path=no_links(a.root)/'queue.json';pool=read_json(queue_path) if queue_path.exists() else []
+            if result['scheduler'].get('mode')==ADAPTIVE_CONTRACT:
+                result['scheduler_reservations']=scheduler_snapshot(a.root,pool,result['scheduler'])
             result['current_tickets']=[q for q in pool if q['batch_id']==a.batch_id and q['status'] in {'waiting','active'}]
         else:result=mutate(a.root,a.batch_id,a.pid,a.action,a.case_id,a.value,a.token,a.stage,a.authorization,a.runtime_pid)
         print(json.dumps(result,ensure_ascii=False,indent=2));return 0

@@ -45,6 +45,11 @@ class DefaultPolicyTests(unittest.TestCase):
             prompt=(work/'.product-v2/深化命令词.txt').read_text(encoding='utf8')
             self.assertIn(r'D:\研发图表',prompt);self.assertIn(str(output),prompt)
             self.assertIn('原定义→具体接受/拒绝断言→最终同引擎派生结果重算',prompt)
+            for rule in ('references/quality.md的交付质量分级', 'impact及affected_artifacts',
+                         'references/recording.md', '最终exact计划的完整value输入预算和timeout_ms',
+                         'record.cjs.uniqueVisibleLocator', '结果集合用只读断言',
+                         '不新增完整replay或审核轮次', '真实首次检查、失败证据和独立验收保持'):
+                self.assertIn(rule,prompt)
             for rule in ('先用最小业务闭环和关键反例调用真实最终函数', '通过后再扩量及制作依赖图文和录制',
                          '业务失败立即停止依赖生成、保留未变成果和独立验收'):
                 self.assertIn(rule,prompt)

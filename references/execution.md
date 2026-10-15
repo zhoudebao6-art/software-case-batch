@@ -6,15 +6,15 @@
 
 ## 本批登记与资源
 
-r14真实聊天分组与可借用公平策略需本轮用户授权后显式`bind-controller`及`configure-scheduler`，可直接接入已登记批次，不改冻结manifest/run/permit或原active。按真实session而非共享PID去重，每组最多3模型子任务；建设最多8，授权可另设2个已核返修余量（`bind-repair`核实际revise，仍build/ultra），普通审核/加急审核本次目标4/4。普通/priority10、建设/已核返修合格时轮转，空闲立即借位，先过滤满组/满stage及无效候选；跨组/批按实际准入轮转。未中返回的selected明确实际应接续票据。未启用仍使用以下旧策略；启用及回退仅约束后续acquire，媒体合同保持。请求和命令见 [真实聊天调度](scheduler-policy.md)。
+r18新授权批次按原流程register/claim/preflight后，默认`bind-controller`核真实父聊天并`configure-scheduler`为`verified-controller-adaptive-v2`，请求JSON为`{"mode":"verified-controller-adaptive-v2","aging_seconds":300}`；直接沿用当前用户批次自动化授权引用，不每批额外征求调度同意。按真实session而非共享PID去重，每父最多3模型子任务，同父多批共享，建设/返修/普通及已授权加急审核动态借用，无固定stage配额；未知active保守扣容量，审核与返修等待老化并按批公平。返修仍ultra，未获真实revise额外预算绑定时仍保留原work_kind=build，不假造绑定。未中selected含实际owner及`selected_owner_acquire_then_dispatch`动作，只由其owner接续。旧未配置批次及legacy/fair-v1兼容如下，旧active、冻结manifest/run/permit和媒体合同不改；启用/回退仅影响后续acquire。准确绑定和命令见[真实聊天调度](scheduler-policy.md)。
 
 仅用户明确调用/点名并确认的清单运行，已确认不逐案重问。一个Word默认一案，多材料合并须清单明确；锁文件、加密/损坏/旧doc不能静默跳过。冻结原basename、绝对/相对路径、大小、采集时间和SHA256，source副本哈希核验，原目录只读。新增工作区为`cases/YYYY-MM/案件名`（同名中文序号），点名旧案只在其独立revision继续。管理在新版`cases/.batches`、运行状态在各案`.product-v2`/`.runtime`，每案独立端口、浏览器、D盘临时目录。用户指定工作区优先。
 
-共享上限保持8建设/返修、3普通独立审核、1受控证据、1明确加急。用户本次明确多开录制授权下，新批次CLI默认`--recording-limit auto`最高4路，也可显式2/3/4；旧manifest保持2路及旧worker规则。新批模型槽和媒体槽分开：实际宿主4模型槽含父，最多3模型子任务（还须扣其他使用者），同一父可直接启动4个Node录制进程；不虚增host_total_slots。`batch_control.py register --root 新版cases/.batches --batch-id 本批 --cases 已确认清单.json --authorization 本轮用户请求引用 --host-slots 4 --recording-limit auto`冻结manifest，之后config不热改。跨批全局4路、CPU/内存准入、旧active容量保护及launch前lease复查见 [并发录制](recording-concurrency.md)。清单每案含case_id/workspace/source_docx/source_sha256；父补原名/大小/时间及端口等实际字段。
+仅旧legacy或未配置的历史兼容策略使用8建设/返修、3普通独立审核、1明确加急的固定模型上限；旧fair-v1保留其显式配置限额。新adaptive-v2使用上述真实父容量动态共享；受控evidence仍单槽。用户本次明确多开录制授权下，新批次CLI默认`--recording-limit auto`最高4路，也可显式2/3/4；旧manifest保持2路及旧worker规则。新批模型槽和媒体槽分开：实际宿主4模型槽含父，最多3模型子任务（还须扣其他使用者），同一父可直接启动4个Node录制进程；不虚增host_total_slots。`batch_control.py register --root 新版cases/.batches --batch-id 本批 --cases 已确认清单.json --authorization 本轮用户请求引用 --host-slots 4 --recording-limit auto`冻结manifest，之后config不热改。跨批全局4路、CPU/内存准入、旧active容量保护及launch前lease复查见 [并发录制](recording-concurrency.md)。清单每案含case_id/workspace/source_docx/source_sha256；父补原名/大小/时间及端口等实际字段。
 
 `claim --pid 实际长期父PID`取得唯一负责人身份（PID+创建时间）。同批另一活跃父拒绝；旧父确实退出后，核对状态/源/收据再显式`recover-owner`，保留旧调用、用量、队列和孤儿阶段记录。此工具仅维护状态，不结束进程。临时命令Python PID不能冒充长期父PID。正在执行或正常排队均不重复派发。
 
-`queue --case-id ID --stage build|review|record|evidence|expedited`返回token；`acquire --token TOKEN`按同优先级先到先得及上限授予，不能忙轮询；未授予时父继续其他可做工作并在资源释放后接续。`release-slot --token TOKEN`结束阶段释放；等待录制/验收不占建设槽，每案不能双占。批次必须使用分阶段录制：record槽内`record --phase capture`只连续录原片及操作事实，返回后在finally释放record，再queue/acquire evidence槽执行`record --phase evidence`完成编码、完整解码、5fps和全部交互帧。evidence排队时停止新增record，既有capture结束后证据按本阶段公平队列执行；任何live capture与重媒体evidence互斥，等待ticket不占active槽。成功、失败、取消均由父finally释放；失败原片和事实保留，修复后仅证据故障可重跑evidence，不盲目重录。旧不带phase的full调用仅兼容独立无并发运行，批次禁用它以免资源误算；旧manifest容量不热改，若还有旧record+evidence双持有任务则先等其结束释放，再接续新路由。repair用build资源但实际模型ultra。录制取得槽后再查实际健康身份和物理可用/Windows提交余量较低值，基线4096MB、每额外录制槽2048MB。不足只在新manifest登记前降为1录制，旧批等待释放确认闲置资源/合法恢复，不热改、不降模型。
+`queue --case-id ID --stage build|review|record|evidence|expedited`返回token；`acquire --token TOKEN`按当前实际模式准入：adaptive-v2使用真实父容量、阶段公平及等待老化，legacy/fair-v1沿其原限额与顺序，不能忙轮询；未授予时父按selected及真实owner继续可做工作并在资源释放后接续。`release-slot --token TOKEN`结束阶段释放；等待录制/验收不占建设槽，每案不能双占。批次必须使用分阶段录制：record槽内`record --phase capture`只连续录原片及操作事实，返回后在finally释放record，再queue/acquire evidence槽执行`record --phase evidence`完成编码、完整解码、5fps和全部交互帧。evidence排队时停止新增record，既有capture结束后证据按本阶段公平队列执行；任何live capture与重媒体evidence互斥，等待ticket不占active槽。成功、失败、取消均由父finally释放；失败原片和事实保留，修复后仅证据故障可重跑evidence，不盲目重录。旧不带phase的full调用仅兼容独立无并发运行，批次禁用它以免资源误算；旧manifest容量不热改，若还有旧record+evidence双持有任务则先等其结束释放，再接续新路由。repair实际模型仍ultra；adaptive-v2共享本父容量且不消耗旧repair_extra预算，不伪造revise绑定。录制取得槽后再查实际健康身份和物理可用/Windows提交余量较低值，基线4096MB、每额外录制槽2048MB。不足只在新manifest登记前降为1录制，旧批等待释放确认闲置资源/合法恢复，不热改、不降模型。
 
 `update --case-id ID --value 当前实际状态.json`记录phase、append-only calls/usage、pending、recording_pending和具体blocked_fingerprint，不重置计数。`delivered`须有当前final receipt，最终负责人仍逐案复核清单/当前hash，单案完成不能称整批完成。`priority --case-id ID --value 10`只改排队优先级；`expedite --case-id ID --authorization 真实当前批案授权JSON`核真实肯定user消息，明确“c1加急/指定本批加急”直接等于Astra低思考，不要求“原加急模式”口令；scope名须注册ID或唯一冻结案名，纯“这批”须真实单一当前批context。控制器设本案priority=10并更新waiting，未来queue(review)/waiting acquire自动解析有效route。加急独立Astra/low，不追加ultra；已active有效普通审核保留原模型，授权不跨批外溢。所有MODEL stage共享宿主位，较高priority的加急build/review也优先下一空位；只有源/预检/授权/owner及新review run身份均有效、自身stage有空位的候选才能让低priority任务等待，失活或blocked/drain不阻塞普通，同priority跨stage由父编排。新批review取得active槽后，父先`verify-review --case-id ID --token TOKEN --value 案件工作区`复查并取得不可变dispatch permit/nonce，再按返回模型实际spawn；当前spec/proof和真实JSONL须绑定同admission/permit/token/scope。旧manifest/历史proof兼容和详细顺序见 [加急审核路由](expedited-routing.md)。
 
@@ -40,7 +40,11 @@ worker blocked只阻断同故障重复付费，不代表整案永久不可制作
 
 建设在现有源文映射内列清本案核心输入、状态转换、接受/拒绝边界和派生结果，并在同一次high中先验证这条业务链。仅当原技术涉及相应约束时检查版本/类型关联、重复或乱序事件、拒绝操作不产生部分写入、历史记录保留及时间数据泄漏；不向每案套一份无关长清单。录制前先核登录和唯一可见选择器，演示走真实有效主流程；预期失败的反例留在软件测试，不塞入成功演示路径。黑白图的坐标、文字、标记和图例同样使用灰度，不能只改曲线颜色。
 
+标准字段在实际派发/完成的原交接内用`review_packet.py stage-check`核当期到期内容：build-start只核已实际产生的调用，build-complete核完成快照和原建设日志，data-ready核原数据出处字段，pre-review合并原机械验收材料；准确参数见[阶段交接早验](tools.md#阶段交接早验r18)。未发生的独立review记录不提前要求，不另加全量审查或反复扫描父目录；已有有效同一交接直接复用。最终ZIP启动检查使用[统一隔离业务探针](tools.md#准备数据源码)承载案件实际操作与精确Job收尾，原prepared案件登记证据，解包树不假prepare，不为检查器故障重制已合格Word/视频/CSV。
+
 同一次独立审查按原定义检查当前核心链，发现一个问题后继续收集不依赖该缺陷的其余问题，一次给出可复现的完整返修清单。当前Word和视频已稳定时，在该次审查内完成其首次视觉阅读，避免软件每返修一轮便一直推迟首次看图/看片；已实际通过的内容按原复用规则保留。只有无法继续检查的真实依赖故障才提前结束并列明未读项，不能把首个普通缺陷当作整轮审查停止条件。返修只处理合并清单和受影响依赖，独立复验只补未通过、未读或变更部分；pass的完整覆盖和真实证据要求不变。
+
+建设与审查使用[交付质量分级](quality.md#交付质量分级r18)：问题须说明具体业务/真实性/明确合同影响及受影响产物，非阻断外观偏好或小数据差别只留内部建议，不因建议循环返修。一次给出已证实的全部必修问题；返修ultra和另一ultra只读复验保持原角色。已实际通过内容不重读，首次未完成范围如实保留并补齐，不能删失败材料或用建议遮盖坏文件。
 
 最终全页render、源保留、MP4完整decode/5fps接触页/关键帧由父控制工具生成，建设者不能自签。原`controlled_evidence.py/build_preflight.py/review_check.py`未完整移植；等效路由为`contracts.py chart_snapshot`结构/保留校验+父在新版工作区调用已核准原`render_word.py`只生成新证据+`media_evidence.py`固定函数视频证据+本次短ID索引。不调用原caseflow，不写旧目录。Word首次所有页实际看；合法复验只继承同规则未被否定且未变、以前真实已阅的对应每页/图及证据，不整文档抽样。
 
@@ -86,3 +90,5 @@ high在原件盘点后先用最小业务对象和源定关键反例实跑最终�
 数据已有一版充足并清洗、质量检查通过后，即记录为数据成果完成。check-data/status/finalize及继承路径只核对已完成CSV自身的成员和全部字节与原有效通过事实；后续代码、原始输入、data-plan、检查器或运行时改变不要求重生成、扩量、重清洗或再次逐行审计。CSV自身改变/损坏/缺失、原通过事实无效或发现明确数据错误时才处理相关部分。首次未通过的数据仍完成禁列、专名、有效量及领域约束检查；当前算法测试独立进行，不声称旧数据验证后来修改的算法。不用mtime或文件大小代替字节核对，不新增逐项复用确认。
 
 总控接续使用阶段结束/异常事件及有游标的wait_threads快照，等待资源时沿唯一票据和selected接续，做其他可运行工作；不重复建票或为同一等待写多份状态、频繁查询。通信成功后保存一句实际回执和下一步即可，详细证据沿已有路径引用。录制前的原有短入口检查同时确认当前数据库/模型维数与代码一致、首个业务动作成功及业务可见文字；已有合格视频则直接跳过录制准备。
+
+真实selected指向本owner已就绪案件时，优先沿原票据启动现有`progress_driver.py`/`media_job.py`的有界Job，再处理不依赖该Job的其他案件发布元数据或长报告；Job仍由原唯一owner监督，原阶段lease、Windows Job、资源复查及超时保持。指向其他owner时只交接准确batch/case/stage/token及当前原因，不代取票。阶段完成立即释放已证明退出的所属资源并接下一可执行步；阻挡时保存具体原因、原票据和解除条件。正常运行/原因未变不催办，不反复展开全状态、旧合同或累计日志。这是编排执行要求，不宣称新增自动跨案调度服务。

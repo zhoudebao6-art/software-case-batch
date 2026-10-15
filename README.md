@@ -15,7 +15,7 @@
 
 原文、公式、原图及其位置保留；新增说明标红，新增图和图下图题放原文后。业务入口、算法、接口、持久化、浏览器操作、导出及解压源码后的启动均须实际核验。来源、假设、构造过程及未验证范围留案件工作区，不冒充现场数据或已上线系统。
 
-r14提供[真实聊天容量与公平调度](references/scheduler-policy.md)：当前负责人经本轮授权可绑定实际session并对现有批次启用独立配置；每聊天最多3模型子任务，同聊天多批共享，跨聊天受全局建设/审核上限约束。普通与加急有空位即借用，两边持续合格时交替推进。配置仅约束后续准入，已有运行任务及冻结许可完整保留，可回退旧策略。
+r18新授权批次默认使用[真实聊天容量与动态公平调度](references/scheduler-policy.md)：原register/claim/preflight后，父绑定真实controller，再configure-scheduler为`verified-controller-adaptive-v2`，沿用本批自动化授权引用，无需每批另问调度许可。每个真实父最多3模型子任务，同父多批共享；建设、返修、普通及已授权加急审核动态借用可用容量，不再为每个模型stage固定配额，审核/返修等待老化并保持批次公平。未归属active保守计数，正常active不抢停；配置只影响后续准入，不改冻结manifest、permit或媒体合同。历史未配置批次及legacy/fair-v1保持兼容，固定8/3/1或旧显式限额仅属于旧模式，回退同样不抢停任务。模型身份和真实加急授权要求保持。
 
 新案通常4—6张有效分析图，需要时更多；保留1—2张黑白结果图，专业模型、热力、矩阵、轨迹、调度等图占多数，每图回答本案独立问题。原图全部保留，可计入已有的适用统计结果，原流程图不计；不重复信息或凑图。颜色按数据含义选择，0/1资格可用离散编码；新增图与图题禁“示意”，图内无顶部标题、表头、图号或长解释，保留必要轴、矩阵标签、单位和色标。详实红字结合实施例，有原式保留符号，无式不造式。建设时按实际Word宽度完成标注避让和当前PNG目视检查，进入Word后核实际宽度。首次制作某类图打开[视觉基线](references/figure-design.md)中最接近的1–2张；同批已看且哈希未变可复用。新案采用analytical-v2，旧冻结合同不追改。
 
@@ -64,6 +64,8 @@ New-Item -ItemType Junction -Path $TaskPro -Target $TaskRepo | Out-Null
 重新载入技能后，输入`使用 $software-case-batch-pro，按新版完整规则处理我明确指定的案件和清单`；已安装兼容入口时可继续原名称。安装、帮助或准备命令通过不等于真实案件完成。首次部署和工具路径变化先完成零模型环境smoke；真实派发前依[执行规则](references/execution.md)在原受限模式做读写预检，不修改沙箱、审批、ACL、安全Deny或系统执行策略。
 
 ## 输出、模型与资源
+
+新批次接入的配置请求为`{"mode":"verified-controller-adaptive-v2","aging_seconds":300}`；`bind-controller`和`configure-scheduler`的准确命令、真实JSONL绑定及原授权引用见[调度规则](references/scheduler-policy.md)。这是正常授权批次的默认编排步骤，register本身仍冻结原manifest，不伪称已自动完成controller绑定或模型派发。status的`scheduler_runtime_policy`展示真实父3子任务边界及`fixed_stage_quotas=false`；资源等待按实际selected交给所属owner接续。
 
 成品默认`D:\研发图表\批次\案件`。`prepare --output`必须显式指向同卷`.staging`下独立候选，独立验收后再`publish --destination`整体原子发布到全新正式目录。用户明确指定其他位置时优先；F盘不可用时不能静默回D盘或桌面。工作区方案将`成品/批次/案件`与`cases/...`分离，历史成果不自动搬移。
 

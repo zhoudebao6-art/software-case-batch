@@ -15,6 +15,8 @@
 
 队列/资源不满足时入口立即返回`waiting`及实际准入原因、原票据和必要的`selected`指针，不睡眠重试。selected含实际batch/case/stage/token/owner；负责人接续该票据所属的授权聊天/案件，入口不取得或执行其他owner/其他case的token。媒体运行结束、其他owner推进或实际资源变化后重新调用原命令；不要盲问相同阶段，也不要取消正常排队来抢位。`cleanup_pending`保留active并指明核原Job退出后接续；不能凭Node父退出推断Chromium/FFmpeg退出。`technical_evidence_ready`仅表示本次受控媒体命令成功，下一步仍为实际独立视觉审查；它不签pass、不发布、不代替finalize。重复调用已完成checkpoint只核当前run/冻结绑定和两份短receipt，不重复整视频或timeline哈希、不重新解码或扫描全部帧；首次继承原完成事实与最终完整媒体、成果门禁保持原规则。
 
+负责人看到真实selected已指向自己就绪的授权案件时，先启动上述有界入口及现成Job，再做与其无依赖的记账；不要让上一案的长报告或元数据收尾占住下一就绪媒体任务。阶段结束优先衔接下一可执行步，再发简短交接；等待仅保留真实原因、解除条件和当前票据，不无变化催办、重建票据或反复打印全状态。其他owner的selected只交回原负责人。本条约束父执行次序，入口仍只执行指定本案，不宣称新增跨案后台调度。
+
 模型返回`Selected model is at capacity`时，负责人把实际失败的父session JSONL、spawn `call_id`保存为本案控制请求后调用：
 
 ```powershell

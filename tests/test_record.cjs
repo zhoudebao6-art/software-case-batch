@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {validatePlan,downloadRequestGuard,localUrl,auditUiText,record,leaseArgs,isolatedBrowserOptions,validateBatchPhase,finishRecording,executeTimeline,boundPolicy,validateMeasuredDuration,performRecordedAction,movePointer}=require('../scripts/record.cjs');
+const {validatePlan,downloadRequestGuard,localUrl,auditUiText,record,leaseArgs,isolatedBrowserOptions,validateBatchPhase,finishRecording,executeTimeline,boundPolicy,validateMeasuredDuration,performRecordedAction,uniqueVisibleLocator,observeVisibleResult,movePointer}=require('../scripts/record.cjs');
 function valid(){return {url:'http://127.0.0.1:8123',ready:'#ready',health_path:'/api/health',version:'v1',input_files:['app.py'],steps:[
   {at:1,action:'fill',value:'x',selector:'#search',expect:'#search'},
   {at:10,action:'click',selector:'#query',expect:'#table'},
@@ -34,11 +34,12 @@ function pointerFixture({blocked=false,clickError=false,downloadError=false}={})
  const target={click:async()=>{throw Error('Pointer-moving trial is forbidden during preparation');},
   waitForElementState:async(state,options)=>{assert.ok(options.timeout>0);counts.states.push(state);if(blocked)throw Error('toast intercepts pointer events');},scrollIntoViewIfNeeded:async()=>{},
   boundingBox:async()=>({x:90,y:90,width:100,height:40}),dispose:async()=>{counts.disposed++;}};
- const page={locator:()=>({elementHandle:async()=>target,evaluate:async()=>''}),viewportSize:()=>({width:1280,height:720}),
+ const locator={filter(){return this;},first(){return this;},waitFor:async()=>{},count:async()=>1,elementHandle:async()=>target,evaluate:async()=>''};
+ const page={locator:()=>locator,viewportSize:()=>({width:1280,height:720}),
   mouse:{move:async()=>{counts.moves++;},click:async()=>{counts.clicks++;if(clickError)throw Error('Real mouse input failed');}},
   waitForEvent:()=>{counts.waiters++;return new Promise((resolve,reject)=>setTimeout(()=>downloadError?reject(Error('No download event')):resolve({}),20));}};
  const requestGuard={begin:()=>{counts.begun++;return 'attempt';},end:()=>{counts.ended++;},save:()=>{throw Error('Failed input cannot prove a download');}};
- return {page,counts,requestGuard,mouse:{x:10,y:10}};
+ return {page,target,counts,requestGuard,mouse:{x:10,y:10}};
 }
 test('actionability rejection reports the target and prevents input or download listeners',async()=>{
  for(const action of ['click','fill','download','select','press']) {
@@ -79,6 +80,60 @@ test('failed mouse download consumes a later event rejection and ends its single
  } finally {process.removeListener('unhandledRejection',listener);}
 });
 test('default is a minute',()=>assert.equal(validatePlan(valid()),60));
+test('the final complete fill is budgeted instead of a shorter sample and input is never truncated',()=>{
+ const plan=flexible();plan.steps[0].value='中'.repeat(563);
+ const original=JSON.stringify(plan);
+ assert.throws(()=>validatePlan(plan),/Step 1 fill needs at least 61930ms typing.*timeout_ms=30000/);
+ assert.equal(JSON.stringify(plan),original);
+ plan.steps[0].timeout_ms=70000;plan.timeout_seconds=240;
+ assert.equal(validatePlan(plan),plan.estimated_duration_seconds);assert.equal(plan.steps[0].value.length,563);
+ for(const timeout_ms of [0,-1,NaN,Infinity,'70000',1.5])assert.throws(()=>validatePlan({...plan,steps:plan.steps.map((s,i)=>i?s:{...s,timeout_ms})}),/timeout_ms/);
+});
+test('full plan input plus required reading cannot exceed global runtime despite a larger step timeout',()=>{
+ const plan=flexible();plan.steps[0].value='x'.repeat(563);plan.steps[0].timeout_ms=70000;
+ plan.steps[0].reading_seconds=90;plan.steps[0].reading_reason='检查完整输入';
+ plan.timeout_seconds=Math.max(plan.estimated_duration_seconds+1,100);
+ assert.throws(()=>validatePlan(plan),/Complete planned input.*runtime budget/);
+});
+test('visible target ambiguity prevents the first actual business input',async()=>{
+ const f=pointerFixture();f.page.locator=()=>({filter(){return this;},first(){return this;},waitFor:async()=>{},count:async()=>120});
+ await assert.rejects(performRecordedAction(f.page,{action:'click',selector:'#field .hole'},f.mouse),/matches 120 visible elements/);
+ assert.equal(f.counts.clicks,0);assert.equal(f.counts.moves,0);
+});
+test('complete long text reaches real typing API with explicit remaining step budget, without default30s or retries',async()=>{
+ const f=pointerFixture(),calls=[];f.target.evaluate=async()=>true;
+ f.target.press=async(value,options)=>calls.push({kind:'press',value,options});
+ f.target.type=async(value,options)=>calls.push({kind:'type',value,options});
+ const value='中'.repeat(563);
+ await performRecordedAction(f.page,{action:'fill',selector:'#input',value,timeout_ms:70000},f.mouse);
+ assert.equal(f.counts.clicks,1);assert.equal(calls.length,2);assert.equal(calls[1].value,value);
+ assert.equal(calls[1].options.delay,110);assert.ok(calls[1].options.timeout>61930);assert.ok(calls[1].options.timeout<=70000);
+ await assert.rejects(performRecordedAction(f.page,{action:'fill',selector:'#input',value,timeout_ms:70000},f.mouse,{timeout:30000}),/needs at least 61930ms/);
+ assert.equal(calls.length,2);assert.equal(f.counts.clicks,1);
+});
+test('real Chromium checks final selectors, ignores hidden twins and allows observation of business collections',
+ {skip:!process.env.SCB_PRO_PLAYWRIGHT},async()=>{
+ const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
+ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'scb-r18-locator-'));
+ let browser;
+ try{
+  browser=await require(process.env.SCB_PRO_PLAYWRIGHT).chromium.launch(isolatedBrowserOptions(temp,path.join(temp,'downloads')));
+  const page=await browser.newPage();
+  await page.setContent('<main id="field">'+Array.from({length:120},(_,i)=>`<button class="hole">对象${i}</button>`).join('')+'</main><input class="search" style="display:none"><input class="search">');
+  await assert.rejects(uniqueVisibleLocator(page,'#field .hole',{label:'ready'}),/ready selector #field .hole matches 120 visible elements/);
+  assert.equal(await (await uniqueVisibleLocator(page,'#field')).count(),1);
+  assert.equal(await (await uniqueVisibleLocator(page,'.search')).count(),1);
+  await observeVisibleResult(page,'#field .hole','对象119');
+  let submitted=0;page.on('console',()=>submitted++);
+  await assert.rejects(performRecordedAction(page,{action:'click',selector:'#field .hole'},{x:1,y:1}),/matches 120 visible elements/);
+  assert.equal(submitted,0);
+  await performRecordedAction(page,{action:'fill',selector:'.search',value:'完整内容123',timeout_ms:5000},{x:1,y:1});
+  assert.equal(await page.locator('.search:visible').inputValue(),'完整内容123');
+ }finally{
+  if(browser)await browser.close();
+  assert.equal(path.dirname(fs.realpathSync(temp)),fs.realpathSync(os.tmpdir()));fs.rmSync(temp,{recursive:true,force:true});
+ }
+});
 test('path preflight accepts workspace relative declarations without resolving files and storage state may be omitted',()=>{
  for(const factory of [valid,flexible]){
   const plan=factory(),duration=plan.estimated_duration_seconds??60;
@@ -182,6 +237,18 @@ function readinessFixture(){
  return {fs,path,root,control,run,runPath,plan,planPath,listener,state,secret,save,hash,registry,registryPath,snapshot,api:sandbox.module.exports,
   close:()=>{assert.equal(path.dirname(fs.realpathSync(root)),fs.realpathSync(os.tmpdir()));fs.rmSync(root,{recursive:true,force:true});}};
 }
+
+test('final long-input budget rejects readiness and capture before service checks, browser creation or media writes',async()=>{
+ const f=readinessFixture();
+ try{
+  f.plan.steps[0].value='x'.repeat(563);f.save(f.planPath,f.plan);const before=f.snapshot();
+  await assert.rejects(f.api.checkReady(f.root,f.planPath),/needs at least 61930ms/);
+  await assert.rejects(f.api.record(f.root,f.planPath,'capture'),/needs at least 61930ms/);
+  assert.deepEqual(f.snapshot(),before);assert.equal(f.state.requests.length,0);assert.equal(f.state.commands.length,0);
+  assert.equal(f.state.browserLoads,0);assert.equal(f.state.browserLaunches,0);
+  assert.equal(f.fs.existsSync(f.run.video),false);
+ }finally{f.close();}
+});
 test('current-run readiness and direct capture share the construction gate before health and browser work',async()=>{
  const f=readinessFixture();
  try{

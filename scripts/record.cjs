@@ -28,6 +28,20 @@ const pause = (ms,signal) => new Promise((resolve,reject)=>{
   signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
 });
 const LEGACY_POLICY='legacy-fixed-v1',FLOW_POLICY='flow-complete-v1';
+const TYPE_DELAY_MS=110,DEFAULT_ACTION_TIMEOUT_MS=30000;
+function actionTimeout(step) {
+  const timeout=step.timeout_ms??DEFAULT_ACTION_TIMEOUT_MS;
+  if(!Number.isSafeInteger(timeout)||timeout<=0)throw Error('Action timeout_ms must be a positive integer');
+  return timeout;
+}
+function inputBudget(step,index) {
+  const timeout=actionTimeout(step);
+  if(step.action!=='fill')return 0;
+  const typingMs=Array.from(step.value).length*TYPE_DELAY_MS;
+  // Allow pointer/focus preparation as well as every actual keyboard event.
+  if(typingMs+1000>=timeout)throw Error(`Step ${index+1} fill needs at least ${typingMs}ms typing plus preparation; timeout_ms=${timeout}. Keep the complete input and increase its budget or use a real supported UI import flow.`);
+  return typingMs;
+}
 function policyVersion(value=LEGACY_POLICY) {
   if(![LEGACY_POLICY,FLOW_POLICY].includes(value))throw Error('Unknown recording policy');
   return value;
@@ -103,15 +117,18 @@ function validatePlan(plan) {
   for(const input of plan.input_files)relativeInput(input);
   if('storage_state' in plan)relativeInput(plan.storage_state);
   const actions=new Set(['click','fill','select','press','download']);let last=0;
-  for(const step of plan.steps) {
+  let minimumMs=flexible?reading(plan.final_result,true)*1000:0;
+  for(const [index,step] of plan.steps.entries()) {
     if(flexible) {
       if(step.at!==undefined&&(!Number.isFinite(step.at)||step.at<last||step.at<0))throw Error('Invalid estimated action timeline');
       reading(step);
     } else if(!Number.isFinite(step.at) || step.at<last || step.at<0 || step.at>=duration-1 || step.at-last>15) throw Error('Invalid or idle action timeline');
     if(!actions.has(step.action) || !step.selector || !step.expect) throw Error('Unsupported action or missing observed assertion');
     if(['fill','select','press'].includes(step.action) && typeof step.value!=='string') throw Error('Action value must be a string');
+    minimumMs+=inputBudget(step,index)+(flexible?reading(step)*1000:0);
     if(step.at!==undefined)last=step.at;
   }
+  if(minimumMs>=(flexible?plan.timeout_seconds:duration)*1000)throw Error('Complete planned input and required reading exceed the recording runtime budget');
   if((!flexible&&duration-last>10) || new Set(plan.steps.map(s=>s.action)).size<3) throw Error('Need varied real operations; legacy timeline must reach the final ten seconds');
   return duration;
 }
@@ -270,7 +287,7 @@ async function withActionableTarget(page,locator,mouse,perform,{timeout=10000,ed
               remaining();ready=true;
               // Never retry after real input: a partially completed operation
               // must fail rather than submit or download a second time.
-              return await perform(target,point);
+              return await perform(target,point,remaining);
             }
           }
         }
@@ -282,22 +299,38 @@ async function withActionableTarget(page,locator,mouse,perform,{timeout=10000,ed
     await pause(Math.min(50,remaining()));
   }
 }
-async function performRecordedAction(page,step,mouse,{requestGuard,dir,index,timeout=10000}={}) {
+async function uniqueVisibleLocator(page,selector,{timeout=10000,label='target'}={}) {
+  const locator=page.locator(selector).filter({visible:true});
+  await locator.first().waitFor({state:'visible',timeout});
+  const count=await locator.count();
+  if(count!==1)throw Error(`${label} selector ${selector} matches ${count} visible elements; exactly one is required`);
+  return locator;
+}
+async function observeVisibleResult(page,selector,text,{timeout=10000}={}) {
+  let locator=page.locator(selector).filter({visible:true});
+  if(text)locator=locator.filter({hasText:text});
+  // Assertions may describe a business collection. Only actual input targets
+  // and the initial readiness marker must identify one visible element.
+  await locator.first().waitFor({state:'visible',timeout});
+}
+async function performRecordedAction(page,step,mouse,{requestGuard,dir,index,timeout=actionTimeout(step)}={}) {
   try {
-    return await withActionableTarget(page,page.locator(step.selector),mouse,async(target,point)=>{
+    inputBudget({...step,timeout_ms:timeout},index??0);
+    const locator=await uniqueVisibleLocator(page,step.selector,{timeout,label:step.action});
+    return await withActionableTarget(page,locator,mouse,async(target,point,remaining)=>{
       if(step.action==='click')await page.mouse.click(point.x,point.y,{delay:85});
       if(step.action==='fill') {
         await page.mouse.click(point.x,point.y,{delay:65});
         if(!await target.evaluate(element=>element.matches(':focus')))throw Error('Real pointer click did not focus the editable target');
-        await target.press('ControlOrMeta+A');await target.type(step.value,{delay:110});
+        await target.press('ControlOrMeta+A',{timeout:remaining()});await target.type(step.value,{delay:TYPE_DELAY_MS,timeout:remaining()});
       }
-      if(step.action==='select')await target.selectOption(step.value,{timeout});
-      if(step.action==='press')await target.press(step.value,{timeout});
+      if(step.action==='select')await target.selectOption(step.value,{timeout:remaining()});
+      if(step.action==='press')await target.press(step.value,{timeout:remaining()});
       if(step.action==='download') {
         const attempt=requestGuard.begin();
         try {
           // Promise.all consumes both outcomes, including when mouse input fails.
-          const [download]=await Promise.all([page.waitForEvent('download',{timeout:15000}),page.mouse.click(point.x,point.y,{delay:85})]);
+          const [download]=await Promise.all([page.waitForEvent('download',{timeout:Math.min(15000,remaining())}),page.mouse.click(point.x,point.y,{delay:85})]);
           const name=path.basename(download.suggestedFilename()),targetPath=path.join(dir,`download-${index}-${name}`);
           return await requestGuard.save(attempt,download,targetPath);
         } finally {requestGuard.end(attempt);}
@@ -416,7 +449,7 @@ async function recordPhase(workspace, planPath, phase='full',lease=null) {
     page.on('request',requestGuard.track);
     page.on('requestfailed',requestGuard.failed);
     await page.goto(plan.url,{waitUntil:'networkidle',timeout:30000});
-    await page.locator(plan.ready).waitFor({state:'visible',timeout:15000});
+    await uniqueVisibleLocator(page,plan.ready,{timeout:15000,label:'ready'});
     // Cursor overlay follows real pointer events; it cannot change application state.
     await page.evaluate(()=>{const pointer=document.createElement('div');pointer.id='operation-pointer';pointer.setAttribute('aria-hidden','true');pointer.style.cssText='position:fixed;left:0;top:0;width:18px;height:24px;z-index:2147483647;pointer-events:none;filter:drop-shadow(1px 2px 2px #5558);clip-path:polygon(0 0,0 92%,25% 70%,43% 100%,59% 91%,41% 61%,78% 61%);background:#162438;border:1px solid white;';document.body.append(pointer);document.addEventListener('mousemove',event=>{pointer.style.left=event.clientX+'px';pointer.style.top=event.clientY+'px';});});
     const mouse={x:930,y:550};await page.mouse.move(mouse.x,mouse.y);
@@ -442,8 +475,7 @@ async function recordPhase(workspace, planPath, phase='full',lease=null) {
       const started=(performance.now()-captureStart)/1000;
       try {
       const downloadProof=await performRecordedAction(page,step,mouse,{requestGuard,dir,index:i});
-      const expected=page.locator(step.expect);await expected.waitFor({state:'visible',timeout:10000});
-      if(step.text) await page.waitForFunction(({selector,text})=>document.querySelector(selector)?.innerText.includes(text),{selector:step.expect,text:step.text},{timeout:10000});
+      await observeVisibleResult(page,step.expect,step.text);
       const event={index:i,action:step.action,scheduled:step.at,started,completed:(performance.now()-captureStart)/1000,screenshot:await observe('step-'+String(i+1).padStart(2,'0')),download:downloadProof};
       events.push(event);return event;
       } catch(error) {
@@ -453,8 +485,7 @@ async function recordPhase(workspace, planPath, phase='full',lease=null) {
         errors.push(String(error));throw error;
       }
     },async result=>{
-      await page.locator(result.selector).waitFor({state:'visible',timeout:10000});
-      if(result.text)await page.waitForFunction(({selector,text})=>document.querySelector(selector)?.innerText.includes(text),{selector:result.selector,text:result.text},{timeout:10000});
+      await observeVisibleResult(page,result.selector,result.text);
     },{now:()=>(performance.now()-captureStart)/1000});
     duration=flow.duration;finalResultCompletion=flow.final_result_completion;
     capturedEndUtc=new Date().toISOString();await observe('end');
@@ -569,4 +600,4 @@ if(require.main===module) {
     }catch(error){console.error(String(error));process.exitCode=2;}
   }
 }
-module.exports={validatePlan,checkReady,downloadRequestGuard,record,localUrl,auditUiText,finishRecording,leaseArgs,isolatedBrowserOptions,batchBinding,validateBatchPhase,executeTimeline,boundPolicy,validateMeasuredDuration,withActionableTarget,performRecordedAction,movePointer,command,commandFailure};
+module.exports={validatePlan,checkReady,downloadRequestGuard,record,localUrl,auditUiText,finishRecording,leaseArgs,isolatedBrowserOptions,batchBinding,validateBatchPhase,executeTimeline,boundPolicy,validateMeasuredDuration,withActionableTarget,performRecordedAction,uniqueVisibleLocator,observeVisibleResult,movePointer,command,commandFailure};

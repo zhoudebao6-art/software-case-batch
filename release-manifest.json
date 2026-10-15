@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r17-bounded-progress-20261015",
+  "release": "r18-adaptive-throughput-20261015",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -29,13 +29,13 @@
     },
     {
       "relative_path": "README.md",
-      "sha256": "a2fdd66d260f667337eadd3fb50ee8cbf53eaca616a85bde20641cb314dfc26b",
-      "size": 11083
+      "sha256": "10b3fd5a2694f454e3c30ecba95ef9ffe1e062cec75f0a81887ea09ac5e34f1d",
+      "size": 12017
     },
     {
       "relative_path": "SKILL.md",
-      "sha256": "38371809897cfd418eb38e007cf93761206ae65065b2fc8a138f4522fc43d8a0",
-      "size": 21888
+      "sha256": "e2c9d5b983f4bf3fb9d6fb58fff12483c668ca1790795f4572c169ba7e259d49",
+      "size": 23410
     },
     {
       "relative_path": "agents/openai.yaml",
@@ -88,14 +88,19 @@
       "size": 10496
     },
     {
+      "relative_path": "references/closure.md",
+      "sha256": "73b21025e8f81a1adaaa80bc405da3b852da5e72055dfff8f135ae3ee4b64206",
+      "size": 5733
+    },
+    {
       "relative_path": "references/dispatch-evidence.md",
       "sha256": "244c1c588cbb82f55fa259ae284b1402da0324548daae1c47ca9f8236a1fb6c7",
       "size": 3620
     },
     {
       "relative_path": "references/execution.md",
-      "sha256": "cf05ea6652648c4839ec266e4ec735b658f81a9d38df4616f8a465717b928248",
-      "size": 25701
+      "sha256": "b6a43e493e364f5ed77f1fd262349c37be9509ba89c9006835613ab918e2255e",
+      "size": 28147
     },
     {
       "relative_path": "references/expedited-routing.md",
@@ -269,13 +274,13 @@
     },
     {
       "relative_path": "references/progress.md",
-      "sha256": "7aa393b024c7b9c0abbb09a9bcec13a39f032d8856fc3f5e279bafc4f28623c3",
-      "size": 6132
+      "sha256": "d6399ab91b2511c93c5d3223caa8543d6e27feaf86f8399b7d1ec412eef3fa01",
+      "size": 6692
     },
     {
       "relative_path": "references/quality.md",
-      "sha256": "7b2a8fe6396caf77a1b1d82c3c9bcf977523b3e2d875d35991211d244121008a",
-      "size": 9528
+      "sha256": "0591151b3c45418b44dda94e2035754434430a1c00c0cced7b144b5993730ba9",
+      "size": 11504
     },
     {
       "relative_path": "references/recording-concurrency.md",
@@ -284,13 +289,13 @@
     },
     {
       "relative_path": "references/recording.md",
-      "sha256": "ff113284a9358425be91c2278c09354d9ee7bf5fd334e5bfe2d0ac949a480594",
-      "size": 11964
+      "sha256": "4f669856802453b14215ac4409bbdfd883509984bc6d2a2d81589ae063068b38",
+      "size": 13682
     },
     {
       "relative_path": "references/scheduler-policy.md",
-      "sha256": "948b1765ae363538c78101888225f0ae5515d3aadb717a2053563e613b9dfa66",
-      "size": 5209
+      "sha256": "9ebfe4edd3d4ba45240297fe807c70e85ae19a73d11813218cf6dec58d5e9826",
+      "size": 8990
     },
     {
       "relative_path": "references/system-data.md",
@@ -299,8 +304,8 @@
     },
     {
       "relative_path": "references/tools.md",
-      "sha256": "244410b1fe1ad8807d40b620b86bf85e30e4e8083c8b717c995f55f692a9b06f",
-      "size": 33395
+      "sha256": "89e223fbc5b737cf01da30b743ea65be86d72efb5e30d72bce8a9cec86e97215",
+      "size": 37235
     },
     {
       "relative_path": "references/ui-policy.json",
@@ -344,8 +349,8 @@
     },
     {
       "relative_path": "scripts/batch_control.py",
-      "sha256": "00b85cdc657d8c9ece54c5178f11f543cecd67a8c9996fd885b1cfcfe4a5a41b",
-      "size": 68234
+      "sha256": "3618b85ba3dbfbc411a2a85325a8d214369cc32ed6f09f9c367147f616003d3f",
+      "size": 70254
     },
     {
       "relative_path": "scripts/common.py",
@@ -398,14 +403,19 @@
       "size": 6264
     },
     {
+      "relative_path": "scripts/package_probe.py",
+      "sha256": "12d01d8e40bed95be9a8f016363bce79baef01c5c7eb53338a12c34eb2f07229",
+      "size": 14948
+    },
+    {
       "relative_path": "scripts/process_guard.py",
       "sha256": "daea4be198a1f137d0fa040a38b0c2971001e977d8fee22e619bde44cf6d7ad0",
       "size": 10643
     },
     {
       "relative_path": "scripts/proflow.py",
-      "sha256": "66e63ae55c118a759f008ea2cd29b2219b690b49372eea71d033d39781bfa0f4",
-      "size": 101763
+      "sha256": "f7460791a28daea8e781720055460b35594a309a8a037d4d81031adc7b8c745d",
+      "size": 102414
     },
     {
       "relative_path": "scripts/progress_driver.py",
@@ -414,8 +424,8 @@
     },
     {
       "relative_path": "scripts/record.cjs",
-      "sha256": "7cc17ba80045de79fc38c0bda4fad2ae4ce881f254e09b621347eadd81190a4d",
-      "size": 46076
+      "sha256": "4b1508e99488dc0768179a74de06f0972343e4f1cea252d286c607b9da473c32",
+      "size": 47831
     },
     {
       "relative_path": "scripts/render_native_math.py",
@@ -424,13 +434,13 @@
     },
     {
       "relative_path": "scripts/review_packet.py",
-      "sha256": "0311e266c07ddcf06a9227c7291bb112cd8c1d1e6a97a2d5314e5412596972b3",
-      "size": 12634
+      "sha256": "03397c202c4eb55785b5c6a77e42df3f1e8cbb421396fa2d3714b89d43e27f7a",
+      "size": 20466
     },
     {
       "relative_path": "scripts/scheduler_policy.py",
-      "sha256": "237f9880a4e51c0b4526d9279ee9bd38048bd75cd8a6d7a8568c16f318aa4a9d",
-      "size": 19941
+      "sha256": "37e328247de597b19900c573d31393622940d2cf9d694f63fd7baeaeb21ddc6e",
+      "size": 26048
     },
     {
       "relative_path": "scripts/scheduler_repair.py",
@@ -524,8 +534,8 @@
     },
     {
       "relative_path": "tests/test_defaults.py",
-      "sha256": "4cefa898f6cafcca82167e9c6a7de03f3910bc7ffa3c6550b0eaa9af095e5513",
-      "size": 6989
+      "sha256": "6c052963ab66d4bf76e9d60533e49b0a804604a8d129ba8c9a0b028a463067af",
+      "size": 7466
     },
     {
       "relative_path": "tests/test_dispatch_compat.py",
@@ -563,6 +573,11 @@
       "size": 3384
     },
     {
+      "relative_path": "tests/test_package_probe.py",
+      "sha256": "449fa006d3eb23d735d449b6dd63ef9b436d3574ead401e919f44169a94d43d1",
+      "size": 14246
+    },
+    {
       "relative_path": "tests/test_product_flow.py",
       "sha256": "c82c442e5ce1f8b4d0cde5b20b264a3863f51817bf8f9ac9bc2046d91c9ff57d",
       "size": 9502
@@ -574,8 +589,8 @@
     },
     {
       "relative_path": "tests/test_record.cjs",
-      "sha256": "e3f19b54b0a7640e000c09770608c294a05e05f75eb557a2243c07db0ae7c947",
-      "size": 48102
+      "sha256": "12082d989e1e34029aaf385e7d9b7cf12af6b3ee538b01ad194e408884b46f24",
+      "size": 53141
     },
     {
       "relative_path": "tests/test_recording_concurrency.py",
@@ -589,8 +604,13 @@
     },
     {
       "relative_path": "tests/test_review_packet.py",
-      "sha256": "19eb0b51aa46afe1638fbf8b2b185c344290cb746cfb04ef21c07b67541db590",
-      "size": 8993
+      "sha256": "d1dc29ef4c7802b3b3800e85cf7edd8e104681fda5a02fe4fe95707e2558e9db",
+      "size": 19324
+    },
+    {
+      "relative_path": "tests/test_scheduler_adaptive.py",
+      "sha256": "1a9b5b8b1741edb01c7d0f80f2a046373c577586aa54fb662085b70d92919f8a",
+      "size": 19822
     },
     {
       "relative_path": "tests/test_scheduler_groups.py",

@@ -2,7 +2,7 @@
 
 加载 `Enter-Environment.ps1` 后，`$env:SCB_PRO_PYTHON` 是已配置 Python。下面 `工具目录` 均指本技能 scripts；`案件目录` 是用户点名的原案件工作区。工具不调用模型；父会话实际分派high建设、ultra返修，普通独立审核ultra，真实当前批/案原加急授权后的独立审核Astra/low；不能把配置或自检当成调用证明。
 
-`batch_control.py bind-controller|bind-repair|configure-scheduler --root ... --batch-id ... --pid ... --value 请求JSON --authorization 本轮真实调度授权引用`对已登记批次独立保存真实聊天/返修绑定及策略，仅改变后续准入；返修请求含case_id，可同传--case-id校验。请求格式、真实session/revise证明、普通/加急借位、8建设+2已核返修、审核4/4与回退`mode=legacy`见 [真实聊天调度](scheduler-policy.md)。未中用selected接续明确已有票据。安装时两个支持模块先于消费入口就位；不重写manifest/run/review proof或原active。
+新授权批次原register/claim/preflight后默认执行`batch_control.py bind-controller`再`configure-scheduler --root ... --batch-id ... --pid ... --value 请求JSON --authorization 当前用户本批自动化授权引用`，不另问一次调度许可；配置JSON为`{"mode":"verified-controller-adaptive-v2","aging_seconds":300}`，每真实父最多3子模型动态借容量，无固定stage配额。命令仅改变后续准入，不自动派模型。`bind-repair`仍核真实revise；旧legacy/fair-v1的8建设+2已核返修、审核4/4等配置只作兼容，不是adaptive默认，准确请求及回退见[真实聊天调度](scheduler-policy.md)。未中用selected交回其真实owner接续，不跨owner代领。安装时支持模块先于消费入口就位；不重写manifest/run/review proof或原active。
 
 ## 准备、数据、源码
 
@@ -37,6 +37,16 @@ status对已清洗但首次质量未完成的内容显示`cleaned`并建议check
 ```
 
 示例中 README 和 evidence 项会自动排除并记录。`import_parser.py` 是业务模块则保留；针对技术 Word 的解析、抽取、映射文件需逐项核实排除。排除所有层级的 README 名称、原技术文档、过程证据、缓存、依赖、日志、数据库和凭据。不要交付依赖本地状态库的压缩包：通过成品外部 CSV 和初始化脚本恢复运行。额外必需资源按白名单明确加入，许可证按原要求保留；`.env.example` 只能放无真实密钥的配置范例。
+
+最终ZIP的既有`package_startup`检查可统一用以下入口，案件只提供实际业务探针，不各自再拼解包/进程框架，完整细节见[阶段材料与统一包检查](closure.md)：
+
+```powershell
+& $env:SCB_PRO_PYTHON '工具目录\package_probe.py' run --workspace '原prepared案件目录' --probe '本案工作区内真实业务探针.py' --receipt '本案工作区内全新内部收据.json' --timeout 120
+```
+
+入口核当前run、source-package收据和最终ZIP哈希，解包到D盘TEMP全新隔离目录，由Windows Job约束本案探针及其子孙；不对隔离树调用`process_guard --workspace`或伪造prepare。探针从`SCB_PACKAGE_ROOT/SCB_PACKAGE_RESULT/SCB_PACKAGE_RUN_ID`取得解包根、结果路径和原run身份，实际启动解包系统并验证本案核心输入→计算→保存→查询/导出，向RESULT写非空`core_flow`及带`kind/name/passed`的checks，至少含成功`startup`与`core_flow`。不得只写true而不执行业务断言。进程退出0、结果完整、原ZIP/探针未变且Job成员确已退出才返回`status=completed`；收据旁`.log`保留真实输出，失败保留隔离树和错误。可选`--keep-extracted`保留成功解包树；默认成功后仅清理本次临时树。把实际命令、退出码及日志哈希沿原六类执行材料的`package_startup`登记，并绑定当前ZIP，不另增一轮业务检查。工具不代造探针、不签独立pass，已真实通过且当前ZIP未变的事实按原规则复用。
+
+成功收据已提供`execution_check={kind:package_startup,command,exit_code,log,sha256}`和顶层`source_zip_sha256`，直接并入既有六类checks及对应ZIP字段，避免父临时重拼命令/路径/哈希；它仍是实际执行事实，独立审查者核业务含义。
 
 所有写入均拒绝覆盖已有同名产物。自检失败后，确认仍为未完成草稿，用下列命令把指定旧草稿保全到原工作区，再重新生成；原输入、旧稿与哈希保留。已经 `finalize` 的交付不能这样改，应建立新案件修订工作区与新成品目录。
 
@@ -87,6 +97,19 @@ implementation_hashes完整对应source-manifest打包有效成员；五类依�
 ## 最终验证
 
 准备验收材料反复出现格式错误或手工列举大量文件时，可先运行`review_packet.py check --workspace 本案 --execution 六类实际执行事实.json --index 已有完整证据索引.json`，在派发前得到明确的缺失/陈旧/格式问题。`draft`加`--output 本案/.product-v2/review-inputs/全新目录名`生成中性事实和空白审查草稿；保留既有E编号，不覆盖旧proof，不填已阅或通过。没有完整索引时可提供`--manifest 补充必查文件清单.json`辅助收集当前收据引用；自动发现不保证覆盖全部原文、Word页或业务语义，负责人仍核必查集合。已有合格输入不为升级重做此步。
+
+### 阶段交接早验（r18）
+
+```powershell
+& $env:SCB_PRO_PYTHON '工具目录\review_packet.py' stage-check --workspace '本案目录' --stage build-start
+& $env:SCB_PRO_PYTHON '工具目录\review_packet.py' stage-check --workspace '本案目录' --stage build-complete
+& $env:SCB_PRO_PYTHON '工具目录\review_packet.py' stage-check --workspace '本案目录' --stage data-ready
+& $env:SCB_PRO_PYTHON '工具目录\review_packet.py' stage-check --workspace '本案目录' --stage pre-review --execution '既有六类执行事实.json' --index '既有完整证据索引.json'
+```
+
+这些是**各自已有阶段交接时**的短检查，不在同一交接连续重跑四遍：实际spawn并记录后用build-start核真实build/已存repair调用；建设完成用build-complete再核原construction_checks和完成阶段快照；数据事实形成用data-ready核现有`nature/sources/validation`。pre-review合并当期字段及原机械packet，`--execution`沿用原六类checks列表JSON，索引仍二选一使用`--index`或`--manifest`；此时不要再重复check/draft同份材料。输出`inputs_ready/blocked`及具体errors/action，只读不跑业务、不解码视频、不补写证据或独立结论，不要求尚未派发的review记录。阶段无变化且本次已有效检查直接沿用；原真实缺项在产生时补齐，不能借早验重建已合格数据或重读全部未变产物。
+
+建设和独立审查的问题分级见[质量规则](quality.md#交付质量分级r18)。`issues`逐项给具体`impact`、`affected_artifacts`、复现位置及最小修复范围；无实质缺陷且完整真实检查已完成可pass，非阻断建议另记内部，不改六类事实、逐图布尔项、首次视觉覆盖及真实调用合同。该分级为评审规则，不是脚本自动分类或免除门禁。
 
 新版默认正式根`D:\研发图表\批次\案件`；`prepare --output`仍必须显式提供，默认路线的私有候选为`D:\研发图表\.staging\本批-本案-唯一版本`，与正式根同卷。`local.config.json.output_root`和当前进程`SCB_PRO_OUTPUT_ROOT/SCB_OUTPUT_ROOT`明确该默认根，不静默改变显式输出路径。用户明确其他目录优先；工作区方案采用`总工作区/成品/...`，每案执行目录为`总工作区/cases/...`，两者隔离。旧成果和冻结原规范中的D路径保留历史，不自动迁移。
 
