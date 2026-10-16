@@ -428,6 +428,19 @@ def _case_input_batch_expedite_command(statement,scope_name,input_batch):
              r'批次的[,，]这件需要加急(?:做|处理)'+deadline+r'[。.!！]?')
     return bool(scope_name and input_batch and len(statement.splitlines())==1 and re.fullmatch(command,statement))
 
+def _listed_input_batch_expedite_command(statement,input_batch):
+    """Parse the entire finite list/count/deadline/batch command, never a fragment."""
+    clock=r'(?:(?:[01]?[0-9]|2[0-3])[:：][0-5][0-9]|(?:[一二三四五六七八九]|十[一二]?|[01]?[0-9]|2[0-3])点)'
+    command=(r'(?P<names>[^\r\n,，]+(?:\r?\n[^\r\n,，]+)+)[,，]这(?P<count>[二三四五六七八九十]|[2-9]|[1-9][0-9])件需要加急(?:出一下|做|处理)'
+             r'[,，]同样需要'+clock+r'之前[,，]属于'+re.escape(input_batch)+r'的[。.!！]?')
+    match=re.fullmatch(command,statement)
+    if not match:return None
+    names=[name.strip() for name in match['names'].splitlines()]
+    count=match['count'];count=int(count) if count.isascii() else '零一二三四五六七八九十'.index(count)
+    if len(names)!=count or len(set(names))!=count or any(not name for name in names):
+        raise ValueError('Listed expedited cases must be unique and match the explicit count')
+    return names
+
 def _exact_current_batch(text):
     lines=_direct_user_lines(text)
     if len(lines)!=1 or text.strip()!=lines[0]:return None
@@ -487,7 +500,8 @@ def expedited_authorization(workspace,record):
     if not scope_name:
         raise ValueError('Actual expedited request must name its current authorized batch or case')
     from batch_control import media_binding,batch,authorization_scope_names,REVIEW_ADMISSION_CONTRACT
-    binding=media_binding(workspace);target_batch=None;qualified=False;ambiguous=False;scoped_sentence=False
+    binding=media_binding(workspace);target_batch=None;qualified=False;ambiguous=False;scoped_sentence=False;listed_sentence=False
+    scoped_names={scope_name}
     if binding:
         _,manifest=batch(binding['root'],binding['batch_id'])
         if manifest.get('review_admission_contract')==REVIEW_ADMISSION_CONTRACT:
@@ -495,7 +509,25 @@ def expedited_authorization(workspace,record):
             qualified=scope_name in {target_batch,target_batch+'/'+binding['case_id']}
             case=next(c for c in manifest['cases'] if c['case_id']==binding['case_id'])
             source=no_links(case['source_docx'])
-            if (scope_name in authorization_scope_names(manifest,case) and
+            listed_names=_listed_input_batch_expedite_command(statement,source.parent.name)
+            if listed_names:
+                listed=[];listed_scope_case=None
+                for name in listed_names:
+                    matches=[c for c in manifest['cases'] if name in authorization_scope_names(manifest,c) and
+                             name in {c.get('title'),no_links(c['source_docx']).stem}]
+                    if len(matches)!=1:raise ValueError('Each listed expedited title must uniquely name a frozen current-batch case')
+                    item=matches[0];original=no_links(item['source_docx']);prepared=read_json(inside(item['workspace'],'.product-v2/run.json'))
+                    if (original.parent!=source.parent or prepared.get('workspace')!=item['workspace'] or not prepared.get('run_id') or
+                            no_links(prepared.get('source_docx',''))!=original or prepared.get('source_docx_sha256')!=item['source_sha256'] or
+                            digest(original)!=item['source_sha256']):
+                        raise ValueError('All listed expedited cases require the same frozen input batch and unchanged prepared run/source')
+                    listed.append(item['case_id'])
+                    if name==scope_name:listed_scope_case=item['case_id']
+                if (listed_scope_case!=binding['case_id'] or binding['case_id'] not in listed or
+                        len(set(listed))!=len(listed)):
+                    raise ValueError('Listed expedited authorization cannot cover an unlisted case or duplicate case aliases')
+                listed_sentence=True;scoped_names=set(listed_names)
+            if listed_sentence or (scope_name in authorization_scope_names(manifest,case) and
                     scope_name in {source.stem,case.get('title'),run.get('title')} and
                     sum(scope_name in authorization_scope_names(manifest,c) for c in manifest['cases'])==1 and
                     _case_input_batch_expedite_command(statement,scope_name,source.parent.name)):
@@ -508,7 +540,7 @@ def expedited_authorization(workspace,record):
                     other=read_json(no_links(other_path))
                     if other.get('batch_id')!=target_batch and any(
                         str(no_links(case['workspace'])).casefold()!=str(no_links(workspace)).casefold() and
-                        scope_name in authorization_scope_names(other,case) and
+                        any(name in authorization_scope_names(other,case) for name in scoped_names) and
                         (not scoped_sentence or no_links(case['source_docx']).parent.name==source.parent.name)
                         for case in other.get('cases',[])):
                         ambiguous=True;break
@@ -541,6 +573,8 @@ def expedited_authorization(workspace,record):
             actual='\n'.join(part.get('text','') for part in payload.get('content',[]));lines=_direct_user_lines(actual)
             if (hashlib.sha256(actual.encode()).hexdigest()==record.get('user_message_sha256') and
                 ((len(lines)==1 and actual.strip()==statement and lines[0]==statement and (not scoped_sentence or direct_parent_session)) or
+                 (listed_sentence and direct_parent_session and len(payload.get('content',[]))==1 and actual.strip()==statement and
+                  lines==[part.strip() for part in statement.splitlines()]) or
                  (not implicit and not scoped_sentence and parent_session and _question_reply_command(actual,statement,scope_name,question_requests)))):
                 if not implicit:
                     # Bare case IDs/aliases inherit an explicit actual batch

@@ -71,10 +71,14 @@ ctypes.windll.kernel32.GetSystemTimes=cpu_sample
         self.wait_for(lambda:all(batch.identity(item['pid'])!=item for item in identities))
     def test_media_node_natural_exit_does_not_leave_its_child_after_job_closes(self):
         signal=self.root/'child.json';job=self.job()
-        script="const fs=require('fs'),{spawn}=require('child_process');const c=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true});c.unref();fs.writeFileSync(process.argv[1],JSON.stringify({child:c.pid}));setTimeout(()=>process.exit(0),500);"
+        # A non-detached child may be killed by libuv's own Job when Node exits.
+        # Detached avoids that inner Job; it still inherits our outer SCB Job.
+        script="const fs=require('fs'),{spawn}=require('child_process');const c=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true,detached:true});c.unref();fs.writeFileSync(process.argv[1],JSON.stringify({child:c.pid}));setTimeout(()=>process.exit(0),500);"
         info=self.launch(job,[self.node(),'-e',script,str(signal)]);job.k.ResumeThread(info.thread)
         self.wait_for(signal.exists);child=batch.identity(read_json(signal)['child'])
+        self.assertIsNotNone(child);self.wait_for(lambda:child['pid'] in job.pids())
         self.assertEqual(job.k.WaitForSingleObject(info.process,5000),0)
+        self.assertIn(child['pid'],job.pids())
         self.assertEqual(batch.identity(child['pid']),child);job.close()
         self.wait_for(lambda:batch.identity(child['pid'])!=child)
     def test_owner_dies_but_media_stays_reserved_until_job_exit_and_recovery_release(self):

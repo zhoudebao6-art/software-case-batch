@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r21-runtime-demand-20261016",
+  "release": "r22-urgent-multicase-20261016",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -104,8 +104,8 @@
     },
     {
       "relative_path": "references/expedited-routing.md",
-      "sha256": "6054b09e0ba89ad88808b84ee8dabf35c5ecd204fc8bbcf0f10a9e34e5a871b4",
-      "size": 10345
+      "sha256": "efeb44eb226ddd9ed2107fe6c001fbf44dd7e570f397af11e73cd2ca06dbd65b",
+      "size": 11569
     },
     {
       "relative_path": "references/figure-design.md",
@@ -359,8 +359,8 @@
     },
     {
       "relative_path": "scripts/contracts.py",
-      "sha256": "b5e0e9ff1cd4c2f620e41cb1647c30db3d2317bee653415ed72570af891454f4",
-      "size": 54172
+      "sha256": "1913cd34be6f34686fcefb7c3dd077511e3d429942623521cb9554d578a6bf0f",
+      "size": 57127
     },
     {
       "relative_path": "scripts/control_decisions.py",
@@ -573,6 +573,11 @@
       "size": 2549
     },
     {
+      "relative_path": "tests/test_expedited_multicase.py",
+      "sha256": "9d821e31e7756c0bc564a0451b7f6d375f3781e4d53f7aa101bf4d2e03634746",
+      "size": 8027
+    },
+    {
       "relative_path": "tests/test_expedited_route.py",
       "sha256": "ab42def6601e127fe6fa5a2d076af98521f825b1f2acb84ab8e439a80993a284",
       "size": 42541
@@ -594,8 +599,8 @@
     },
     {
       "relative_path": "tests/test_media_job.py",
-      "sha256": "c53e03fc1c97ea0d410642eee3c7ac0f2dc28a8c163d9909c67d840228cf5a83",
-      "size": 12065
+      "sha256": "fa358b45aec75496e41e1ea373da95ab8885c16dd8f5f8e1ef5df6bccaaccb8a",
+      "size": 12371
     },
     {
       "relative_path": "tests/test_media_model_capacity.py",
