@@ -118,6 +118,23 @@ class AdaptiveSchedulerTests(unittest.TestCase):
         rows = scheduler.snapshot(self.pool, [], scheduler.config(self.pool))['groups']
         self.assertEqual(len(rows), 1); self.assertEqual(rows[0]['worker_ceiling'], 3)
 
+    def test_stale_legacy_reference_from_another_parent_does_not_block(self):
+        self.create('a', 'A'); self.create('b', 'B'); self.configure()
+        self.runtime('a', 'A', 4); self.runtime('b', 'B', 4)
+        settings = scheduler.config(self.pool)
+        for key in ('group', 'control_revision', 'bound_ns'):
+            settings['bindings']['a'].pop(key)
+        write_json(self.pool / 'scheduler-config.json', settings)
+        owner_path = self.pool / 'a' / 'owner.json'
+        old_owner = read_json(owner_path)
+        write_json(owner_path, {**old_owner, 'pid': old_owner['pid'] + 1})
+        settings = scheduler.config(self.pool)
+        self.assertIsNone(scheduler.verified_binding(self.pool, 'a', settings))
+        rows = scheduler.snapshot(self.pool, [], settings)['groups']
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['group'], settings['bindings']['b']['group'])
+        self.assertEqual(rows[0]['worker_ceiling'], 3)
+
     def assert_latest_runtime_fault_blocks_admission(self, fault, total_slots, old_reference):
         label = fault + '-' + str(total_slots) + '-' + str(old_reference)
         a, b, group = 'a-' + label, 'b-' + label, 'parent-' + label

@@ -823,7 +823,7 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
                         if (manifest['schema_version']>=2 or live_manifest['schema_version']>=2) and live_case['workspace'].lower()==case['workspace'].lower():
                             return {'acquired':False,'reason':'case_workspace_busy'}
                 if fair_models:
-                    chosen,group=choose_model(root,ready_models,active,pool,scheduling)
+                    chosen,group=choose_model(root,ready_models,active,pool,scheduling,requester_batch_id=batch_id)
                     if not chosen or chosen['token']!=entry['token']:
                         selected=None
                         if chosen:
@@ -867,6 +867,7 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
                                                   'work_kind':chosen.get('work_kind','build'),'repair_extra_capacity':scheduling.get('repair_extra_capacity',0)}
                     if scheduling['mode']==ADAPTIVE_CONTRACT:
                         entry['scheduler_admission'].update(lane=chosen['scheduler_lane'],aged=chosen['scheduler_aged'],
+                                                            capacity_scope=scheduling.get('capacity_scope','global-model-pool'),
                                                             fixed_stage_quotas=False,repair_extra_budget_used=False)
                     if chosen.get('repair_binding'):
                         entry['scheduler_admission']['repair_binding']=deepcopy(chosen['repair_binding'])
@@ -1018,7 +1019,9 @@ def compact_status(root,path,result,pool,case_id=None):
                           'Current control decision',warnings) if control is not None else None
     history=settings.get('history',[])
     if not isinstance(history,list):warnings.append('Invalid scheduler history; current settings retained')
-    scheduler={key:settings[key] for key in ('mode','capacities','model_pool_capacity','aging_seconds','repair_extra_capacity') if key in settings}
+    scheduler={key:settings[key] for key in ('mode','capacity_scope','capacities','model_pool_capacity','aging_seconds','repair_extra_capacity') if key in settings}
+    if 'scheduler_runtime_policy' in result:scheduler['runtime_policy']=result['scheduler_runtime_policy']
+    if 'scheduler_runtime_policy' in result:scheduler['model_pool_capacity']=result['scheduler_runtime_policy']['model_pool_capacity']
     scheduler['history_record_count']=len(history) if isinstance(history,list) else None
     if isinstance(history,list) and history:
         scheduler['latest_control']=status_fields(history[-1],('revision','action','at_ns','batch_id','owner'),
@@ -1055,10 +1058,12 @@ def main():
         if a.action=='register':result=register(a.root,a.batch_id,a.cases,a.authorization or '',a.host_slots,a.recording_limit)
         elif a.action in {'claim','recover-owner'}:result=claim(a.root,a.batch_id,a.pid,a.action=='recover-owner')
         elif a.action=='status':
-            from scheduler_policy import config as scheduler_config,ADAPTIVE_CONTRACT,DEFAULT_AGING_SECONDS,model_pool_capacity,snapshot as scheduler_snapshot
+            from scheduler_policy import config as scheduler_config,ADAPTIVE_CONTRACT,DEFAULT_AGING_SECONDS,GLOBAL_CAPACITY_SCOPE,parent_runtime_scope,model_pool_capacity,snapshot as scheduler_snapshot
             path,manifest=batch(a.root,a.batch_id);result={'manifest':manifest,'state':read_json(path/'state.json'),'scheduler':scheduler_config(a.root)}
             if result['scheduler'].get('mode')==ADAPTIVE_CONTRACT:
                 result['scheduler_runtime_policy']={'sharing':'verified-live-parent-local',
+                    'reservation_capacity_scope':result['scheduler'].get('capacity_scope',GLOBAL_CAPACITY_SCOPE),
+                    'global_model_hard_limit':not parent_runtime_scope(result['scheduler']),
                     'model_pool_capacity':model_pool_capacity(result['scheduler']),
                     'max_model_children_per_parent':'verified runtime capacity; legacy evidence fallback',
                     'fixed_group_quotas':False,'fixed_stage_quotas':False,'repair_extra_budget_used':False,

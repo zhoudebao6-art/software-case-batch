@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r20-compact-controller-20261015",
+  "release": "r21-runtime-demand-20261016",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -29,13 +29,13 @@
     },
     {
       "relative_path": "README.md",
-      "sha256": "c8b2e5e8ca7695e6a5ca126020d81ca78dcb6dad256e923af7f62d89749577a2",
-      "size": 12956
+      "sha256": "d21eca5e949a2e3ce177957c8ea88b5c89506264d8001839ee36bc4249dc1f2e",
+      "size": 13158
     },
     {
       "relative_path": "SKILL.md",
-      "sha256": "451b8405e53299b8644b0aeb1624cd1e4a59c30fe142202e3192e44736670701",
-      "size": 9367
+      "sha256": "6a57a6f844bce369f9826405d9fb328d851bdd1a61ee8d2b70169a33b587e992",
+      "size": 9837
     },
     {
       "relative_path": "agents/openai.yaml",
@@ -99,13 +99,13 @@
     },
     {
       "relative_path": "references/execution.md",
-      "sha256": "f74dbe6b4c962768e388a5dbdde8780ba7f96725c759af05fd47321b6cf9a972",
-      "size": 33983
+      "sha256": "95c5d8599002d35884a29689fe66b167594651c0d329abc12f77e485c6a60339",
+      "size": 34070
     },
     {
       "relative_path": "references/expedited-routing.md",
-      "sha256": "e8b15a64e13272d6b109a4c240b98bb767d5f72b627cb64665a7f7b3b2e9e8cb",
-      "size": 9036
+      "sha256": "6054b09e0ba89ad88808b84ee8dabf35c5ecd204fc8bbcf0f10a9e34e5a871b4",
+      "size": 10345
     },
     {
       "relative_path": "references/figure-design.md",
@@ -294,8 +294,8 @@
     },
     {
       "relative_path": "references/scheduler-policy.md",
-      "sha256": "bb2fd7fd93f69f9d4f089e7cb21df880c813489b588d0604e925a129ea499e47",
-      "size": 9901
+      "sha256": "6372148905870e7163806552316c6645a92f5174efd250d41ad1111e64f13894",
+      "size": 11349
     },
     {
       "relative_path": "references/system-data.md",
@@ -349,8 +349,8 @@
     },
     {
       "relative_path": "scripts/batch_control.py",
-      "sha256": "bef1c492ce94874b40fc2bc613b6d42a5aa89213eeb1b625eba6fd0fe7a2296e",
-      "size": 85808
+      "sha256": "bab3d4bb8198efd912b022d84e696bb7c79b1e562593534226f7da06275d3a75",
+      "size": 86474
     },
     {
       "relative_path": "scripts/common.py",
@@ -359,8 +359,8 @@
     },
     {
       "relative_path": "scripts/contracts.py",
-      "sha256": "0e7f8ab58d444aa3426499f3133ae27dca15367bb2174798a1cc071761520887",
-      "size": 51912
+      "sha256": "b5e0e9ff1cd4c2f620e41cb1647c30db3d2317bee653415ed72570af891454f4",
+      "size": 54172
     },
     {
       "relative_path": "scripts/control_decisions.py",
@@ -444,8 +444,8 @@
     },
     {
       "relative_path": "scripts/scheduler_policy.py",
-      "sha256": "acea5bdd56ed5d27eaa69ffbf1bcadc462635fc46e615cd9a0d662e2bd331248",
-      "size": 31634
+      "sha256": "7cb78c1bc7764782e1c002437b30f2e89e69c6bbd513bb2340a446ec3aaddcca",
+      "size": 35840
     },
     {
       "relative_path": "scripts/scheduler_repair.py",
@@ -538,6 +538,11 @@
       "size": 2085
     },
     {
+      "relative_path": "tests/test_created_controller.py",
+      "sha256": "0690758443b67ab54f4dfa9c596e99b838394fb34ee82ed9813b47c220f1e5ad",
+      "size": 4354
+    },
+    {
       "relative_path": "tests/test_data_preflight.py",
       "sha256": "c7b6950dfdc8f972f714d30a7a17948f7736476a3dcb688a243eca8213022268",
       "size": 14492
@@ -573,6 +578,11 @@
       "size": 42541
     },
     {
+      "relative_path": "tests/test_expedited_sentence.py",
+      "sha256": "86c78ff7c4aa9611f30a423b04a8b15eeccc2a2dce1efae31055a3def008ceb4",
+      "size": 12497
+    },
+    {
       "relative_path": "tests/test_figure_preflight.py",
       "sha256": "26f6456558552877539f98e9f99783ebae8195d7c1303cd61e189c34350f703a",
       "size": 6628
@@ -586,6 +596,11 @@
       "relative_path": "tests/test_media_job.py",
       "sha256": "c53e03fc1c97ea0d410642eee3c7ac0f2dc28a8c163d9909c67d840228cf5a83",
       "size": 12065
+    },
+    {
+      "relative_path": "tests/test_media_model_capacity.py",
+      "sha256": "08387ac8842fa6b7ff65754ce66b69be8f342776d0940966df398a9d39ef5e72",
+      "size": 3072
     },
     {
       "relative_path": "tests/test_native_math_render.py",
@@ -644,8 +659,8 @@
     },
     {
       "relative_path": "tests/test_scheduler_adaptive.py",
-      "sha256": "f55c970dcf5ed275adb431ac2401330bd6c69f4fdd215495112f368f1748663c",
-      "size": 34010
+      "sha256": "ff3f82658c2f11abcffdaf4d6a71824dea81ac3f8f9914377e3ae09924b9347a",
+      "size": 34981
     },
     {
       "relative_path": "tests/test_scheduler_groups.py",
@@ -656,6 +671,11 @@
       "relative_path": "tests/test_scheduler_repair.py",
       "sha256": "679b394cbe9f8f6f5ed93ebc205eb827da3a3b9bba3f3abbeebf12f3b9398822",
       "size": 14213
+    },
+    {
+      "relative_path": "tests/test_scheduler_runtime_scope.py",
+      "sha256": "63b302c7b015a73e6ebd49ae2e7076af6e16645fe7eab5af934f0876313ff910",
+      "size": 14249
     },
     {
       "relative_path": "tests/test_source_intake.py",

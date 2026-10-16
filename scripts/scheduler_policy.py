@@ -13,13 +13,20 @@ ADAPTIVE_CONTRACT = 'verified-controller-adaptive-v2'
 FAIR_MODES = {CONTRACT, ADAPTIVE_CONTRACT}
 DEFAULT_AGING_SECONDS = 300
 DEFAULT_MODEL_POOL_CAPACITY = 12
+GLOBAL_CAPACITY_SCOPE = 'global-model-pool'
+RUNTIME_CAPACITY_SCOPE = 'verified-parent-runtime'
 LEGACY_PARENT_WORKERS = 3
 DEFAULT_CAPACITIES = {'build': 8, 'review': 3, 'expedited': 1}
 MAX_CAPACITIES = {'build': 8, 'review': 8, 'expedited': 4}
 MODEL_STAGES = set(DEFAULT_CAPACITIES)
 
 
+def parent_runtime_scope(settings):
+    return settings.get('mode') == ADAPTIVE_CONTRACT and settings.get('capacity_scope') == RUNTIME_CAPACITY_SCOPE
+
+
 def model_pool_capacity(settings):
+    if parent_runtime_scope(settings): return None
     value = settings.get('model_pool_capacity', DEFAULT_MODEL_POOL_CAPACITY)
     return value if type(value) is int and 1 <= value <= DEFAULT_MODEL_POOL_CAPACITY else 1
 
@@ -57,7 +64,8 @@ def runtime_capacity(log):
 
 def binding_workers(binding, manifest, settings):
     if settings.get('mode') == ADAPTIVE_CONTRACT and binding and binding.get('runtime_capacity'):
-        return min(model_pool_capacity(settings), binding['runtime_capacity']['worker_capacity'])
+        workers = binding['runtime_capacity']['worker_capacity']
+        return workers if parent_runtime_scope(settings) else min(model_pool_capacity(settings), workers)
     return min(LEGACY_PARENT_WORKERS, manifest['execution_profile']['worker_capacity'],
                binding['worker_capacity'] if binding else LEGACY_PARENT_WORKERS)
 
@@ -74,9 +82,26 @@ def group_workers(root, binding, manifest, settings, cache):
         if other and other['group'] == binding['group']: siblings.append(other)
         if not adaptive: continue
         control = other or reference
-        # Old references have no trusted group/order when their snapshot fails.
-        # They may be this parent, so cannot safely revive an older high runtime.
-        if not other and not all(key in reference for key in ('group', 'control_revision', 'bound_ns')): return 0
+        # An old reference may lack group/order fields even when its frozen
+        # snapshot still proves that it belongs to another parent. Exclude only
+        # that independently identified group; an ambiguous or same-group
+        # invalid reference must continue to block admission.
+        if not other and not all(key in reference for key in ('group', 'control_revision', 'bound_ns')):
+            try:
+                old_path = no_links(reference['path'])
+                old_target, _ = batch.batch(root, batch_id)
+                if digest(old_path) != reference['sha256']:
+                    return 0
+                old = read_json(old_path)
+                if (old.get('batch_id') != batch_id or old.get('root') != str(no_links(root)) or
+                        old.get('manifest_sha256') != digest(old_target / 'manifest.json') or
+                        not isinstance(old.get('group'), str) or not old['group']):
+                    return 0
+            except (ValueError, OSError, KeyError, TypeError):
+                return 0
+            if old['group'] != binding['group']:
+                continue
+            return 0
         if control['group'] == binding['group']: controls.append((control, other))
     if adaptive:
         latest, verified = max(controls, key=lambda row: (row[0].get('control_revision', 0), row[0]['bound_ns']))
@@ -205,9 +230,11 @@ def session_proof(root, batch_id, pid, request):
         raw_meta = stream.readline(); meta_event = json.loads(raw_meta)
         meta = meta_event.get('payload', {})
         if (meta_event.get('type') != 'session_meta' or meta.get('id') != session_id or
-            meta.get('session_id', session_id) != session_id or meta.get('thread_source') != 'user' or
+            meta.get('session_id', session_id) != session_id or meta.get('thread_source') not in ('user', 'agent_created_thread') or
             meta.get('parent_thread_id') or isinstance(meta.get('source'), dict)):
             raise ValueError('Controller requires an actual independent user parent session identity')
+        # Native create_thread opens a user-owned root chat. Child/worker identity
+        # remains excluded above, and the real matching owner command is required below.
         while True:
             offset = stream.tell(); raw = stream.readline()
             if not raw: break
@@ -272,10 +299,15 @@ def control(root, target, manifest, pid, action, value, authorization, pool, cas
     """Called under batch_control's existing shared transaction/owner check."""
     import batch_control as batch
     if not authorization or not authorization.strip(): raise ValueError('Explicit current scheduling authorization reference required')
-    settings = config(root); previous = deepcopy({key: settings.get(key) for key in ('mode', 'capacities', 'bindings', 'active_groups', 'repair_extra_capacity', 'repair_bindings', 'aging_seconds', 'model_pool_capacity')})
+    settings = config(root); previous = deepcopy({key: settings.get(key) for key in ('mode', 'capacity_scope', 'capacities', 'bindings', 'active_groups', 'repair_extra_capacity', 'repair_bindings', 'aging_seconds', 'model_pool_capacity')})
     if action == 'configure-scheduler':
         update = read_json(value)
         if update.get('mode') not in {'legacy', *FAIR_MODES}: raise ValueError('Unknown scheduling policy; use verified-controller-adaptive-v2, verified-controller-fair-v1 or legacy')
+        scope = update.get('capacity_scope', GLOBAL_CAPACITY_SCOPE)
+        if scope not in {GLOBAL_CAPACITY_SCOPE, RUNTIME_CAPACITY_SCOPE} or (scope == RUNTIME_CAPACITY_SCOPE and update['mode'] != ADAPTIVE_CONTRACT):
+            raise ValueError('Capacity scope must be global-model-pool, or verified-parent-runtime with adaptive-v2')
+        if scope == RUNTIME_CAPACITY_SCOPE and 'model_pool_capacity' in update:
+            raise ValueError('Parent runtime scope has no global model_pool_capacity; omit that field')
         capacities = dict(DEFAULT_CAPACITIES); capacities.update(update.get('capacities', {}))
         if set(capacities) != MODEL_STAGES or any(type(v) is not int or v < 1 or v > MAX_CAPACITIES[k] for k, v in capacities.items()):
             raise ValueError('Bounded model capacities required: build<=8 review<=8 expedited<=4')
@@ -283,9 +315,9 @@ def control(root, target, manifest, pid, action, value, authorization, pool, cas
         if type(extra) is not int or not 0 <= extra <= 2: raise ValueError('Verified repair extra capacity must be 0, 1 or 2')
         aging = update.get('aging_seconds', DEFAULT_AGING_SECONDS)
         if type(aging) is not int or not 1 <= aging <= 3600: raise ValueError('Aging seconds must be an integer from 1 to 3600')
-        total = update.get('model_pool_capacity', DEFAULT_MODEL_POOL_CAPACITY)
+        total = update.get('model_pool_capacity', settings.get('model_pool_capacity', DEFAULT_MODEL_POOL_CAPACITY) if scope == RUNTIME_CAPACITY_SCOPE else DEFAULT_MODEL_POOL_CAPACITY)
         if type(total) is not int or not 1 <= total <= DEFAULT_MODEL_POOL_CAPACITY: raise ValueError('Model pool capacity must be an integer from 1 to 12')
-        settings.update(mode=update['mode'], capacities=capacities, repair_extra_capacity=extra, aging_seconds=aging, model_pool_capacity=total)
+        settings.update(mode=update['mode'], capacity_scope=scope, capacities=capacities, repair_extra_capacity=extra, aging_seconds=aging, model_pool_capacity=total)
     elif action == 'bind-controller':
         request = read_json(value); proof = session_proof(root, manifest['batch_id'], pid, request)
         if any(key in request for key in ('runtime_capacity', 'host_total_slots', 'model_pool_capacity')):
@@ -347,7 +379,8 @@ def snapshot(root, pool, settings):
         except (ValueError, OSError, KeyError, TypeError): pass
     active = [q for q in pool if q['status'] == 'active']
     model_count = sum(q['stage'] in MODEL_STAGES for q in active)
-    global_free = max(0, model_pool_capacity(settings) - model_count)
+    global_capacity = model_pool_capacity(settings)
+    global_free = None if global_capacity is None else max(0, global_capacity - model_count)
     for ticket in active:
         if ticket['batch_id'] not in profiles: profiles[ticket['batch_id']] = batch.batch(root, ticket['batch_id'])[1]['execution_profile']
     for group, row in groups.items():
@@ -356,14 +389,19 @@ def snapshot(root, pool, settings):
             live_group = active_group(root, ticket, settings)
             if live_group is not None and live_group != group: continue
             profile = profiles[ticket['batch_id']]
+            if ticket['stage'] not in MODEL_STAGES and profile.get('resource_accounting') == 'separate-model-media-v1':
+                continue  # Independent media jobs neither consume nor reduce model capacity.
             if live_group is None:
                 row['worker_ceiling'] = min(row['worker_ceiling'], LEGACY_PARENT_WORKERS, profile['worker_capacity'])
             if ticket['stage'] in MODEL_STAGES or profile.get('resource_accounting') != 'separate-model-media-v1':
                 row['reserved_model_slots'] += 1
                 if live_group is None: row['unknown_active_slots'] += 1
-        row['unreserved_model_slots'] = min(global_free, max(0, row['worker_ceiling'] - row['reserved_model_slots'])) if row['accepting_batch_ids'] else 0
+        local_free = max(0, row['worker_ceiling'] - row['reserved_model_slots']) if row['accepting_batch_ids'] else 0
+        row['unreserved_model_slots'] = local_free if global_free is None else min(global_free, local_free)
     return {'groups': sorted(groups.values(), key=lambda row: row['group']),
-            'model_pool_capacity': model_pool_capacity(settings), 'unreserved_global_model_slots': global_free,
+            'capacity_scope': settings.get('capacity_scope', GLOBAL_CAPACITY_SCOPE),
+            'global_model_hard_limit': global_capacity is not None,
+            'model_pool_capacity': global_capacity, 'unreserved_global_model_slots': global_free,
             'active_model_reservations': model_count,
             'unknown_active_model_reservations': sum(q['stage'] in MODEL_STAGES and active_group(root, q, settings) is None for q in active),
             'scope': 'local reservations only; readiness gates and external model capacity not included'}
@@ -380,7 +418,10 @@ def limits(root, manifest, active, stage, settings, cache):
         # Unidentified active work may belong to ANY known group: reserve it in
         # each group until a verified binding exists. Never multiply batch count.
         if group is None or live_group is None or live_group == group:
-            profile = batch.batch(root, ticket['batch_id'])[1]['execution_profile']; profiles.append(profile)
+            profile = batch.batch(root, ticket['batch_id'])[1]['execution_profile']
+            if ticket['stage'] not in MODEL_STAGES and profile.get('resource_accounting') == 'separate-model-media-v1':
+                continue  # Its own media gates still control CPU, memory and recording slots.
+            profiles.append(profile)
             if ticket['stage'] in MODEL_STAGES or profile.get('resource_accounting') != 'separate-model-media-v1': count += 1
             if live_group is None or group is None or settings.get('mode') != ADAPTIVE_CONTRACT:
                 workers = min(workers, LEGACY_PARENT_WORKERS, profile['worker_capacity'])
@@ -391,7 +432,7 @@ def limits(root, manifest, active, stage, settings, cache):
     # conservative fallback and unknown active work still counts in every group.
     if settings.get('mode') == ADAPTIVE_CONTRACT:
         limit = None if binding else DEFAULT_CAPACITIES[stage]
-        if sum(q['stage'] in MODEL_STAGES for q in active) >= model_pool_capacity(settings):
+        if not parent_runtime_scope(settings) and sum(q['stage'] in MODEL_STAGES for q in active) >= model_pool_capacity(settings):
             return limit, False, group
     else:
         limit = settings['capacities'][stage] + (settings.get('repair_extra_capacity', 0) if stage == 'build' else 0)
@@ -409,8 +450,9 @@ def lane(ticket):
 def choose_adaptive(candidates, groups, pool, settings):
     """Three eligible lanes share live group slots without stage quotas.
 
-    Least-recently-admitted lane wins, then alternating urgency and rotating
-    real groups/batches. Each continuously eligible lane gets a turn within
+    Global scope alternates urgency within the least-recently-admitted lane.
+    Parent runtime scope selects urgent candidates first, then rotates lanes
+    within that class. Each continuously eligible lane of the selected class gets a turn within
     three successful admissions; this is conditional on owners acquiring and
     active work finishing, not a wall-clock or actual-model capacity promise.
     Aged FIFO within a group/batch prevents priority churn starving old work.
@@ -419,6 +461,11 @@ def choose_adaptive(candidates, groups, pool, settings):
                      key=lambda q: (q.get('scheduler_turn') is not None,
                                     q.get('scheduler_turn', q['acquired_ns']), q['token']))
     turns = {q['token']: index for index, q in enumerate(history, 1)}
+    if parent_runtime_scope(settings):
+        # Urgent work gets the next available reservation in THIS parent only.
+        # Normal work retains lane/batch rotation and aging; active is never preempted.
+        urgent_candidates = [q for q in candidates if q['priority'] >= 10]
+        if urgent_candidates: candidates = urgent_candidates
     lane_last = {}
     for ticket in history: lane_last[lane(ticket)] = turns[ticket['token']]
     order = {'review': 0, 'repair': 1, 'build': 2}
@@ -445,17 +492,26 @@ def choose_adaptive(candidates, groups, pool, settings):
     return chosen, groups[chosen['token']]
 
 
-def choose(root, ready, active, pool, settings):
+def choose(root, ready, active, pool, settings, requester_batch_id=None):
     """Filter before class/group/batch arbitration; unused shares are immediately lent.
 
-    With both classes continuously eligible, admissions alternate (urgent first).
+    Global scope alternates continuously eligible classes (urgent first).
+    Explicit parent runtime scope selects only the requester's parent and gives
+    its urgent candidates precedence; it never acquires a foreign owner's token.
     Within a class, least-recently-served real group and batch rotate, then priority
     and immutable FIFO order decide. No active ticket is reordered or rewritten.
     """
     import batch_control as batch
     from scheduler_repair import ready as repair_ready
     cache = {}; repair_cache = {}; candidates = []; groups = {}
+    local = parent_runtime_scope(settings) and requester_batch_id is not None
+    if local:
+        requested_binding = verified_binding(root, requester_batch_id, settings, cache)
+        requested_group = requested_binding['group'] if requested_binding else None
     for ticket in ready:
+        if local:
+            binding = verified_binding(root, ticket['batch_id'], settings, cache)
+            if (binding['group'] if binding else None) != requested_group: continue
         target, manifest = batch.batch(root, ticket['batch_id'])
         candidate = dict(ticket); candidate['work_kind'] = ticket['stage']
         if ticket['stage'] == 'build':
@@ -473,7 +529,10 @@ def choose(root, ready, active, pool, settings):
             candidates.append(candidate); groups[ticket['token']] = group
     if not candidates: return None, None
     if settings.get('mode') == ADAPTIVE_CONTRACT:
-        return choose_adaptive(candidates, groups, pool, settings)
+        # Other independent parents have their own runtime and selection turn.
+        # Never let their idle owner become head-of-line for this requester.
+        history = [q for q in pool if active_group(root, q, settings) == requested_group] if local else pool
+        return choose_adaptive(candidates, groups, history, settings)
     history = sorted((q for q in pool if q.get('scheduler_admission') and q['stage'] in MODEL_STAGES),
                      key=lambda q: (q['acquired_ns'], q['token']))
     urgent = lambda q: q['priority'] >= 10

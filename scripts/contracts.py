@@ -421,6 +421,13 @@ def _simple_expedite_command(statement,scope_name):
     leading=courtesy+r'加急\s*'+name
     return bool(scope_name and re.fullmatch(r'(?:'+named+'|'+leading+r')[。.!！]?',statement,re.I))
 
+def _case_input_batch_expedite_command(statement,scope_name,input_batch):
+    """Match one complete named-case command with an explicit source-batch clause."""
+    deadline=r'(?:[,，](?:并且)?(?:最好)?(?:今天|今日)?(?:[01]?[0-9]|2[0-3])[:：][0-5][0-9]之前(?:要)?(?:可以)?(?:做好|完成))?'
+    command=(re.escape(scope_name)+r'[,，]这件是我新加到'+re.escape(input_batch)+
+             r'批次的[,，]这件需要加急(?:做|处理)'+deadline+r'[。.!！]?')
+    return bool(scope_name and input_batch and len(statement.splitlines())==1 and re.fullmatch(command,statement))
+
 def _exact_current_batch(text):
     lines=_direct_user_lines(text)
     if len(lines)!=1 or text.strip()!=lines[0]:return None
@@ -477,26 +484,40 @@ def expedited_authorization(workspace,record):
         raise ValueError('Expedited authorization needs an actual parent user message, not a workspace assertion')
     statement=record.get('statement','');scope_name=record.get('scope_name','')
     implicit=bool(re.fullmatch(r'(?:这批|本批|该批|此批)(?:案件)?(?:请|要|需要|都|全部|直接|马上|\s)*加急(?:一下|处理|办理|审核|验收)?[。.!！]?',statement))
-    if not implicit and not _simple_expedite_command(statement,scope_name):
-        raise ValueError('Only a whole simple positive scoped expedited command selects Astra/low; conditional or material prose does not')
     if not scope_name:
         raise ValueError('Actual expedited request must name its current authorized batch or case')
     from batch_control import media_binding,batch,authorization_scope_names,REVIEW_ADMISSION_CONTRACT
-    binding=media_binding(workspace);target_batch=None;qualified=False;ambiguous=False
+    binding=media_binding(workspace);target_batch=None;qualified=False;ambiguous=False;scoped_sentence=False
     if binding:
         _,manifest=batch(binding['root'],binding['batch_id'])
         if manifest.get('review_admission_contract')==REVIEW_ADMISSION_CONTRACT:
             target_batch=binding['batch_id']
             qualified=scope_name in {target_batch,target_batch+'/'+binding['case_id']}
-            if not qualified:
+            case=next(c for c in manifest['cases'] if c['case_id']==binding['case_id'])
+            source=no_links(case['source_docx'])
+            if (scope_name in authorization_scope_names(manifest,case) and
+                    scope_name in {source.stem,case.get('title'),run.get('title')} and
+                    sum(scope_name in authorization_scope_names(manifest,c) for c in manifest['cases'])==1 and
+                    _case_input_batch_expedite_command(statement,scope_name,source.parent.name)):
+                if (run.get('workspace')!=str(no_links(workspace)) or no_links(run.get('source_docx',''))!=source or
+                        run.get('source_docx_sha256')!=case['source_sha256'] or digest(source)!=case['source_sha256']):
+                    raise ValueError('Named input-batch expedited authorization requires its unchanged registered run/source')
+                scoped_sentence=True;qualified=True
+            if not qualified or scoped_sentence:
                 for other_path in no_links(binding['root']).glob('*/manifest.json'):
                     other=read_json(no_links(other_path))
                     if other.get('batch_id')!=target_batch and any(
                         str(no_links(case['workspace'])).casefold()!=str(no_links(workspace)).casefold() and
-                        scope_name in authorization_scope_names(other,case) for case in other.get('cases',[])):
+                        scope_name in authorization_scope_names(other,case) and
+                        (not scoped_sentence or no_links(case['source_docx']).parent.name==source.parent.name)
+                        for case in other.get('cases',[])):
                         ambiguous=True;break
+                if scoped_sentence and ambiguous:
+                    raise ValueError('Named input-batch case authorization is ambiguous across registered batches')
+    if not implicit and not scoped_sentence and not _simple_expedite_command(statement,scope_name):
+        raise ValueError('Only a whole simple positive scoped expedited command selects Astra/low; conditional or material prose does not')
     context=record.get('scope_context');found=False;last_batch_context=None;authorized_context=None
-    question_requests={};parent_session=False
+    question_requests={};parent_session=False;direct_parent_session=False
     if implicit and (not isinstance(context,dict) or context.get('batch_id')!=scope_name):
         raise ValueError('Implicit batch expedite needs the frozen real current-batch context')
     with path.open(encoding='utf-8') as stream:
@@ -508,6 +529,8 @@ def expedited_authorization(workspace,record):
                 source=payload.get('source')
                 parent_session=bool(payload.get('id') and payload.get('thread_source') in (None,'user') and
                                     not (isinstance(source,dict) and 'subagent' in source))
+                direct_parent_session=bool(parent_session and not payload.get('parent_thread_id') and payload.get('thread_source')=='user' and
+                                           isinstance(source,str) and source in {'vscode','cli','exec','app-server'})
                 continue
             if event.get('type')!='response_item':continue
             if payload.get('type')=='function_call' and payload.get('name')=='request_user_input_async':
@@ -517,8 +540,8 @@ def expedited_authorization(workspace,record):
             if payload.get('type')!='message' or payload.get('role')!='user':continue
             actual='\n'.join(part.get('text','') for part in payload.get('content',[]));lines=_direct_user_lines(actual)
             if (hashlib.sha256(actual.encode()).hexdigest()==record.get('user_message_sha256') and
-                ((len(lines)==1 and actual.strip()==statement and lines[0]==statement) or
-                 (not implicit and parent_session and _question_reply_command(actual,statement,scope_name,question_requests)))):
+                ((len(lines)==1 and actual.strip()==statement and lines[0]==statement and (not scoped_sentence or direct_parent_session)) or
+                 (not implicit and not scoped_sentence and parent_session and _question_reply_command(actual,statement,scope_name,question_requests)))):
                 if not implicit:
                     # Bare case IDs/aliases inherit an explicit actual batch
                     # context. Reused names need that context or a batch-qualified
