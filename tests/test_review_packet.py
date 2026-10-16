@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+import zipfile
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
@@ -23,8 +24,9 @@ class ReviewPacketTests(unittest.TestCase):
         self.work = self.root / 'work'; self.work.mkdir()
         self.control = self.work / '.product-v2'; self.control.mkdir()
         self.out = self.root / 'output'; (self.out / '模拟系统').mkdir(parents=True)
-        self.archive = self.out / '模拟系统/项目源码.zip'; self.archive.write_bytes(b'fixture ZIP bytes')
+        self.archive = self.out / '模拟系统/项目源码.zip'
         self.source = self.work / 'app.py'; self.source.write_text('fixture source')
+        with zipfile.ZipFile(self.archive,'w') as archive:archive.writestr('app.py',self.source.read_bytes())
         self.png = self.work / 'chart.png'; self.png.write_bytes(b'fixture PNG bytes')
         self.checks = []
         for kind in EXECUTION_KINDS:
@@ -96,6 +98,7 @@ class ReviewPacketTests(unittest.TestCase):
                          (str(self.target / 'facts.json'), digest(self.target / 'facts.json')))
         value = read_json(self.target / 'review-draft.json')
         self.assertEqual(value['checks'], self.checks)
+        self.assertEqual(value['source_package'], {'sha256': digest(self.archive), 'files': {'app.py': digest(self.source)}})
         for key in ('decision', 'reviewer_agent_id', 'passed', 'review_evidence_sha256'):
             self.assertNotIn(key, value)
         for key in ('reviewed_evidence', 'chart_reviews', 'visual_notes', 'limitations'):
@@ -106,6 +109,19 @@ class ReviewPacketTests(unittest.TestCase):
         self.assertEqual(before, digest(self.target / 'review-draft.json'))
         with self.assertRaisesRegex(ValueError, 'private'):
             draft(self.work, self.execution, self.work / 'review.json')
+
+    def test_draft_rejects_false_member_receipt_and_broken_zip_without_partial_output(self):
+        package=self.control/'source-package.json'
+        original=read_json(package)
+        write_json(package,dict(original,files={'app.py': '0'*64}))
+        report=draft(self.work,self.execution,self.target)
+        self.assertEqual(report['status'],'blocked');self.assertFalse(self.target.exists())
+        write_json(package,original)
+        self.archive.write_bytes(b'broken archive')
+        write_json(package,dict(original,sha256=digest(self.archive)))
+        self.proof['source_zip_sha256']=digest(self.archive);write_json(self.execution,self.proof)
+        report=draft(self.work,self.execution,self.target)
+        self.assertEqual(report['status'],'blocked');self.assertFalse(self.target.exists())
 
     def test_explicit_manifest_adds_pages_without_scanning_unrelated_files(self):
         page = self.work / 'word-page-1.png'; page.write_bytes(b'fixture page')

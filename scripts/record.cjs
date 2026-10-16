@@ -332,7 +332,9 @@ async function performRecordedAction(page,step,mouse,{requestGuard,dir,index,tim
       if(step.action==='fill') {
         await page.mouse.click(point.x,point.y,{delay:65});
         if(!await target.evaluate(element=>element.matches(':focus')))throw Error('Real pointer click did not focus the editable target');
-        await target.press('ControlOrMeta+A',{timeout:remaining()});await target.type(step.value,{delay:TYPE_DELAY_MS,timeout:remaining()});
+        await target.press('ControlOrMeta+A',{timeout:remaining()});
+        await target.press('Backspace',{timeout:remaining()});
+        if(step.value!=='')await target.type(step.value,{delay:TYPE_DELAY_MS,timeout:remaining()});
       }
       if(step.action==='select')await target.selectOption(step.value,{timeout:remaining()});
       if(step.action==='press')await target.press(step.value,{timeout:remaining()});

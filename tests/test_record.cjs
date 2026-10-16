@@ -106,10 +106,10 @@ test('complete long text reaches real typing API with explicit remaining step bu
  f.target.type=async(value,options)=>calls.push({kind:'type',value,options});
  const value='中'.repeat(563);
  await performRecordedAction(f.page,{action:'fill',selector:'#input',value,timeout_ms:70000},f.mouse);
- assert.equal(f.counts.clicks,1);assert.equal(calls.length,2);assert.equal(calls[1].value,value);
- assert.equal(calls[1].options.delay,110);assert.ok(calls[1].options.timeout>61930);assert.ok(calls[1].options.timeout<=70000);
+ assert.equal(f.counts.clicks,1);assert.equal(calls.length,3);assert.equal(calls[1].value,'Backspace');assert.equal(calls[2].value,value);
+ assert.equal(calls[2].options.delay,110);assert.ok(calls[2].options.timeout>61930);assert.ok(calls[2].options.timeout<=70000);
  await assert.rejects(performRecordedAction(f.page,{action:'fill',selector:'#input',value,timeout_ms:70000},f.mouse,{timeout:30000}),/needs at least 61930ms/);
- assert.equal(calls.length,2);assert.equal(f.counts.clicks,1);
+ assert.equal(calls.length,3);assert.equal(f.counts.clicks,1);
 });
 test('real Chromium checks final selectors, ignores hidden twins and allows observation of business collections',
  {skip:!process.env.SCB_PRO_PLAYWRIGHT},async()=>{
@@ -129,6 +129,10 @@ test('real Chromium checks final selectors, ignores hidden twins and allows obse
   assert.equal(submitted,0);
   await performRecordedAction(page,{action:'fill',selector:'.search',value:'完整内容123',timeout_ms:5000},{x:1,y:1});
   assert.equal(await page.locator('.search:visible').inputValue(),'完整内容123');
+  await performRecordedAction(page,{action:'fill',selector:'.search',value:'',timeout_ms:5000},{x:1,y:1});
+  assert.equal(await page.locator('.search:visible').inputValue(),'');
+  await performRecordedAction(page,{action:'fill',selector:'.search',value:'新值',timeout_ms:5000},{x:1,y:1});
+  assert.equal(await page.locator('.search:visible').inputValue(),'新值');
  }finally{
   if(browser)await browser.close();
   assert.equal(path.dirname(fs.realpathSync(temp)),fs.realpathSync(os.tmpdir()));fs.rmSync(temp,{recursive:true,force:true});

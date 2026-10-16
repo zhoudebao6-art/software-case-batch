@@ -443,7 +443,9 @@ class ContractTests(unittest.TestCase):
         prompt=(self.work/'.product-v2/深化命令词.txt').read_text(encoding='utf8')
         self.assertIn('在原工作区对后端算法做尽可能深入的完善',prompt)
         self.assertIn('再实际操作最终网页录制一分多钟',prompt)
-        self.assertIn('再执行finalize；',prompt)
+        for text in ('首轮pass走finalize及publish','首轮revise后原修复者做定向修补与受影响自检',
+                     '用close-simplified一次发布成品、整案ZIP和真实简化收据','不新增收费阶段'):
+            self.assertIn(text,prompt)
         self.assertNotIn('scope=document-revision',prompt)
     def test_package_revision_document_gate_cannot_be_reused(self):
         self.revision_fixture();self.run['revision_scope']='package';write_json(self.work/'.product-v2/run.json',self.run)

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r22-urgent-multicase-20261016",
+  "release": "r23-targeted-closure-20261017",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -29,13 +29,13 @@
     },
     {
       "relative_path": "README.md",
-      "sha256": "d21eca5e949a2e3ce177957c8ea88b5c89506264d8001839ee36bc4249dc1f2e",
-      "size": 13158
+      "sha256": "91db9a2af62459b2c7b38d472e3cb2c193969fdca5e62dfbd58a3aa58cb28e49",
+      "size": 13807
     },
     {
       "relative_path": "SKILL.md",
-      "sha256": "6a57a6f844bce369f9826405d9fb328d851bdd1a61ee8d2b70169a33b587e992",
-      "size": 9837
+      "sha256": "c7dbf2c1fc0a7e48ef4862a1ad49a393d94e2ffc2497a3dba833c1443d4cb6b9",
+      "size": 10183
     },
     {
       "relative_path": "agents/openai.yaml",
@@ -89,8 +89,8 @@
     },
     {
       "relative_path": "references/closure.md",
-      "sha256": "3980305ef1a8bfab863c294aff8616f6ad6f383a6c9b0ee04861d9007ad3fa66",
-      "size": 6820
+      "sha256": "3fbb4e87e73a15d06abae4761f01674f417efeb40128bf6cec820015abbeeb46",
+      "size": 8947
     },
     {
       "relative_path": "references/dispatch-evidence.md",
@@ -98,9 +98,14 @@
       "size": 3620
     },
     {
+      "relative_path": "references/domain-boundaries.md",
+      "sha256": "bd0daf21a5078a8a5fa4c3e5fb279f20a1596edfad9603803888069824a524b6",
+      "size": 6024
+    },
+    {
       "relative_path": "references/execution.md",
-      "sha256": "95c5d8599002d35884a29689fe66b167594651c0d329abc12f77e485c6a60339",
-      "size": 34070
+      "sha256": "98f8f73eea2a071fcd5e499d3b75517db6b75f358e01ff0b80fb27646398ba8a",
+      "size": 34172
     },
     {
       "relative_path": "references/expedited-routing.md",
@@ -279,8 +284,8 @@
     },
     {
       "relative_path": "references/quality.md",
-      "sha256": "0591151b3c45418b44dda94e2035754434430a1c00c0cced7b144b5993730ba9",
-      "size": 11504
+      "sha256": "c86704fe725d454c5a56e9924505221aab37124badeb4421a0cf4a04b8ae12ad",
+      "size": 11507
     },
     {
       "relative_path": "references/recording-concurrency.md",
@@ -299,13 +304,13 @@
     },
     {
       "relative_path": "references/system-data.md",
-      "sha256": "0453b52420d93105f48cd6049e92ad180d233f99b7a3096e2aaa90609cf985ee",
-      "size": 25681
+      "sha256": "b18e34d999bfa232fb57f6521be42b95237580aea18f272994da461832808f5e",
+      "size": 20953
     },
     {
       "relative_path": "references/tools.md",
-      "sha256": "eb44aa9126732b39b98f454ebc03612b66c6fff4603db1137203dbf6f1718cef",
-      "size": 38547
+      "sha256": "1a4aeea685149d845687bfef690ae873a4f69ec2f021409aa8cb7e004bb934bb",
+      "size": 40786
     },
     {
       "relative_path": "references/ui-policy.json",
@@ -314,8 +319,8 @@
     },
     {
       "relative_path": "references/web-design.md",
-      "sha256": "0e883ad8b11750284537d8c4e11b616b8b4f0523f148208472c99391c2afa0f5",
-      "size": 4801
+      "sha256": "9405fdc272632548ed30cd1437d59c9ae3af33c175634155adfedce6b7dfeae1",
+      "size": 5380
     },
     {
       "relative_path": "requirements-ci.txt",
@@ -349,8 +354,8 @@
     },
     {
       "relative_path": "scripts/batch_control.py",
-      "sha256": "bab3d4bb8198efd912b022d84e696bb7c79b1e562593534226f7da06275d3a75",
-      "size": 86474
+      "sha256": "6781ce18762db06d54f2fef54e643b5cf5c0278c54ef4743cba8390c08eb6fbc",
+      "size": 91158
     },
     {
       "relative_path": "scripts/common.py",
@@ -359,8 +364,8 @@
     },
     {
       "relative_path": "scripts/contracts.py",
-      "sha256": "1913cd34be6f34686fcefb7c3dd077511e3d429942623521cb9554d578a6bf0f",
-      "size": 57127
+      "sha256": "daaaa87c61cd5159bcff1bc0b0adfce80b983e807d17f507b91c388bb71cfee8",
+      "size": 62040
     },
     {
       "relative_path": "scripts/control_decisions.py",
@@ -419,8 +424,8 @@
     },
     {
       "relative_path": "scripts/proflow.py",
-      "sha256": "54833f49bd125c6623bde7cfec06b9efbcb30aadd467b5369cedd4d9a0d7999d",
-      "size": 106601
+      "sha256": "ec53386c51444c3689899937e3c81fb38eb3f0c6be791efe37e36dfd3b9ac69c",
+      "size": 108782
     },
     {
       "relative_path": "scripts/progress_driver.py",
@@ -429,8 +434,8 @@
     },
     {
       "relative_path": "scripts/record.cjs",
-      "sha256": "e3af7d8b75a4178ad34e75949503528f1ed875b019023a53621cfbb3b677a0ea",
-      "size": 49405
+      "sha256": "6d06a490cf1c18e9e550b3584aac4f1b3e3b6243579d928c97fd7861acf54829",
+      "size": 49498
     },
     {
       "relative_path": "scripts/render_native_math.py",
@@ -439,8 +444,8 @@
     },
     {
       "relative_path": "scripts/review_packet.py",
-      "sha256": "f6e715fc9601573085edf3c60ddb90b5adc75adcecd12d23436c6d01fa6b0c85",
-      "size": 33312
+      "sha256": "0b50d3ab8bdd42666c5618f47b252d6603610fb88dd20364991b25d05ceee940",
+      "size": 34345
     },
     {
       "relative_path": "scripts/scheduler_policy.py",
@@ -451,6 +456,11 @@
       "relative_path": "scripts/scheduler_repair.py",
       "sha256": "881a69ca7b17b11e05c785bbdf5387a6166ddea82f34b73870e4f5cd8a4980d6",
       "size": 21164
+    },
+    {
+      "relative_path": "scripts/simplified_closure.py",
+      "sha256": "4c06ffa2b99ca40043d184a2c1e057cfaf2e65a107a32cabfd965f2129f565df",
+      "size": 36622
     },
     {
       "relative_path": "scripts/source_intake.py",
@@ -524,8 +534,8 @@
     },
     {
       "relative_path": "tests/test_contracts.py",
-      "sha256": "95b9ea870d28c416564157953be82a63147b15c005a1181949088370ede7aa03",
-      "size": 46873
+      "sha256": "fddc9539c5349b4158713a56a2a8eebac5f2805baa04ea8b095b862567ae7591",
+      "size": 47100
     },
     {
       "relative_path": "tests/test_control_decisions.py",
@@ -634,8 +644,8 @@
     },
     {
       "relative_path": "tests/test_record.cjs",
-      "sha256": "12082d989e1e34029aaf385e7d9b7cf12af6b3ee538b01ad194e408884b46f24",
-      "size": 53141
+      "sha256": "8c4b6f29a112e6111031e26890b90f2b96179966ae4b87efbb707b2425b54125",
+      "size": 53550
     },
     {
       "relative_path": "tests/test_recording_concurrency.py",
@@ -659,8 +669,8 @@
     },
     {
       "relative_path": "tests/test_review_packet.py",
-      "sha256": "794deda6bca6fa5823a1bd8b1b33108465429e227dd6c4303f69b7620ade8149",
-      "size": 19493
+      "sha256": "e3f28ecc5dfe269e6d0dbe39bd890163bee7d2b4598a3b747df77fefc98fb62b",
+      "size": 20506
     },
     {
       "relative_path": "tests/test_scheduler_adaptive.py",
@@ -681,6 +691,11 @@
       "relative_path": "tests/test_scheduler_runtime_scope.py",
       "sha256": "63b302c7b015a73e6ebd49ae2e7076af6e16645fe7eab5af934f0876313ff910",
       "size": 14249
+    },
+    {
+      "relative_path": "tests/test_simplified_closure.py",
+      "sha256": "79c3a1fa2886963e9b0ea5815b10d70c2f92962f9ab4bf57c4a969082bd23f3d",
+      "size": 38377
     },
     {
       "relative_path": "tests/test_source_intake.py",

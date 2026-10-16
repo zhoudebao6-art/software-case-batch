@@ -8,7 +8,7 @@ from pathlib import Path
 import time
 import uuid
 from copy import deepcopy
-from common import digest,inside,no_links,read_json,write_json
+from common import digest,inside,no_links,read_json,write_json,file_map
 
 CAPACITIES={'build':8,'review':3,'record':2,'evidence':1,'expedited':1}
 GLOBAL_RECORDING_LIMIT=4
@@ -393,6 +393,61 @@ def claim(root,batch_id,pid,recover=False):
 def owner_check(target,pid):
     owner=read_json(target/'owner.json')
     if owner.get('pid')!=pid or identity(pid)!=owner:raise ValueError('Only the current verified parent may mutate batch state')
+
+
+def sync_simplified_delivery(workspace,pid,preflight=False):
+    """Sync only this case from real closure/package receipts; never sign pass.
+
+    Undispatched review waits belonging to the verified parent are released with
+    a reason. Active work, other owners and other cases are always preserved.
+    Repeating after either state/queue write recovers the remaining write.
+    """
+    workspace=no_links(workspace);binding=media_binding(workspace)
+    if not binding:return None
+    root=no_links(binding['root']);target,manifest=batch(root,binding['batch_id'])
+    with transaction(root,wait_seconds=10):
+        owner_check(target,pid);owner=identity(pid)
+        case=next(c for c in manifest['cases'] if c['case_id']==binding['case_id'])
+        run=read_json(inside(workspace,'.product-v2/run.json'))
+        if (str(workspace)!=case['workspace'] or run.get('workspace')!=str(workspace)
+                or run.get('source_docx_sha256')!=case['source_sha256']):
+            raise ValueError('Closure batch case/source identity changed')
+        state_path=target/'state.json';state=read_json(state_path);item=state['cases'][binding['case_id']]
+        if item.get('paused_by_user') or item.get('frozen') or (item.get('user_closed') and not (workspace/'.product-v2/simplified-delivery-receipt.json').exists()):
+            raise ValueError('Paused or frozen case is outside the current closure scope')
+        queue_path=root/'queue.json';pool=read_json(queue_path) if queue_path.exists() else []
+        current=[q for q in pool if q['batch_id']==binding['batch_id'] and q['case_id']==binding['case_id'] and q['status'] in {'active','waiting'}]
+        if any(q['status']=='active' or q.get('owner')!=owner or q['stage'] not in {'review','expedited'} for q in current):
+            raise ValueError('Live work, non-review wait or another owner must be preserved; closure is blocked')
+        if preflight:return {'status':'closure_ready','case_id':binding['case_id']}
+        from simplified_closure import CONTRACT,reference
+        receipt_path=inside(workspace,'.product-v2/simplified-delivery-receipt.json');receipt=read_json(receipt_path)
+        if (receipt.get('kind')!=CONTRACT or receipt.get('status')!='delivered'
+                or receipt.get('run_id')!=run['run_id'] or receipt.get('case_id')!=binding['case_id']
+                or receipt.get('workspace')!=str(workspace) or receipt.get('independent_pass_claimed') is not False
+                or receipt.get('first_independent_decision')!='revise'):
+            raise ValueError('Truthful current simplified delivery receipt required')
+        for key in ('closure','publication','whole_case_package'):
+            path=inside(workspace,'.product-v2/'+{'closure':'simplified-final-receipt.json','publication':'publish-receipt.json','whole_case_package':'whole-case-package.json'}[key])
+            if receipt.get(key)!=reference(path):raise ValueError('Closure receipt relationship changed')
+        destination=no_links(receipt['destination']);publication=read_json(receipt['publication']['path'])
+        closure=read_json(receipt['closure']['path']);package=read_json(receipt['whole_case_package']['path'])
+        if (file_map(destination)!=receipt['files'] or publication.get('files')!=receipt['files']
+                or publication.get('destination')!=str(destination) or publication.get('status')!='published'
+                or publication.get('source_receipt_sha256')!=receipt['closure']['sha256']
+                or closure.get('files')!=receipt['files'] or package.get('status')!='complete'
+                or package.get('archive')!=receipt.get('archive') or package.get('archive')!=reference(package['archive']['path'])
+                or package.get('publication')!=receipt['publication']):
+            raise ValueError('Published delivery or whole-case ZIP missing, changed or unrelated')
+        for ticket in current:
+            ticket.update(status='released',released_ns=time.time_ns(),release_reason='receipt-backed-simplified-delivery',delivery_receipt=reference(receipt_path))
+        # These two writes are individually atomic and jointly idempotent.
+        if current:write_json(queue_path,pool)
+        item.update(phase='delivered',pending=[],recording_pending=False,delivery_basis='user_authorized_simplified',
+                    independent_pass_claimed=False,user_authorized_delivery={'status':'delivered','receipt':reference(receipt_path),
+                    'destination':str(destination),'whole_case_zip':receipt['archive']})
+        write_json(state_path,state)
+        return {'status':'delivered','case_id':binding['case_id'],'receipt':reference(receipt_path)}
 
 def memory_available_mb():
     if os.name!='nt':raise ValueError('Recording admission requires actual physical and commit memory')

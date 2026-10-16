@@ -9,6 +9,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import zipfile
 
 from common import digest, inside, no_links, product_location, read_json
 from evidence_index import check, review_input
@@ -301,6 +302,21 @@ def draft(workspace, execution, destination, index=None, manifest=None, root=Non
         metadata = admitted_metadata(workspace, root, batch_id, token)
     else:
         metadata = current_admitted_metadata(workspace)
+    # Keep real original member facts in the existing signed review, so a later
+    # container-only repack need not repeat successful business execution.
+    from common import delivery_paths
+    from contracts import zip_member_hashes
+    run = read_json(inside(workspace, '.product-v2/run.json'))
+    archive = delivery_paths(run, no_links(run['output']))['source_zip']
+    try:
+        members = zip_member_hashes(archive)
+        package = read_json(inside(workspace, '.product-v2/source-package.json'))
+        if digest(archive) != report['source_zip_sha256'] or package.get('files') != members:
+            raise ValueError('Current ZIP members differ from the actual source package receipt')
+    except (ValueError, OSError, zipfile.BadZipFile) as exc:
+        report['status'] = 'blocked'
+        report['errors'].append({'code': 'source-package', 'location': 'source_package', 'message': str(exc)})
+        return report
     destination.mkdir(parents=True, exist_ok=False)
     records = report['evidence']
     snapshot = {'schema_version': 1, 'workspace': str(workspace), 'evidence': records,
@@ -316,6 +332,7 @@ def draft(workspace, execution, destination, index=None, manifest=None, root=Non
     save('preflight.json', report)
     save('review-draft.json', {**metadata, 'kind': 'non-authoritative-review-draft', 'run_id': report['run_id'],
          'checks': report['execution_checks'], 'source_zip_sha256': report['source_zip_sha256'],
+         'source_package': {'sha256': report['source_zip_sha256'], 'files': members},
          'video_timeline_sha256': report['video_timeline_sha256'],
          'reviewed_files': read_json(facts_path)['current_artifacts'],
          'reviewed_evidence': [], 'chart_reviews': [], 'visual_notes': [], 'limitations': [],

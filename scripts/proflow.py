@@ -175,12 +175,12 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
 实际检索同类型开源项目及原始数据，核对许可、字段、单位和分布，用项目领域机理进行可复现扩充；数据量按实体、时间、频率和代表工况充分覆盖，不用复制或无约束随机数凑行数。保留内部出处、参数、种子、日志和限制，不冒充现场实测。
 完成图文、系统与数据后，再实际操作最终网页录制一分多钟，不录十秒版，按本案有效操作与结果阅读自然结束，不固定60秒、不为凑时长空等、加速或截断。展示筛选、详情、业务提交、结果、历史和导出等完整使用过程。连续真实浏览器录屏，不能拼图、循环或假响应。实际测试算法、接口、保存重启、浏览器、构建和压缩包解压后的启动。
 录制就绪使用本案绝对.py启动文件登记launcher/listener，并确认process_guard inspect.owned含实际监听；high自检实际执行 & $env:SCB_PRO_NODE "{Path(__file__).with_name('record.cjs')}" --check-ready --workspace "{workspace}" --plan "{workspace/'.product-v2/record-plan.json'}"，只读核验计划、真实文件和服务/登记身份，检查通过后父再按既有槽/lease/Job进入capture。此检查不启动浏览器、不写录制状态、不代表录制或视觉通过，不替代真实登录及UI就绪实测，不新增模型或审批。
-建设与独立审查读取references/quality.md的交付质量分级：issues说明具体impact及affected_artifacts，阻交付缺陷定向修复，无实质影响的小细节记内部建议。按references/recording.md在原自检校验最终exact计划的完整value输入预算和timeout_ms，保留完整业务输入；同一次已有browser实测到达对应界面时，调用record.cjs.uniqueVisibleLocator核ready及实际动作的唯一可见定位，结果集合用只读断言，不新增完整replay或审核轮次。已合格视频和充分清洗数据继续按原规则复用，真实首次检查、失败证据和独立验收保持。
+建设与独立审查读取references/quality.md的交付质量分级：issues说明具体impact及affected_artifacts，阻交付缺陷一次列齐、定向修复，无实质影响的小细节记内部建议。按references/recording.md在原自检校验最终exact计划的完整value输入预算和timeout_ms，保留完整业务输入；同一次已有browser实测到达对应界面时，调用record.cjs.uniqueVisibleLocator核ready及实际动作的唯一可见定位，结果集合用只读断言。已有首轮审核小问题由原ultra修复者完成受影响自检后直接打包，不再整案复验；已合格Word、视频与数据按同hash复用，首次必要质量核对仍保留。小修不新增完整replay或审核轮次。真实首次检查、失败证据和独立验收保持，此处独立验收指首次必要质量核对，不为小修新增审核。
 录制和在线验证结束后核实并关闭本案全部专属后台，保留Codex/MCP、共享服务及其他项目。之后仅把白名单重要CSV清洗到上述数据目录；每个CSV整列删除“生成数据”“数据来源”及明确同义元数据列，保留其他字段和值，数据目录仅CSV，不删原工作区数据或数据库。
 本项目交付代码、Web和数据内容不得出现：模拟、虚拟、仿真、物理仿真、参考、源文件、公式、正文。固定容器目录“{paths['system_name']}”按run冻结布局保留；原技术Word原样保留，许可证单独核对。禁词命中按语义修复，不能转义藏词或破坏算法。
 将实际可运行的项目源码压成上述ZIP，排除所有层级README及任何针对原技术文档的解析、抽取、原文映射和分析文件，同时排除原技术文档、过程证据、日志、缓存、依赖目录与凭据。使用明确打包白名单，不复制整个工作区；业务软件必需的导入解析模块保留。原工作区被排除内容仍保留。压缩包不得依赖被排除文件或旧绝对路径。
 成品根目录只能有上述原名Word和“{paths['system_name']}”文件夹；该目录内只能有{paths['source_name']}、{paths['video_name']}、数据/*.csv。使用/运行/安装/部署说明及制作/原件解析/数据构造来源说明留内部工作区，排除源码ZIP，不在外面交付图表、使用说明或其他文件。原Word名称即使包含禁词，只豁免这一冻结文件名和原Word，不扩大到代码、网页或数据。
-按技能运行清洗、打包、扫描、真实录制与进程收尾工具，建设自检后由独立ultra实际检查最终Word页、图表、关键视频帧和完整交付，再执行finalize；只报告有证据的完成状态。当前任务不覆盖原技能、不改旧批次、不上传GitHub、不擅自公网部署。
+按技能运行清洗、打包、扫描、真实录制与进程收尾工具，建设自检后由独立ultra首次实际检查最终Word页、图表、关键视频帧和完整交付。首轮pass走finalize及publish；首轮revise后原修复者做定向修补与受影响自检，在原调用一次返回时保存真实handoff及hash，父按references/closure.md用close-simplified一次发布成品、整案ZIP和真实简化收据，不要求先跑旧finalize失败，不新增整案审核轮次。未解决核心问题、缺失损坏成品仍拒绝。只报告有证据的完成状态。当前任务不覆盖原技能、不改旧批次、不上传GitHub、不擅自公网部署。
 '''
     if base:
         prompt=f'''使用 $software-case-batch-pro 执行本案文档专用修订（scope=document-revision）。
@@ -224,7 +224,7 @@ PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据
     prompt+=f'''\n以下均为以后每个授权案件的通用要求，不限于本次测试案：完整中文业务系统/领域算法和充分数据、原文原式原图保留、详细实施例红字和原式符号、图内无标题而Word图下有图题、一分多钟连续平顺真实实操、真实独立审核、录后核归属关闭后台再清洗重要CSV、源码ZIP排除使用说明及制作/原件解析/来源构造说明和模拟性质文案。
 通用状态验收：任何业务状态操作后，按本项目实际可见项核对列表、详情、统计、摘要和日志属于同一对象/版本；刷新保持用户筛选、排序及合法当前分页，关闭详情抽屉后迟到异步请求不得重新打开，连续/逆向操作也核验。不硬编码某个测试案的业务字段或动作。
 新版默认日常正式成果根：{default_output_root()}；按批次/案件集中，候选也在同卷私有.staging以便整案原子发布。当前显式指定的候选仍是{output}；用户明确指定其他目录时优先遵循。每周仅将已完成成品核验归档到F:\\研发图表；历史和活跃批次路径不改，归档按references/archive.md先复制校验、更新位置索引再清理对应源。TEMP和工具缓存仍D:\\codex+。
-原模型角色继续保留：返修及录制准备修复必须另派gpt-6.1-sol/ultra，独立reviewer只读不实现；原high建设及每轮ultra真实调用/快照均保留。仅明确原加急模式且真实当前批/案user消息核验时才Astra/low；提速不换模型。本次普通ultra。finalize只冻结验收候选，随后父publish --destination 全新同卷正式目录进行整案原子发布，保留intent和独立publish receipt；未publish不称正式交付。
+原模型角色继续保留：返修及录制准备修复必须另派gpt-6.1-sol/ultra，独立reviewer只读不实现；原high建设及每轮ultra真实调用/快照均保留。仅明确原加急模式且真实当前批/案user消息核验时才Astra/low；提速不换模型。本次普通ultra。{('首轮pass由finalize冻结候选并publish原子发布；原review的revise保留不改签pass，原修复者受影响自检后走close-simplified，真实收据同步delivered并只清理本案同owner未派发review等待票。可用draft-closure从现有元数据生成机械字段，原修复者同一次最终答复绑定handoff路径与SHA256，不新增收费阶段。' if not base else '本次按上述授权修订专用finalize入口冻结候选，再publish至全新同卷目录，保留原冻结继承与独立审核要求。')}正式成品发布和整案ZIP以各自真实收据为准。
 '''
     if run.get('data_policy_version')=='neutral-expanded-v1' and not base:
         prompt+='''\n建设开始在现有data-plan制定足量数据：对现有不足版本先统计清洗后主要明细有效规模，以约2倍作为扩容起点，按业务粒度和性能说明调整，维表不机械翻倍；新案按领域对象、时间跨度及关键事件覆盖安排。使用批量可复现计算，不复制换号凑行。导出文件名、表头、备注和单元格不得有真实或编造的地名、公司名称、人名，统一稳定编号，保持跨表与Web下载一致。原始来源、性质和映射只留内部，不伪称实测。先用data_preflight实际检查规模、引用和专名，再清洗输出并核对初始化、分页和导出；沿现有数据清洗记录绑定当前文件哈希，见references/system-data.md。\n'''
@@ -640,6 +640,9 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
     Hash each inspected path once per request. Media readiness is limited to
     receipt/video/timeline bindings; finalization still checks all frame bytes.
     """
+    if (workspace/'.product-v2/simplified-final-receipt.json').exists():
+        from simplified_closure import delivery_status
+        return delivery_status(workspace,output,run)
     hashes={};steps={};pointers=[];prior_execution_doc={}
     paths=delivery_paths(run,output)
     def sha(path):
@@ -1148,16 +1151,17 @@ def publication_run(run,destination):
     return updated
 
 
-def publish(workspace,destination):
+def publish(workspace,destination,_simplified=False):
     """Atomic same-volume directory publication with durable, resumable intent."""
     workspace=no_links(workspace);destination=no_links(destination)
     run_path=inside(workspace,'.product-v2/run.json');run=read_json(run_path)
     delivery_paths(run)
     if run['workspace']!=str(workspace):raise ValueError('Current run workspace identity differs')
-    receipt_path=inside(workspace,'.product-v2/final-receipt.json');receipt=read_json(receipt_path)
+    receipt_path=inside(workspace,'.product-v2/'+('simplified-final-receipt.json' if _simplified else 'final-receipt.json'));receipt=read_json(receipt_path)
     if ('delivery_layout_version' in receipt and receipt['delivery_layout_version']!=delivery_paths(run)['version']):
         raise ValueError('Publication layout differs from the frozen acceptance receipt')
-    if receipt.get('status')!='complete' or receipt.get('delivery_state')!='verified-candidate':
+    expected_state='simplified-candidate' if _simplified else 'verified-candidate'
+    if receipt.get('status')!='complete' or receipt.get('delivery_state')!=expected_state:
         raise ValueError('Only a newly verified candidate can be atomically published; old finalized deliveries remain frozen')
     if destination==workspace or workspace in destination.parents or destination in workspace.parents:
         raise ValueError('Publication destination and workspace must be disjoint')
@@ -1211,6 +1215,8 @@ def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     sub=p.add_subparsers(dest='command',required=True)
     prep=sub.add_parser('prepare');prep.add_argument('--workspace',required=True);prep.add_argument('--output',required=True);prep.add_argument('--title',required=True);prep.add_argument('--source-docx',required=True);prep.add_argument('--revision-of');prep.add_argument('--adopt-draft',action='store_true');prep.add_argument('--revision-scope',choices=['document','package'],default='document');prep.add_argument('--allow-untracked-base',action='store_true')
+    closure=sub.add_parser('close-simplified');closure.add_argument('--workspace',required=True);closure.add_argument('--evidence',required=True);closure.add_argument('--destination',required=True);closure.add_argument('--archive',required=True);closure.add_argument('--owner-pid',type=int)
+    draft=sub.add_parser('draft-closure');draft.add_argument('--workspace',required=True);draft.add_argument('--manifest',required=True);draft.add_argument('--evidence',required=True)
     for name in ('clean-data','check-data','check-build','status','pack-source','scan','record','finalize','finalize-document-revision','finalize-package-revision','publish','preserve-draft'):
         item=sub.add_parser(name);item.add_argument('--workspace',required=True)
         if name in ('check-build','status'):item.add_argument('--plan')
@@ -1226,6 +1232,12 @@ def main(argv=None):
     try:
         if args.command=='prepare': result=prepare(args.workspace,args.output,args.title,args.source_docx,args.revision_of,args.adopt_draft,args.revision_scope,args.allow_untracked_base)
         elif args.command=='publish':result=publish(args.workspace,args.destination)
+        elif args.command=='close-simplified':
+            from simplified_closure import close
+            result=close(args.workspace,args.evidence,args.destination,args.archive,args.owner_pid)
+        elif args.command=='draft-closure':
+            from simplified_closure import draft
+            result=draft(args.workspace,args.manifest,args.evidence)
         else:
             workspace,output,run=state(args.workspace)
             if args.command=='check-build':

@@ -110,6 +110,59 @@ def chart_policy(run):
 def _nonempty_text(value):
     return isinstance(value,str) and bool(value.strip())
 
+def unread_visual_evidence(value):
+    """Read standard review notes as well as optional explicit unread fields."""
+    if isinstance(value,dict):return any(unread_visual_evidence(v) for v in value.values())
+    if isinstance(value,(list,tuple)):return any(unread_visual_evidence(v) for v in value)
+    if not isinstance(value,str):return False
+    unread=r'未(?:实际|完整|逐页|全部)?(?:读|打开|查看|阅|检查|观看)|' \
+           r'\b(?:not|never)\s+(?:yet\s+)?(?:been\s+)?(?:actually\s+)?(?:viewed|read|inspected|reviewed|opened)\b|' \
+           r'\bun(?:read|viewed|inspected|reviewed)\b'
+    for statement in re.split(r'[。；;\n]|\.(?=\s|$)',value):
+        if not re.search(unread,statement,re.I):continue
+        required=re.search(r'\b(?:word|docx|pngs?|charts?|figures?|videos?|documents?|pages?)\b|文档|图表|图题|页面|全部页|视频|关键帧',statement,re.I)
+        external=(re.search(r'deploy(?:ment)?|生产部署|现场部署',statement,re.I)
+                  and re.search(r'outside|out.of.scope|范围外|不(?:属于|在|包含|含).{0,12}(?:本案|范围|验收)',statement,re.I))
+        if required or not external:return True
+    return False
+
+def zip_member_hashes(path):
+    """Hash real member bytes, rejecting ambiguous Windows archive names."""
+    from pathlib import PurePosixPath
+    members={};names=set()
+    with zipfile.ZipFile(path) as archive:
+        for item in archive.infolist():
+            name=item.filename;parts=PurePosixPath(name)
+            if (parts.is_absolute() or '..' in parts.parts or '\\' in name or ':' in name
+                    or name.casefold() in names or (item.external_attr>>16)&0o170000==0o120000):
+                raise ValueError('Unsafe/duplicate source ZIP member: '+name)
+            names.add(name.casefold())
+            if not item.is_dir():members[name]=hashlib.sha256(archive.read(item)).hexdigest()
+    if not members:raise ValueError('Nonempty actual source ZIP members required')
+    return members
+
+def first_chart_failures(proof,policy):
+    """Preserve failed judgments for targeted repair; never inherit them as pass."""
+    charts=proof.get('chart_snapshot',{});reviews=proof.get('chart_reviews',[])
+    if (not isinstance(reviews,list) or len(reviews)!=len(charts.get('figures',{}))
+            or any(not isinstance(item,dict) for item in reviews)
+            or {str(item.get('figure_id')) for item in reviews}!=set(charts.get('figures',{}))):
+        raise ValueError('First necessary independent quality check must cover every chart')
+    failures=[]
+    for item in reviews:
+        number=str(item['figure_id'])
+        if item.get('png_sha256')!=charts['figures'][number]:
+            raise ValueError('First chart review snapshot differs')
+        judgments={key:item.get(key,{}) for key in ('meaning','data','legibility','layout','explanation')}
+        for key in ['no_title_header']+(['no_schematic'] if policy in ANALYTICAL_POLICIES else []):
+            judgments[key]={'passed':item.get(key),'evidence':item.get(key+'_evidence')}
+        for key,value in judgments.items():
+            if (not isinstance(value,dict) or type(value.get('passed')) is not bool
+                    or not _nonempty_text(value.get('evidence')) or unread_visual_evidence(value['evidence'])):
+                raise ValueError('First necessary independent chart quality evidence missing: '+key)
+            if value['passed'] is False:failures.append((number,key))
+    return failures
+
 def check_word_chart_width(block, relations, media, sha, intended_mm):
     """Require the actual inserted drawing to retain the visually checked width."""
     widths=[]
@@ -619,13 +672,32 @@ def model_review(workspace, proof, files, charts, evidence_path):
     return _model_review(workspace,proof,files,charts,evidence_path)
 
 
-def _model_review(workspace, proof, files, charts, evidence_path, hash_file=digest, _recorded_dispatch=None):
+def first_review_binding(workspace, proof, evidence_path, dispatch_path):
+    """Authenticate a preserved first revise, without turning it into a pass.
+
+    Only this separate closure contract accepts revise. The ordinary complete
+    acceptance route and its successful chart checks remain unchanged.
+    """
+    execution_checks = __import__('review_packet').execution_checks
+    execution_checks(proof.get('checks'))
+    if not proof.get('reviewed_files') or not proof.get('visual_notes') or not proof.get('limitations'):
+        raise ValueError('First review requires its actual artifact snapshot, visual notes and limitations')
+    if (any(value for key,value in proof.items() if key.startswith('unread')) or proof.get('visual_read_complete') is False
+            or unread_visual_evidence([proof['visual_notes'],proof['limitations']])):
+        raise ValueError('First necessary independent visual evidence was unread')
+    charts=proof.get('chart_snapshot',{})
+    first_chart_failures(proof,chart_policy(read_json(inside(workspace,'.product-v2/run.json'))))
+    return _model_review(workspace,proof,proof['reviewed_files'],charts,evidence_path,
+                         _first_dispatch=dispatch_path)
+
+
+def _model_review(workspace, proof, files, charts, evidence_path, hash_file=digest, _recorded_dispatch=None, _first_dispatch=None):
     run=read_json(inside(workspace,'.product-v2/run.json'))
     policy=chart_policy(run)
     analytical=policy in ANALYTICAL_POLICIES
     if analytical and charts.get('chart_policy')!=policy:
         raise ValueError('Review chart snapshot must bind the frozen analytical policy')
-    spec=read_json(inside(workspace,'.product-v2/model-dispatch.json'))
+    spec=read_json(_first_dispatch if _first_dispatch is not None else inside(workspace,'.product-v2/model-dispatch.json'))
     stages=spec.get('stages',{})
     if (spec.get('schema_version')!=1 or not {'build','review'}.issubset(stages)
             or any(k not in {'build','review'} and not re.fullmatch(r'repair-[1-9][0-9]*',k) for k in stages)):
@@ -722,7 +794,8 @@ def _model_review(workspace, proof, files, charts, evidence_path, hash_file=dige
             raise ValueError('Every original build/repair must retain its actual completion snapshot')
         verified[stage]={'agent_id':agent_id,'call_id':call_id,
             'dispatch_event_sha256':hashlib.sha256(json.dumps([call,result],sort_keys=True,ensure_ascii=False).encode()).hexdigest()}
-    if proof.get('reviewer_agent_id')!=agents['review'] or proof.get('decision')!='pass' or proof.get('chart_snapshot')!=charts:
+    expected_decision='revise' if _first_dispatch is not None else 'pass'
+    if proof.get('reviewer_agent_id')!=agents['review'] or proof.get('decision')!=expected_decision or proof.get('chart_snapshot')!=charts:
         raise ValueError('Current independent admitted reviewer decision and chart snapshot required')
     review_record=spec['stages']['review']
     review_log=no_links(review_record['review_session_log'])
@@ -772,6 +845,7 @@ def _model_review(workspace, proof, files, charts, evidence_path, hash_file=dige
     if not actual_identity or not actual_attestation:
         raise ValueError('Independent reviewer final must attest the exact review JSON SHA256 and any encrypted dispatch binding; builder cannot self-sign pass')
     freshness.verify()
+    if _first_dispatch is not None:return verified
     if _recorded_dispatch is not None:return verified
     reviews=proof.get('chart_reviews',[])
     if policy==BUILD_CHART_POLICY:

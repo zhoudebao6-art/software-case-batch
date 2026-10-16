@@ -179,6 +179,18 @@ spawn_agent(task_name="本案独立验收", fork_turns="none", model="gpt-6.1-so
 
 ## 原子发布候选
 
+已有首审的小修按[收尾分流](closure.md#按实际问题收尾)优先使用下面的正式简化入口，不先跑旧finalize取得失败，不要求新增整案review。其他首审pass案件仍使用本节原finalize/publish流程。
+
+```powershell
+& $env:SCB_PRO_PYTHON '工具目录\proflow.py' close-simplified --workspace '原案件工作区' --evidence '原修复者收尾JSON' --destination 'D:\研发图表\本批\本案' --archive 'D:\研发图表\交付包\本批\本案.zip' --owner-pid 原批次父PID
+```
+
+收尾JSON沿原修复交接生成，`contract: targeted-closure-v1`，绑定同workspace/run/case、真实用户通用简化授权、原首审proof与dispatch、实际ultra修复调用及最后答复。保留原问题ID、实际解决结果和受影响文件/检查对应；六类已有成功事实只补受影响项，源码变化时包启动绑定当前ZIP。它记录“用户授权简化收尾”，不改首审revise、不制造新的独立pass。不能以空问题表、复制旧哈希或声明resolved代替实际检查。
+
+原修复者可在同一次任务返回前运行 `proflow.py draft-closure --workspace 原工作区 --manifest 原事实交接JSON --evidence 新收尾JSON`，由工具填当前文件、变动路径、图表快照、源码与视频索引哈希，避免手抄。原事实含授权、首审及实际dispatch引用、问题解决项与已有检查；`affected_checks`仅补本轮影响范围，Word变化须实际查看受影响内容并记录。draft只是中性草稿，原修复者核对后在原最终答复签收其真实哈希，不代写判断或再加一个模型阶段。 首审逐图失败项也必须保留；修正对应Word/图后，在受影响视觉检查的chart_reviews中仅记录该figure_id、当前png_sha256及原失败项的passed/evidence，不能将未变失败图当成合格复用。
+
+命令完成原子发布、整案ZIP、真实收据及本批交付状态同步；同一参数重入只补缺失的收尾步骤，不重新建设或派审。不覆盖不同成品，不代领他人票据，不释放尚在运行的任务。缺首次必要阅读、缺失/坏文件、未解决的核心问题仍须真实补齐。历史冻结成品不走此入口重写。
+
 最终candidate验收后，父使用`proflow.py publish --workspace '当前工作区' --destination 'D:\研发图表\正式本批\本案'`。门禁冻结publish-intent、再次逐文件核hash与本案后台停止、仅同卷新目标整体原子rename；新run路径更新与独立publish-receipt保存，原final receipt/独立review不改。intent保留便于崩溃后原命令恢复，不删除旧目标、不合并、不重签。未发布verified-candidate不可作下一修订父案；已publish的新schema父验证当前publish receipt，旧历史complete维持原兼容。
 
 ## 原显式加急条件路由
