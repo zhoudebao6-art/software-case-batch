@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r23-targeted-closure-20261017",
+  "release": "r23-github-cleanup-20261017",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -19,8 +19,8 @@
     },
     {
       "relative_path": "CI说明.md",
-      "sha256": "cd9cd3ee4fba5f6e0b1d927b399517a8babdaea7222d77f940d20136194f49af",
-      "size": 2938
+      "sha256": "891e4a5fba1f275aadb2c405da573a6a9167af5b898d6db2f20477f27f3a8342",
+      "size": 1620
     },
     {
       "relative_path": "Enter-Environment.ps1",
@@ -29,8 +29,8 @@
     },
     {
       "relative_path": "README.md",
-      "sha256": "91db9a2af62459b2c7b38d472e3cb2c193969fdca5e62dfbd58a3aa58cb28e49",
-      "size": 13807
+      "sha256": "554231107ef8e5c01be38bf876607321769ef39a1941f370e578e70ac09b3338",
+      "size": 8610
     },
     {
       "relative_path": "SKILL.md",
@@ -129,8 +129,8 @@
     },
     {
       "relative_path": "references/inheritance.md",
-      "sha256": "cbe164af5f71c12f79c9efe9ba8a8e6c95207dddaeb2e04d4a4f3f731016993a",
-      "size": 9271
+      "sha256": "368e4943cbe6f5519dc87ffb1528a047b2ad1bb7411836ba84cd9a181404d12b",
+      "size": 10438
     },
     {
       "relative_path": "references/original-discovery-mapping.json",
@@ -466,11 +466,6 @@
       "relative_path": "scripts/source_intake.py",
       "sha256": "b9c5c1825b4162ec286d21a4f3656abb356a10f6d96e61f5aefe7754aca5d8e5",
       "size": 944
-    },
-    {
-      "relative_path": "skill/README.md",
-      "sha256": "6bba7934d50d7fa3a87156859ceb2a4ba300eb25e54cd6cd3af914fac8bea3ff",
-      "size": 1900
     },
     {
       "relative_path": "skill/SKILL.compatibility.txt",
