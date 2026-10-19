@@ -33,6 +33,25 @@
 
 异步结果在写入任何可见状态前核对请求发起时的对象ID、版本与当前请求序号；操作、计算、图表、提示和详情各自的回调都适用，不能只保护refresh。中途切换对象、改变筛选或关闭详情后，迟到结果不覆盖当前页面，也不重开抽屉；后台已完成的真实操作仍保留。建设内用一次延迟响应加切换/关闭动作验证本案实际消费路径，沿已有浏览器日志记录，不新增审核阶段。录制计划的搜索清空也实际执行一次，不能只检查非空输入。
 
+可直接将技能的 `assets/web/request_scope.mjs` 复制到本案运行源码并按框架接入；已有等效可靠机制则沿用，不为升级重写成品。组件仅管理请求归属，不提供通用业务算法，也不替代本案浏览器自检。对象/输入版本变化时 `scope.enter(对象ID与版本组成的键)` 并清除旧详情、旧错误和加载状态；空结果或关闭时 `scope.close()` 并清空选中对象。每个独立显示区域使用不同lane，同lane只接受最新请求：
+
+```javascript
+const ticket = scope.begin('detail');
+setBusy(true);
+try {
+  const response = await fetch(url, {signal: ticket.signal});
+  if (!response.ok) throw new Error('加载失败');
+  const value = await response.json();
+  if (scope.isCurrent(ticket)) setDetail(value);
+} catch (error) {
+  if (scope.isCurrent(ticket)) setError(error.message);
+} finally {
+  if (scope.finish(ticket)) setBusy(false);
+}
+```
+
+所有成功、错误和finally可见写入均受归属保护，切换对象即使旧请求忽略取消也不会覆盖新页。取消前端请求不代表撤销后台写操作：真实写入仍按服务端事实保留，重新加载当前对象确认结果，不盲重发。输入修订必须传新版本键；搜索清空时实际清空选择和依赖视图，不能只引入组件却不接实际路径。复用现有延迟响应/切换/关闭检查即可，不增加审核或录制轮次。
+
 在同一次high浏览器自检里，把这些实际页面状态的可见文字交给现有 `record.cjs` 导出的 `auditUiText` 检查，复用 `ui-policy.json`，问题在录制前修正；不另建文案检查模型，也不等整段视频录完才发现禁用文案。
 
 一次查看主工作区和最关键详情，发现具体问题才定向修正。不要为每案强制生成视觉概念图、下载设计库、添加无业务用途的动画或启动独立设计审核会话。已有清晰界面无需为了新指南重新制作。

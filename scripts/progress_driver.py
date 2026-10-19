@@ -1,22 +1,32 @@
 """Bounded, explicit owner-operated capture -> evidence continuation. No model calls."""
 import argparse
 from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 import time
+import threading
 import uuid
 import batch_control as batch
 from common import digest,no_links,read_json,write_json
+
+_CONTROL_LOCK=threading.RLock()
+
+
+def mutate(*args,**kwargs):
+    # One helper can supervise several distinct cases. Serialize only its short
+    # control transactions; media runs outside this lock and keeps the real Job.
+    with _CONTROL_LOCK:return batch.mutate(*args,**kwargs)
 
 
 @contextmanager
 def invocation(root,target,pid,case_id):
     """Serialize only this case; reclaim a dead helper, never a live media Job."""
     path=target/'progress'/f'{case_id}.lock.json';nonce=uuid.uuid4().hex
-    with batch.transaction(root,wait_seconds=3):
+    with _CONTROL_LOCK,batch.transaction(root,wait_seconds=3):
         batch.owner_check(target,pid)
         if path.exists():
             old=read_json(path)
@@ -25,7 +35,7 @@ def invocation(root,target,pid,case_id):
         write_json(path,{'identity':batch.identity(os.getpid()),'owner':batch.identity(pid),'nonce':nonce})
     try:yield
     finally:
-        with batch.transaction(root,wait_seconds=3):
+        with _CONTROL_LOCK,batch.transaction(root,wait_seconds=3):
             if path.exists() and read_json(path).get('nonce')==nonce:path.unlink()
 
 
@@ -141,7 +151,7 @@ def drive(root,batch_id,pid,case_id,plan=None,timeout=1800,retry_capture=False):
                         from media_job import job_name,job_pids
                         if not runtime or batch.identity(runtime['pid'])==runtime['identity'] or job_pids(job_name(root,batch_id,entry['token'])):
                             return save('running',next_action='wait_for_existing_media_exit_then_resume',ticket=entry)
-                    batch.mutate(root,batch_id,pid,'release-slot',token=entry['token'])
+                    mutate(root,batch_id,pid,'release-slot',token=entry['token'])
                 return save('technical_evidence_ready',receipts=receipt_refs(workspace),adopted_completed_recording=True,
                             next_action='independent_review',visual_review_required=True)
         # At most capture and evidence once each. Never poll a queue, dispatch a
@@ -168,7 +178,7 @@ def drive(root,batch_id,pid,case_id,plan=None,timeout=1800,retry_capture=False):
                                 reason='Prior capture/evidence context retained; restore the original capture pointer before continuing',
                                 ticket=entry,capture_receipts=retained)
             if entry and entry['status']=='active' and entry.get('media_runtime'):
-                batch.mutate(root,batch_id,pid,'release-slot',token=entry['token'])
+                mutate(root,batch_id,pid,'release-slot',token=entry['token'])
                 entry=None
                 if not capture:return save('failed',phase='capture',next_action='repair_capture_then_resume_with_retry_capture',reason='Exited capture has no successful receipt')
             stage='evidence' if capture else 'record';phase='evidence' if capture else 'capture'
@@ -177,12 +187,12 @@ def drive(root,batch_id,pid,case_id,plan=None,timeout=1800,retry_capture=False):
             if stage=='record' and not retry_capture and (saved.get('phase')=='capture' or (workspace/'.product-v2/capture-pending.json').exists()):
                 return save('failed',phase='capture',ticket=entry,next_action='repair_capture_then_resume_with_retry_capture',reason='Unfinished original capture retained; repair and explicit retry required')
             if entry and entry['stage']!=stage:
-                batch.mutate(root,batch_id,pid,'release-slot',token=entry['token'])
+                mutate(root,batch_id,pid,'release-slot',token=entry['token'])
                 entry=None
             if stage=='record' and not plan:return save('waiting',next_action='provide_current_record_plan',capture=capture)
-            if not entry:entry=batch.mutate(root,batch_id,pid,'queue',case_id,stage=stage)
+            if not entry:entry=mutate(root,batch_id,pid,'queue',case_id,stage=stage)
             if entry['status']=='waiting':
-                admitted=batch.mutate(root,batch_id,pid,'acquire',token=entry['token'])
+                admitted=mutate(root,batch_id,pid,'acquire',token=entry['token'])
                 if admitted.get('status')!='active':
                     return save('waiting',**({'phase':'evidence'} if phase=='evidence' else {}),
                                 next_action='resume_after_resource_or_selected_owner_progress',ticket=entry,admission=admitted)
@@ -196,7 +206,7 @@ def drive(root,batch_id,pid,case_id,plan=None,timeout=1800,retry_capture=False):
             finally:
                 # Existing release verifies Job members, runtime identity and
                 # exact stale lock. If exit is unproven the reservation stays.
-                try:batch.mutate(root,batch_id,pid,'release-slot',token=entry['token'])
+                try:mutate(root,batch_id,pid,'release-slot',token=entry['token'])
                 except (ValueError,OSError) as error:
                     return save('cleanup_pending',ticket=entry,exit_code=code,reason=str(error),log=str(log),next_action='verify_existing_media_exit_then_resume')
             if failure or code!=0:
@@ -211,15 +221,111 @@ def drive(root,batch_id,pid,case_id,plan=None,timeout=1800,retry_capture=False):
         raise ValueError('Bounded media continuation exhausted without a result')
 
 
+def drive_ready(root,batch_id,pid,plans=None,timeout=1800):
+    """Drain only the original owner's already queued media, on completion events.
+
+    No daemon, sleep/retry loop, new case registration or automatic capture retry.
+    The ordinary drive/acquire/Job path remains the sole execution authority.
+    """
+    if type(timeout) is not int or not 30<=timeout<=3600:raise ValueError('Media invocation timeout must be 30..3600 seconds')
+    root=no_links(root);target,manifest=batch.batch(root,batch_id)
+    cases={c['case_id']:c for c in manifest['cases']}
+    identity=batch.identity(pid)
+    if not identity:raise ValueError('Original live owner required')
+    def snapshot():
+        with _CONTROL_LOCK,batch.transaction(root,wait_seconds=3):
+            batch.owner_check(target,pid)
+            state=read_json(target/'state.json')
+            pool=read_json(root/'queue.json') if (root/'queue.json').exists() else []
+            ready=batch.runnable_waiting(root,pool)
+            return state,pool,ready
+    state,pool,ready=snapshot()
+    initial=[q for q in pool if q['batch_id']==batch_id and q['owner']==identity
+             and q['stage'] in {'record','evidence'} and q['status'] in {'waiting','active'}
+             and state['cases'][q['case_id']].get('phase') not in {'blocked','delivered'}]
+    pending={q['case_id'] for q in initial}
+    if len(pending)!=len(initial):raise ValueError('Multiple current media tickets for one case')
+    plans={} if plans is None else plans
+    if not isinstance(plans,dict) or set(plans)-pending:raise ValueError('Plans must map only initially queued owned cases')
+    runs={c:read_json(no_links(cases[c]['workspace'])/'.product-v2/run.json')['run_id'] for c in pending}
+    results={};attempted=set();selected=None
+    def invoke(case_id):
+        try:
+            workspace=no_links(cases[case_id]['workspace'])
+            if read_json(workspace/'.product-v2/run.json')['run_id']!=runs[case_id]:raise ValueError('Queued case run changed during ready-media continuation')
+            plan=plans.get(case_id)
+            if plan is not None:
+                plan=no_links(plan)
+                if workspace not in plan.parents:raise ValueError('Recording plan must remain in its registered case workspace')
+            else:
+                plan=workspace/'.product-v2/record-plan.json'
+                if not plan.is_file():plan=None
+            return drive(root,batch_id,pid,case_id,plan,timeout,retry_capture=False)
+        except (ValueError,OSError,KeyError,TypeError) as exc:
+            return {'status':'failed','next_action':'repair_reported_case_only','reason':str(exc)}
+    for _ in range(2*len(initial)+1):
+        if not pending:break
+        state,pool,ready=snapshot()
+        if state['drain']:break
+        active=[q for q in pool if q['stage'] in {'record','evidence'} and q['status']=='active']
+        # Only local progress can cause another attempt. Other batches changing
+        # the shared queue must not turn a resource wait into a polling loop.
+        fingerprint=tuple(sorted((q['token'],q['stage'],q['status'],json.dumps(q['owner'],sort_keys=True))
+                                 for q in pool if q['batch_id']==batch_id and q['case_id'] in runs
+                                 and q['stage'] in {'record','evidence'} and q['status'] in {'waiting','active'}))
+        current=[q for q in active if q['batch_id']==batch_id and q['owner']==identity and q['case_id'] in pending]
+        order=lambda q:(-q['priority'],q['submitted_ns'],q['token'])
+        if not current:
+            evidence=sorted((q for q in active+ready if q['stage']=='evidence'),key=lambda q:(q['status']!='active',*order(q)))
+            current=evidence[:1] if evidence else sorted((q for q in ready if q['stage']=='record'),key=order)[:batch.GLOBAL_RECORDING_LIMIT]
+        wave=[]
+        for ticket in current:
+            selected={k:ticket[k] for k in ('token','batch_id','case_id','stage','owner')}
+            case_id=ticket['case_id'];key=(case_id,fingerprint)
+            if (ticket['batch_id']!=batch_id or ticket['owner']!=identity or case_id not in pending
+                    or state['cases'][case_id].get('phase') in {'blocked','delivered'} or key in attempted):break
+            attempted.add(key);wave.append(case_id)
+        if not wave:break
+        # Existing admission still enforces actual memory, global capture count,
+        # evidence exclusion and FIFO. No additional model slot is acquired.
+        with ThreadPoolExecutor(max_workers=len(wave)) as executor:
+            outcomes=list(executor.map(invoke,wave))
+        for case_id,outcome in zip(wave,outcomes):
+            results[case_id]=outcome
+            if outcome.get('admission',{}).get('selected'):selected=outcome['admission']['selected']
+            if outcome['status']!='waiting':pending.discard(case_id)
+        # The next iteration is caused by this finite wave completing. It may
+        # join retained captures to their evidence without another parent turn.
+    failed=any(v['status'] in {'failed','cleanup_pending'} for v in results.values())
+    status=('failed' if failed else 'paused' if state['drain'] else
+            'technical_evidence_ready' if initial and len(results)==len(initial) and
+             all(v['status']=='technical_evidence_ready' for v in results.values()) else 'waiting' if initial else 'idle')
+    return {'status':status,'batch_id':batch_id,'owner':identity,'case_ids':sorted(runs),
+            'cases':{c:dict({k:v[k] for k in ('status','next_action','phase','reason') if k in v},
+                           **({'admission_reason':v['admission']['reason']} if v.get('admission',{}).get('reason') else {}))
+                     for c,v in sorted(results.items())},
+            'selected':selected if status in {'waiting','failed'} else None,
+            'progress_directory':str(target/'progress'),'visual_review_required':True,
+            'scope':'Initially queued owned media only; no model dispatch, visual approval or publication.'}
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root',required=True);parser.add_argument('--batch-id',required=True)
-    parser.add_argument('--pid',type=int,required=True);parser.add_argument('--case-id',required=True)
+    parser.add_argument('--pid',type=int,required=True)
+    selection=parser.add_mutually_exclusive_group(required=True)
+    selection.add_argument('--case-id');selection.add_argument('--ready',action='store_true')
+    parser.add_argument('--plans',help='Optional existing JSON mapping owned case IDs to their custom plan paths')
     parser.add_argument('--plan');parser.add_argument('--timeout',type=int,default=1800)
     parser.add_argument('--retry-capture',action='store_true',help='Explicit retry only after repairing a failed/unfinished capture; valid captures always reused')
     args=parser.parse_args()
     try:
-        result=drive(args.root,args.batch_id,args.pid,args.case_id,args.plan,args.timeout,args.retry_capture)
+        if args.ready:
+            if args.plan or args.retry_capture:raise ValueError('--ready never retries failed captures; use the original explicit case command after repair')
+            result=drive_ready(args.root,args.batch_id,args.pid,read_json(args.plans) if args.plans else None,args.timeout)
+        else:
+            if args.plans:raise ValueError('--plans is only for --ready')
+            result=drive(args.root,args.batch_id,args.pid,args.case_id,args.plan,args.timeout,args.retry_capture)
         print(json.dumps(result,ensure_ascii=False,indent=2));return 2 if result['status'] in {'failed','cleanup_pending'} else 0
     except (ValueError,OSError,KeyError,TypeError) as error:print('ERROR: '+str(error),file=sys.stderr);return 2
 

@@ -63,7 +63,7 @@ def review_input(workspace,index,destination,compact=False):
     if compact:facts['evidence_directory']=index_summary(index,spec)
     else:facts['evidence']=spec['evidence']
     facts['review_sequence']={'first':'Use the actual source mappings and algorithm/API/persistence evidence to check applicable acceptance/rejection boundaries and final-engine derived results in references/system-data.md before expensive visual coverage.',
-        'on_blocking_defect':'Report the concrete source-bound defect as revise and disclose unread evidence; never invent coverage.',
+        'on_blocking_defect':'Collect all reproducible material defects in this review. Continue independent checks and the complete first visual reading of stable Word/video even if code needs repair. Stop only checks made impossible or invalid by that actual dependency; disclose exactly what remains unread and why. Never invent coverage or add a whole-case review for minor fixes.',
         'for_pass':'Complete the full required source, document, chart, UI and video review; no visual scope or independent role is reduced. A video already actually reviewed and accepted may inherit its original viewed conclusion while its final media and technical evidence remain unchanged; later minor code, data or copy edits do not require another video review. A video never actually accepted still requires the complete first review.'}
     if policy is not None:
         facts['current_charts']['chart_policy']=policy
@@ -76,6 +76,27 @@ def review_input(workspace,index,destination,compact=False):
         media=read_json(controlled);timeline=no_links(media['timeline'])
         if workspace not in timeline.parents or digest(timeline)!=media['sha256']:raise ValueError('Current controlled timeline changed')
         facts['current_video_timeline']={'path':str(timeline),'sha256':digest(timeline)}
+    # Direct navigation only: do not duplicate hundreds of uniform frames or
+    # mark a single evidence ID read. The complete index remains authoritative.
+    indexed={str(inside(workspace,row['path'])):row for row in spec['evidence']}
+    def reference(path,sha,**extra):
+        path=no_links(path) if Path(path).is_absolute() else inside(workspace,path)
+        if workspace not in path.parents:raise ValueError('Visual navigation must stay in this workspace')
+        row=indexed.get(str(path))
+        if (row['sha256'] if row else digest(path))!=sha:raise ValueError('Visual navigation input changed: '+str(path))
+        result={'path':str(path),'sha256':sha,**extra}
+        if row:result['evidence_id']=row['id']
+        return result
+    navigation={'coverage_claim':False,
+        'instruction':'Open these actual files; a link or hash is not a viewed item. Read every Word page from the full index, all video contact sheets and required full-resolution endpoint/interaction frames; inspect other full-resolution frames where needed. Keep all original evidence and report actual reviewed IDs only.',
+        'charts':[reference(f['png'],f['sha256'],figure_id=f['figure_id']) for f in figures]}
+    if controlled.exists():
+        report=read_json(timeline)
+        navigation['video']={group:[reference(item['file'],item['sha256']) for item in report.get(group,[])]
+                             for group in ('contact_sheets','interaction_frames')}
+        navigation['video']['endpoints']=[reference(item['file'],item['sha256'],type=item['type'])
+                                         for item in report.get('frames',[]) if item.get('type') in {'first','last'}]
+    facts['visual_navigation']=navigation
     destination=no_links(destination)
     if workspace not in destination.parents or destination.exists():raise ValueError('Use a new internal facts path; do not overwrite any review')
     write_json(destination,facts);return {'facts':str(destination),'sha256':digest(destination),'evidence_items':len(spec['evidence'])}

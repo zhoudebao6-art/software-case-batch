@@ -66,5 +66,5 @@ jobs:
       - name: Node recording contracts
         run: |
           . '.\Enter-Environment.ps1'
-          & $env:SCB_PRO_NODE --test '.\tests\test_record.cjs'
+          & $env:SCB_PRO_NODE --test '.\tests\test_record.cjs' '.\tests\test_request_scope.cjs'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

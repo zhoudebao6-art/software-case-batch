@@ -39,11 +39,11 @@ prepare保存run和深化命令词后继续实际建设，不能只交命令词�
 
 | 当前任务 | 动作 | 按需读取 |
 |---|---|---|
-| high建设 | 原件抽取一次；先实跑原技术核心、合法/拒绝边界及连续业务操作，再扩展依赖图文和数据。不新增单独模型准备阶段 | [系统与数据](references/system-data.md)、[Web](references/web-design.md)、[图文](references/quality.md)；首次新图类型读[图形基线](references/figure-design.md) |
+| high建设 | 原件抽取一次；先实跑原技术核心、合法/拒绝边界及连续业务操作，再扩展依赖图文和数据。异步页面可复用已测request_scope组件，在同一次自检验证真实消费路径，不新增模型阶段 | [系统与数据](references/system-data.md)、[Web](references/web-design.md)、[图文](references/quality.md)；首次新图类型读[图形基线](references/figure-design.md) |
 | 图文与数据 | 同一已核计算供图文/Web共用；解释放正文，运行已有图与数据自检 | [工具](references/tools.md)相关命令 |
-| 首次录制 | 同一浏览器会话核选择器、输入时长预算及首个动作；按原owner、原票用progress_driver接capture→evidence，证据失败保原片 | [录制](references/recording.md)、[并发](references/recording-concurrency.md)、[接续](references/progress.md) |
+| 首次录制 | 同一浏览器会话核选择器、输入时长预算及首个动作；同owner已有多件媒体票用progress_driver --ready一次接续capture→evidence；单案原命令仍可用，证据失败保原片 | [录制](references/recording.md)、[并发](references/recording-concurrency.md)、[接续](references/progress.md) |
 | 收尾 | 在线验证结束，按PID/创建时间/命令/树/端口核对后关本案后台；重要CSV白名单清洗、清单打包、统一package_probe真实解包启动及核心链 | [进程](references/processes.md)、[收尾](references/closure.md) |
-| 首次独立核对 | 中性事实与准入绑定交另一ultra，一次收齐实质问题及未读范围；已通过项不再展开 | [执行规则](references/execution.md)、[收尾](references/closure.md) |
+| 首次独立核对 | 中性事实与准入绑定交另一ultra；按直接视觉入口一次读完稳定材料、收齐实质问题及未读范围；已通过项不再展开 | [执行规则](references/execution.md)、[收尾](references/closure.md) |
 | 定向修补 | 原修复者修实际问题并核受影响项，保留首审原判定；小修直接打包，实质缺陷仅补必要验证 | [收尾分流](references/closure.md#按实际问题收尾) |
 | 发布 | 普通pass用finalize/publish；满足简化条件用close-simplified一次完成发布、整案ZIP和状态同步。真实收据才计完成 | [收尾](references/closure.md)、[工具](references/tools.md) |
 

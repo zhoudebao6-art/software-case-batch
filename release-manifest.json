@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r24-delivery-center-20261019",
+  "release": "r25-flow-throughput-20261019",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -9,8 +9,8 @@
     },
     {
       "relative_path": ".github/workflows/tests.yml",
-      "sha256": "527507f3cf49a98f2818653fc97acbb026d328728fc5e41778a0f2e88f192f08",
-      "size": 3204
+      "sha256": "648e8f9f29cd6495a0f7cbfe270952ef594e49e62c88d2526a14f21b5dd6d996",
+      "size": 3307
     },
     {
       "relative_path": ".gitignore",
@@ -29,13 +29,13 @@
     },
     {
       "relative_path": "README.md",
-      "sha256": "554231107ef8e5c01be38bf876607321769ef39a1941f370e578e70ac09b3338",
-      "size": 8610
+      "sha256": "e866947a51711136b19760a776206f5709905cf896a12273c907b5b64426badb",
+      "size": 8865
     },
     {
       "relative_path": "SKILL.md",
-      "sha256": "276d3ad8415249594b4a910f5e27296bb041e19aebd4b5d65eff3b658071e2cb",
-      "size": 10915
+      "sha256": "b310c4d6940afe69349c13ca3180c4fc47442f63ec9f84e5c5fe63882e0e356f",
+      "size": 11092
     },
     {
       "relative_path": "agents/openai.yaml",
@@ -73,6 +73,11 @@
       "size": 141098
     },
     {
+      "relative_path": "assets/web/request_scope.mjs",
+      "sha256": "af185b215aab1a3515ec482a0b4947b76620444094aac2027ba36df545a80c1b",
+      "size": 1595
+    },
+    {
       "relative_path": "local.config.example.json",
       "sha256": "b1693faa760b904c77c163af3b3302ecc7f71664ec52e0c1573236333f251688",
       "size": 572
@@ -89,8 +94,8 @@
     },
     {
       "relative_path": "references/closure.md",
-      "sha256": "1133e6354007a880c2aa065479f77a48bb92aa6dc217f8dca06e5541ca3ae5da",
-      "size": 9493
+      "sha256": "b7b928efa6197f3a863153293a36ad19b37b46f47fedd3f5d610cb03ca3cf925",
+      "size": 10003
     },
     {
       "relative_path": "references/dispatch-evidence.md",
@@ -104,8 +109,8 @@
     },
     {
       "relative_path": "references/execution.md",
-      "sha256": "98f8f73eea2a071fcd5e499d3b75517db6b75f358e01ff0b80fb27646398ba8a",
-      "size": 34172
+      "sha256": "d89b4ae25342367266a1f3db6d5529d44615b05860e40f8dcef0f6d4d252671b",
+      "size": 34412
     },
     {
       "relative_path": "references/expedited-routing.md",
@@ -279,8 +284,8 @@
     },
     {
       "relative_path": "references/progress.md",
-      "sha256": "d6399ab91b2511c93c5d3223caa8543d6e27feaf86f8399b7d1ec412eef3fa01",
-      "size": 6692
+      "sha256": "7ba541bd5a5da8345bc499e5bf91f4dd389bde2125d88a1ed33248e911844711",
+      "size": 8035
     },
     {
       "relative_path": "references/quality.md",
@@ -319,8 +324,8 @@
     },
     {
       "relative_path": "references/web-design.md",
-      "sha256": "9405fdc272632548ed30cd1437d59c9ae3af33c175634155adfedce6b7dfeae1",
-      "size": 5380
+      "sha256": "d423590b27463559742e7e35f6d353ef82a64dbe47892e05d6c3d86f81eed6c7",
+      "size": 6873
     },
     {
       "relative_path": "requirements-ci.txt",
@@ -389,8 +394,8 @@
     },
     {
       "relative_path": "scripts/evidence_index.py",
-      "sha256": "4461228ce69377d68bcc9656c88dd493fd8ed65f0ded21f506f9cfef61f68f93",
-      "size": 7294
+      "sha256": "629a6bbb80f853d9e7e6ee68fe71d4211e65886b4b6ed58c88e0182b7e56107b",
+      "size": 9267
     },
     {
       "relative_path": "scripts/figure_preflight.py",
@@ -429,13 +434,13 @@
     },
     {
       "relative_path": "scripts/proflow.py",
-      "sha256": "ec53386c51444c3689899937e3c81fb38eb3f0c6be791efe37e36dfd3b9ac69c",
-      "size": 108782
+      "sha256": "6ff92831018f7a4731968068319eed6eac84c6e222840f561a8a40754ff49485",
+      "size": 109283
     },
     {
       "relative_path": "scripts/progress_driver.py",
-      "sha256": "13dfbfb55d7f07fb6ffdbd8f35549b76f9bef199dfa8d245ef16cd17bf8a879f",
-      "size": 15850
+      "sha256": "b23e4dad3bec5ad2c72f438912845fd2dd010c2def0ea4a147d9e3468e2953cb",
+      "size": 22843
     },
     {
       "relative_path": "scripts/record.cjs",
@@ -648,6 +653,11 @@
       "size": 17565
     },
     {
+      "relative_path": "tests/test_progress_ready.py",
+      "sha256": "603a316360e04058254f6c0665603587a0e0afbadaf33d15d5d88b15633b1d4f",
+      "size": 8798
+    },
+    {
       "relative_path": "tests/test_record.cjs",
       "sha256": "8c4b6f29a112e6111031e26890b90f2b96179966ae4b87efbb707b2425b54125",
       "size": 53550
@@ -663,6 +673,11 @@
       "size": 6610
     },
     {
+      "relative_path": "tests/test_request_scope.cjs",
+      "sha256": "1c92c530ab8c551d79564154f3205dc953b4ab6f87a856252e07983ce54c5c82",
+      "size": 4242
+    },
+    {
       "relative_path": "tests/test_review_final_freshness.py",
       "sha256": "35392eb0fe3bdeaef2ce443541c2b7512086f9e03846880fb7343db2b71089ac",
       "size": 5438
@@ -671,6 +686,11 @@
       "relative_path": "tests/test_review_handoff.py",
       "sha256": "8f0148ff9e10086cf5bf464828250d4ba3f2a2ac442291ab3bcb011153d17152",
       "size": 15350
+    },
+    {
+      "relative_path": "tests/test_review_navigation.py",
+      "sha256": "28e45d5a4b4565bd29d9fa5843e5aa52f7c1e85eed2a22f12180ac46067c66a9",
+      "size": 3342
     },
     {
       "relative_path": "tests/test_review_packet.py",
