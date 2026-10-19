@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 import time
 import uuid
-from common import digest, no_links, read_json
+from common import digest, no_links, read_json, session_filename_matches
 
 CONTRACT = 'verified-review-repair-budget-v1'
 
@@ -211,7 +211,7 @@ def authenticate_exit(root, manifest, state, case_id, settings, entry, dispatche
         raise ValueError('Review child is live/resumed or lacks an actual terminal lifecycle event')
     child_path = no_links(dispatched['review_session_log']); child_meta = meta[0][0]
     spawn = child_meta.get('source', {}).get('subagent', {}).get('thread_spawn', {})
-    if (not child_path.name.endswith('-' + str(child_meta.get('id')) + '.jsonl') or
+    if (not session_filename_matches(child_path, child_meta.get('id')) or
             spawn.get('agent_path') != reviewer or spawn.get('parent_thread_id') != parent_id or
             [context[0].get('model'), context[0].get('effort')] != [admission['model'], admission['effort']]):
         raise ValueError('Actual terminated review child identity/model changed')

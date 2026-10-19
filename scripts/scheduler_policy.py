@@ -6,7 +6,7 @@ import re
 import time
 import uuid
 from copy import deepcopy
-from common import digest, no_links, read_json, write_json
+from common import digest, no_links, read_json, write_json, session_filename_matches
 
 CONTRACT = 'verified-controller-fair-v1'
 ADAPTIVE_CONTRACT = 'verified-controller-adaptive-v2'
@@ -224,7 +224,7 @@ def session_proof(root, batch_id, pid, request):
     """
     from contracts import SESSION_ROOT
     path = no_links(request['session_log']); session_id = str(uuid.UUID(request['session_id']))
-    if no_links(SESSION_ROOT) not in path.parents or not path.name.endswith('-' + session_id + '.jsonl'):
+    if no_links(SESSION_ROOT) not in path.parents or not session_filename_matches(path, session_id):
         raise ValueError('Controller requires actual Codex session JSONL and filename identity')
     with path.open('rb') as stream:
         raw_meta = stream.readline(); meta_event = json.loads(raw_meta)
@@ -275,7 +275,7 @@ def verified_binding(root, batch_id, settings, cache=None):
                 any(reference.get(key, binding.get(key)) != binding.get(key) for key in ('group', 'control_revision', 'bound_ns')) or
                 binding['manifest_sha256'] != digest(target / 'manifest.json') or
                 binding['owner'] != read_json(target / 'owner.json') or batch.identity(binding['owner']['pid']) != binding['owner'] or
-                no_links(SESSION_ROOT) not in log.parents or not log.name.endswith('-' + proof['session_id'] + '.jsonl')):
+                no_links(SESSION_ROOT) not in log.parents or not session_filename_matches(log, proof['session_id'])):
                 raise ValueError('Controller binding identity changed')
             with log.open('rb') as stream:
                 if hashlib.sha256(stream.readline()).hexdigest() != proof['meta_sha256']: raise ValueError('Session identity changed')

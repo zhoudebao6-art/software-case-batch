@@ -8,7 +8,7 @@ from pathlib import Path
 import time
 import uuid
 from copy import deepcopy
-from common import digest,inside,no_links,read_json,write_json,file_map
+from common import digest,inside,no_links,read_json,write_json,file_map,session_filename_matches
 
 CAPACITIES={'build':8,'review':3,'record':2,'evidence':1,'expedited':1}
 GLOBAL_RECORDING_LIMIT=4
@@ -539,7 +539,7 @@ def capacity_failure(entry,manifest,state,value):
             if payload.get('type')=='function_call':calls.append((payload,raw))
             if payload.get('type')=='function_call_output':outputs.append((payload,raw))
     if len(meta)!=1 or len(calls)!=1 or len(outputs)!=1:raise ValueError('One actual failed model dispatch call/output required')
-    if not path.name.endswith('-'+str(meta[0].get('id'))+'.jsonl'):raise ValueError('Capacity session filename identity mismatch')
+    if not session_filename_matches(path,meta[0].get('id')):raise ValueError('Capacity session filename identity mismatch')
     call,raw_call=calls[0];output,raw_output=outputs[0];args=json.loads(call.get('arguments','{}'))
     kind=entry.get('model_kind') or ('repair' if entry['stage']=='build' and state['cases'][entry['case_id']].get('phase')=='repairing' else entry['stage'])
     model,effort=MODELS[kind]
@@ -565,7 +565,7 @@ def capacity_failure(entry,manifest,state,value):
                 try:child_events.append(json.loads(raw))
                 except (ValueError,UnicodeDecodeError):continue
         child_meta=[e['payload'] for e in child_events if e.get('type')=='session_meta']
-        if len(child_meta)!=1 or not child.name.endswith('-'+str(child_meta[0].get('id'))+'.jsonl'):raise ValueError('Child session identity mismatch')
+        if len(child_meta)!=1 or not session_filename_matches(child,child_meta[0].get('id')):raise ValueError('Child session identity mismatch')
         spawn=child_meta[0].get('source',{}).get('subagent',{}).get('thread_spawn',{})
         if spawn.get('agent_path')!=parsed['task_name'] or spawn.get('parent_thread_id')!=meta[0]['id']:raise ValueError('Capacity child belongs to another parent/dispatch')
         lifecycle=[e for e in child_events if e.get('type')=='event_msg' and e.get('payload',{}).get('type') in {'task_started','task_complete'}]

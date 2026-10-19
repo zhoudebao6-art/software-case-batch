@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r25-flow-throughput-20261019",
+  "release": "r26-desktop-rollout-20261019",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -359,13 +359,13 @@
     },
     {
       "relative_path": "scripts/batch_control.py",
-      "sha256": "6781ce18762db06d54f2fef54e643b5cf5c0278c54ef4743cba8390c08eb6fbc",
-      "size": 91158
+      "sha256": "5f061a614edd0e17e6ed4b02c332eed4da8ae643cebed3cd108b222e03ff3427",
+      "size": 91169
     },
     {
       "relative_path": "scripts/common.py",
-      "sha256": "10f7c19f99e0b84c91f0d0398ff7dd02be72ba49aca357397b7d4e296eb93dfa",
-      "size": 8750
+      "sha256": "3fea1c9b9f035d111684e038abf9ce065a79d1194279bb8330fc81139bb79bab",
+      "size": 9613
     },
     {
       "relative_path": "scripts/contracts.py",
@@ -374,8 +374,8 @@
     },
     {
       "relative_path": "scripts/control_decisions.py",
-      "sha256": "a8889b80d363fa088532483d6beb6495a77706432162217e72bf6f9527e9b48f",
-      "size": 5993
+      "sha256": "33548b13a13cb8080481476e0855c90c629656bb115dfd9cda116ae991ec14f1",
+      "size": 6014
     },
     {
       "relative_path": "scripts/controller_facts.py",
@@ -459,13 +459,13 @@
     },
     {
       "relative_path": "scripts/scheduler_policy.py",
-      "sha256": "7cb78c1bc7764782e1c002437b30f2e89e69c6bbd513bb2340a446ec3aaddcca",
-      "size": 35840
+      "sha256": "83b6c06b2423c6721964b1822005f32f74e8d350fcdcc9096eb6d31f7e9d60ef",
+      "size": 35856
     },
     {
       "relative_path": "scripts/scheduler_repair.py",
-      "sha256": "881a69ca7b17b11e05c785bbdf5387a6166ddea82f34b73870e4f5cd8a4980d6",
-      "size": 21164
+      "sha256": "7127d3cc6c45dae4ac97d778c99965af925ea9beec7c6b7fe8fd57b7b65bd9a5",
+      "size": 21180
     },
     {
       "relative_path": "scripts/simplified_closure.py",
@@ -581,6 +581,11 @@
       "relative_path": "tests/test_delivery_layout.py",
       "sha256": "240473d578b787bf23671e311c794b4de96194e21eac35eee84f36ecc8b1b9f0",
       "size": 38110
+    },
+    {
+      "relative_path": "tests/test_desktop_rollout.py",
+      "sha256": "a4834d92fe71207474ec981cc4001a8622b98507fb164a459955dbf0fef1742e",
+      "size": 14142
     },
     {
       "relative_path": "tests/test_dispatch_compat.py",

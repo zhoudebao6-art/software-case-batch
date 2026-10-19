@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import stat
 import unicodedata
+import uuid
 
 BANNED = ('物理仿真', '模拟', '虚拟', '仿真', '参考', '源文件', '公式', '正文')
 META_COLUMNS = {'生成数据', '数据来源', '是否生成', '是否生成数据', '生成标记', '数据生成方式',
@@ -63,6 +64,24 @@ def digest(path):
         for block in iter(lambda: stream.read(1024 * 1024), b''):
             h.update(block)
     return h.hexdigest()
+
+def session_filename_matches(path, session_id):
+    """Bind one real rollout fragment to its canonical session UUID.
+
+    Desktop continuations append one fragment UUID after the session UUID.
+    That fragment identifies a file, never another session or a replacement for
+    session_meta. Callers still verify the authoritative directory, metadata,
+    command/dispatch association and frozen byte ranges in that exact file.
+    """
+    if not isinstance(session_id, str): return False
+    try:
+        if str(uuid.UUID(session_id)) != session_id: return False
+    except ValueError:
+        return False
+    fragment = r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+    return re.fullmatch(r'rollout-(?:[^/\\]*-)?' + re.escape(session_id) +
+                        r'(?:_' + fragment + r')?\.jsonl', Path(path).name) is not None
+
 
 def no_links(path):
     path = Path(path).absolute()

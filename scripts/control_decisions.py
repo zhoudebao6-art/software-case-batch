@@ -3,7 +3,7 @@ from datetime import datetime
 import hashlib
 import json
 import time
-from common import no_links, read_json
+from common import no_links, read_json, session_filename_matches
 
 CONTRACT = 'user-event-control-v1'
 MAX_FUTURE_SKEW_SECONDS = 300
@@ -23,7 +23,7 @@ def user_event(reference):
         meta_event = json.loads(stream.readline()); meta = meta_event.get('payload', {})
         if (meta_event.get('type') != 'session_meta' or not meta.get('id') or
                 meta.get('thread_source') != 'user' or meta.get('parent_thread_id') or
-                isinstance(meta.get('source'), dict) or not path.name.endswith('-' + meta['id'] + '.jsonl')):
+                isinstance(meta.get('source'), dict) or not session_filename_matches(path, meta['id'])):
             raise ValueError('Control authorization requires an independent real user session')
         if offset:
             stream.seek(offset - 1)
