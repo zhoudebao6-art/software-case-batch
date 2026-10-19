@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r23-github-cleanup-20261017",
+  "release": "r24-delivery-center-20261019",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -34,8 +34,8 @@
     },
     {
       "relative_path": "SKILL.md",
-      "sha256": "c7dbf2c1fc0a7e48ef4862a1ad49a393d94e2ffc2497a3dba833c1443d4cb6b9",
-      "size": 10183
+      "sha256": "276d3ad8415249594b4a910f5e27296bb041e19aebd4b5d65eff3b658071e2cb",
+      "size": 10915
     },
     {
       "relative_path": "agents/openai.yaml",
@@ -89,8 +89,8 @@
     },
     {
       "relative_path": "references/closure.md",
-      "sha256": "3fbb4e87e73a15d06abae4761f01674f417efeb40128bf6cec820015abbeeb46",
-      "size": 8947
+      "sha256": "1133e6354007a880c2aa065479f77a48bb92aa6dc217f8dca06e5541ca3ae5da",
+      "size": 9493
     },
     {
       "relative_path": "references/dispatch-evidence.md",
@@ -383,6 +383,11 @@
       "size": 17354
     },
     {
+      "relative_path": "scripts/delivery_index.py",
+      "sha256": "ca0fc799d08493fd7a5c84878e4cc23675207ef4145bcf958602c2763f7172e3",
+      "size": 9023
+    },
+    {
       "relative_path": "scripts/evidence_index.py",
       "sha256": "4461228ce69377d68bcc9656c88dd493fd8ed65f0ded21f506f9cfef61f68f93",
       "size": 7294
@@ -459,8 +464,8 @@
     },
     {
       "relative_path": "scripts/simplified_closure.py",
-      "sha256": "4c06ffa2b99ca40043d184a2c1e057cfaf2e65a107a32cabfd965f2129f565df",
-      "size": 36622
+      "sha256": "bff9083cf5e5d2b0e7ae66cca46780243318740c54004fd0eeee2086f48f375b",
+      "size": 37250
     },
     {
       "relative_path": "scripts/source_intake.py",
@@ -561,6 +566,11 @@
       "relative_path": "tests/test_defaults.py",
       "sha256": "6c052963ab66d4bf76e9d60533e49b0a804604a8d129ba8c9a0b028a463067af",
       "size": 7466
+    },
+    {
+      "relative_path": "tests/test_delivery_index.py",
+      "sha256": "fad8e0e7ebed0970c355ec524e7f12043f02a5d3825fa23c77bab0f31e5a5f7a",
+      "size": 3347
     },
     {
       "relative_path": "tests/test_delivery_layout.py",
@@ -696,6 +706,11 @@
       "relative_path": "tests/test_source_intake.py",
       "sha256": "4f12c8ecc223ceaca2f3645a49f45c2b313d8741c230e083e7c8bd2a01c5631e",
       "size": 11550
+    },
+    {
+      "relative_path": "tests/test_whole_case_io.py",
+      "sha256": "c555561b42514e12cdaeba32d3f49741edae40fa6946cd150fff109c1452a43a",
+      "size": 4148
     },
     {
       "relative_path": "tests/test_workflow.py",

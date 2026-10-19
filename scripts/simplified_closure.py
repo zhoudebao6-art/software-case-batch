@@ -380,7 +380,7 @@ def whole_case(workspace,destination,archive,publication):
         write_json(intent_path,intent)
     def verify(target):
         with zipfile.ZipFile(target) as stream:
-            if stream.testzip() is not None or len(stream.namelist())!=len(members) or set(stream.namelist())!=set(members):
+            if len(stream.namelist())!=len(members) or set(stream.namelist())!=set(members):
                 raise ValueError('Whole-case ZIP members/CRC differ')
             for key,sha in members.items():
                 h=hashlib.sha256()
@@ -396,20 +396,30 @@ def whole_case(workspace,destination,archive,publication):
         # A same-directory artifact draft allows atomic rename on any output volume.
         draft=archive.with_name(archive.name+'.new');no_links(draft)
         if not draft.exists():
-            fd,temp=tempfile.mkstemp(prefix='scb-whole-case-',suffix='.zip');os.close(fd)
+            # Write directly beside the final archive. Reading every member to
+            # EOF below checks both ZIP CRC and the publication SHA256 once.
+            fd,temporary=tempfile.mkstemp(prefix='.scb-whole-',suffix='.tmp',dir=archive.parent)
             try:
-                with zipfile.ZipFile(temp,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as stream:
-                    for key in publication['files']:
-                        source=inside(destination,key)
-                        stream.write(source,destination.name+'/'+key,compress_type=zipfile.ZIP_STORED if source.suffix.lower() in {'.zip','.mp4'} else zipfile.ZIP_DEFLATED)
-                import shutil
-                shutil.copyfile(temp,draft)
-                if digest(temp)!=digest(draft):raise ValueError('Whole-case ZIP copy changed')
-            finally:Path(temp).unlink(missing_ok=True)
+                with os.fdopen(fd,'wb') as target:
+                    with zipfile.ZipFile(target,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as stream:
+                        for key in publication['files']:
+                            source=inside(destination,key)
+                            stream.write(source,destination.name+'/'+key,compress_type=zipfile.ZIP_STORED if source.suffix.lower() in {'.zip','.mp4','.docx'} else zipfile.ZIP_DEFLATED)
+                    target.flush();os.fsync(target.fileno())
+                if draft.exists():raise ValueError('Whole-case ZIP draft appeared concurrently')
+                Path(temporary).rename(draft)
+            finally:
+                Path(temporary).unlink(missing_ok=True)
         verify(draft)
         if archive.exists():raise ValueError('Whole-case ZIP destination appeared concurrently')
+        before=draft.stat()
         draft.rename(archive)
-    verify(archive)
+        after=archive.stat()
+        if (before.st_dev,before.st_ino,before.st_size,before.st_mtime_ns)!=(after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns):
+            raise ValueError('Whole-case ZIP identity changed during atomic rename')
+    else:
+        # Recovery after rename has no in-memory verification result.
+        verify(archive)
     if file_map(destination)!=publication['files']:raise ValueError('Published delivery changed while packaging')
     result={'schema_version':1,'status':'complete','archive':reference(archive),'members':members,
             'publication':intent['publication'],'crc_and_each_member_sha256_verified':True}
