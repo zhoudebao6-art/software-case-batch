@@ -1044,7 +1044,7 @@
         "entry": "scripts/contracts.py",
         "status": "chart_snapshot original-block/caption/drawing gate"
       },
-      "gap_and_fix": "原文原式原图及位置不改、原顺序媒体保留，新增图/下图题全原文后，红字留实施例每图独立引用",
+      "gap_and_fix": "原文原式原图及位置不改、原顺序媒体保留，新增图/下图题全原文后，红字留实施例每图独立引用；恢复显式禁止新增完整原式副本，source-context-v2在既有chart_snapshot保守核对原生数学结构，其他表现仍实际独立阅读",
       "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
     },
     {

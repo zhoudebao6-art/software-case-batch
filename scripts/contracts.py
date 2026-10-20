@@ -16,7 +16,8 @@ NS = {'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
 
 ANALYTICAL_CHART_POLICY = 'analytical-v1'
 BUILD_CHART_POLICY = 'analytical-v2'
-EXPLANATION_CONTEXT_POLICY = 'source-context-v1'
+EXPLANATION_CONTEXT_POLICY = 'source-context-v2'
+EXPLANATION_CONTEXT_POLICIES = {'source-context-v1', EXPLANATION_CONTEXT_POLICY}
 ANALYTICAL_POLICIES = {ANALYTICAL_CHART_POLICY, BUILD_CHART_POLICY}
 CONSTRUCTION_POLICY = 'dependency-bound-v1'
 CONSTRUCTION_KINDS = {'algorithm','api','persistence','browser','build'}
@@ -264,6 +265,101 @@ def delivery_layout(output, run):
     for path in data.iterdir():no_links(path)
     return word
 
+def math_signature(formula):
+    """Conservative OMML identity, ignoring display styling but retaining math structure.
+
+    This is not algebraic equivalence or OCR. Script/style flags that distinguish
+    mathematical symbols, operator properties and sub/sup/fraction roles remain.
+    Run splitting and red color alone cannot disguise a copied source equation.
+    """
+    m = '{http://schemas.openxmlformats.org/officeDocument/2006/math}'
+    w = '{'+NS['w']+'}'
+
+    def node(value):
+        if value.tag == m+'rPr' and not len(value):
+            return None
+        if value.tag == w+'rPr':
+            kept = [node(c) for c in value if c.tag in {w+'b', w+'i', w+'vertAlign'}]
+            return ('word-semantic-style', tuple(kept)) if kept else None
+        if value.tag in {m+'ctrlPr', w+'proofErr', w+'bookmarkStart', w+'bookmarkEnd'}:
+            return None
+        if value.tag == m+'r':
+            styles = tuple(part for child in value
+                           if child.tag in {m+'rPr', w+'rPr'}
+                           for part in [node(child)] if part is not None)
+            text = ''.join(child.text or '' for child in value if child.tag == m+'t')
+            return ('characters', tuple((char, styles) for char in text))
+        children = []
+        for child in value:
+            item = node(child)
+            if item is None:
+                continue
+            if item[0] == 'characters':
+                # A run boundary has no mathematical meaning.
+                children.extend(('character', char, style) for char, style in item[1])
+            else:
+                children.append(item)
+        attrs = tuple(sorted((key, val) for key, val in value.attrib.items()
+                             if key != '{http://www.w3.org/XML/1998/namespace}space'))
+        return (value.tag, attrs, value.text if value.tag == m+'t' else None, tuple(children))
+
+    return node(formula)
+
+
+def repeated_source_formulas(source_blocks, blocks, original_positions):
+    """Return only added, complete native relations matching original equations.
+
+    Original repeats and single-symbol references are untouched. Text/image
+    equations, reformulations and explanation relevance still need real reading.
+    This function reports facts; it never edits a document or signs a review.
+    """
+    math = '{http://schemas.openxmlformats.org/officeDocument/2006/math}'
+    relations = re.compile(r'[=≠≈≃≅≡≤≥<>∝]')
+
+    def main_characters(node):
+        # A condition inside a subscript, sum limit, fraction or function
+        # argument does not turn a symbol reference into a whole equation.
+        if node.tag == math+'r':
+            for text in node:
+                if text.tag == math+'t':
+                    yield from text.text or ''
+        elif node.tag in {math+name for name in ('oMath', 'oMathPara', 'eqArr', 'e', 'box')}:
+            for child in node:
+                yield from main_characters(child)
+
+    def has_main_relation(node):
+        # Word also represents I(c=k) using ordinary runs. Track literal
+        # grouping across runs so its condition is not mistaken for y=I(c=k).
+        closing = dict(zip('([{（［｛⟨', ')]}）］｝⟩'))
+        stack = []
+        for character in main_characters(node):
+            if character in closing:
+                stack.append(closing[character])
+            elif stack and character == stack[-1]:
+                stack.pop()
+            elif not stack and relations.fullmatch(character):
+                return True
+        return False
+
+    originals = {}
+    for block_index, block in enumerate(source_blocks):
+        for formula in block.iter(math+'oMath'):
+            if has_main_relation(formula):
+                originals.setdefault(math_signature(formula), []).append(block_index)
+    added = []
+    original_set = set(original_positions)
+    for block_index, block in enumerate(blocks):
+        if block_index in original_set:
+            continue
+        for formula_index, formula in enumerate(block.iter(math+'oMath')):
+            signature = math_signature(formula)
+            if signature in originals:
+                added.append({'added_block': block_index, 'formula_index': formula_index,
+                              'source_blocks': originals[signature],
+                              'signature_sha256': hashlib.sha256(repr(signature).encode('utf-8')).hexdigest()})
+    return added
+
+
 def explanation_contexts(source_blocks, blocks, original_positions, figures):
     """Cover every added prose/math block in declared source gaps; semantics stay human."""
     def text(block):
@@ -342,7 +438,7 @@ def chart_snapshot(workspace, word, run):
     title/header in the actual PNG and Word, tied to these hashes.
     """
     context_policy=run.get('explanation_context_policy')
-    if context_policy not in (None, EXPLANATION_CONTEXT_POLICY):
+    if context_policy not in {None} | EXPLANATION_CONTEXT_POLICIES:
         raise ValueError('Unknown explanation context policy')
     source=no_links(run['source_docx'])
     if digest(source)!=run['source_docx_sha256'] or source.name!=run['word_name']:
@@ -439,6 +535,11 @@ def chart_snapshot(workspace, word, run):
                 cursor=at+1
             if positions and cursor>min(positions)-1:
                 raise ValueError('All added images and captions must follow all original body content')
+            if context_policy == EXPLANATION_CONTEXT_POLICY:
+                repeats = repeated_source_formulas(source_blocks, blocks, original_positions)
+                if repeats:
+                    raise ValueError('Added complete formula repeats original source formula: '
+                                     + json.dumps(repeats, ensure_ascii=False))
             contexts=explanation_contexts(source_blocks,blocks,original_positions,figures) if context_policy else None
     snapshot={'manifest_sha256':digest(manifest),'figures':{str(f['figure_id']):f['sha256'] for f in figures}}
     if context_policy:

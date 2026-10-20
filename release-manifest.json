@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r28-explanation-context-20261020",
+  "release": "r29-formula-reuse-20261020",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -29,13 +29,13 @@
     },
     {
       "relative_path": "README.md",
-      "sha256": "4db74832cb9ce51c0f31e33cbf55fc2daccd5ca97e5db7632b41f18582063cff",
-      "size": 9126
+      "sha256": "76638c7cb8ea021ca9163dfe28f99c453743b46505c6f93ef058756426528807",
+      "size": 9228
     },
     {
       "relative_path": "SKILL.md",
-      "sha256": "f7293214ed121828c02808ced2809ea067ccf66cd2a401aa9ba54bf64bea98b9",
-      "size": 11524
+      "sha256": "8087bdce23ad666862398accba560aa711439cd7b89153f0d02b95dfa6d226bb",
+      "size": 11647
     },
     {
       "relative_path": "agents/openai.yaml",
@@ -129,13 +129,13 @@
     },
     {
       "relative_path": "references/inheritance-decisions.json",
-      "sha256": "31fdb540770d77fdb55a84533cec8c3747026f873e9aeb554c23f3e4ad3f0347",
-      "size": 92566
+      "sha256": "a8547196913453be7df9c842a7c46c6f88b32042b009163ac427ad03682c981f",
+      "size": 94228
     },
     {
       "relative_path": "references/inheritance.md",
-      "sha256": "368e4943cbe6f5519dc87ffb1528a047b2ad1bb7411836ba84cd9a181404d12b",
-      "size": 10438
+      "sha256": "432989d564fc6e5b789f5ad8740dd25b24d88c4d983e91ba59d646483702229e",
+      "size": 10498
     },
     {
       "relative_path": "references/original-discovery-mapping.json",
@@ -289,8 +289,8 @@
     },
     {
       "relative_path": "references/quality.md",
-      "sha256": "55cd3b44262fc3e7f15792590c1fd37a591c211451559e3f65a290593ecc4f25",
-      "size": 13101
+      "sha256": "cae62d27721f6f3bf4a476182815deba740fb682772ef0b9f978a77a829fd4ca",
+      "size": 13739
     },
     {
       "relative_path": "references/recording-concurrency.md",
@@ -314,8 +314,8 @@
     },
     {
       "relative_path": "references/tools.md",
-      "sha256": "4554a61519183a77042d8398ddb465b1f8c2607f26bb1e25a3d7150ab75ab435",
-      "size": 41783
+      "sha256": "0669bf8446829c846780eb91114876be3241c7d2c975da5ebebd5c195e9e75aa",
+      "size": 42290
     },
     {
       "relative_path": "references/ui-policy.json",
@@ -354,8 +354,8 @@
     },
     {
       "relative_path": "scripts/audit_inheritance.py",
-      "sha256": "98384d86b9da55e2b3e60aeca69d1c364b56681464ad7697a7598dc50ce0c593",
-      "size": 34932
+      "sha256": "96c00e487c3a1abc6f63dd75b6320d0b5d71be137347e300efd1f2240e627d67",
+      "size": 35351
     },
     {
       "relative_path": "scripts/batch_control.py",
@@ -369,8 +369,8 @@
     },
     {
       "relative_path": "scripts/contracts.py",
-      "sha256": "a55419ce2b564496aed9d130e00e63d2fff57f571692a53e0823de1e05f65aed",
-      "size": 66936
+      "sha256": "4a377afc3dfff5645eca49a3e4140b46d3851790ca60541e8604de455760b1ed",
+      "size": 71802
     },
     {
       "relative_path": "scripts/control_decisions.py",
@@ -394,8 +394,8 @@
     },
     {
       "relative_path": "scripts/evidence_index.py",
-      "sha256": "0cd3bd578b1bbc62cc58c32018e4adbac2f1745544f991e451ccd9bff316a2f4",
-      "size": 10033
+      "sha256": "084981641ab53f7840c4e2fae0bd1de6ca0b7bb6ef236104dd8dbecdbde1b247",
+      "size": 10539
     },
     {
       "relative_path": "scripts/figure_preflight.py",
@@ -434,8 +434,8 @@
     },
     {
       "relative_path": "scripts/proflow.py",
-      "sha256": "ad2c4712c4d68891cad744e8cad4ca1be30da1e9efcd0d5e96ffe393fbfe200a",
-      "size": 110698
+      "sha256": "a21a123ad7cbd769130d2f2360ebe97c70c626677c4a5cb4f84f8beb45c02d7d",
+      "size": 111117
     },
     {
       "relative_path": "scripts/progress_driver.py",
@@ -621,6 +621,11 @@
       "relative_path": "tests/test_figure_preflight.py",
       "sha256": "26f6456558552877539f98e9f99783ebae8195d7c1303cd61e189c34350f703a",
       "size": 6628
+    },
+    {
+      "relative_path": "tests/test_formula_reuse.py",
+      "sha256": "b7fc2d1990c3b157673e3107e4024e57e864d8e99db35f96d83803d66ff7eed9",
+      "size": 10428
     },
     {
       "relative_path": "tests/test_media_evidence.py",

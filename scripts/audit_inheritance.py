@@ -79,7 +79,7 @@ DECISIONS=[
  ('chart-units','rules/chart-quality.md','单位只在确有单位','preserved','quality.md','contracts.py','real labels/units review','无单位量仅业务名，不补无单位/a.u./1；确有单位依据保留，缺资料不猜无单位'),
  ('chart-symbols','rules/chart-legend.md','上下标在正确位置','preserved','quality.md','contracts.py','actual PNG and Word dimensions review','正常上下标/帽号/希腊/索引，不裸math代码/乱码；难排可选符号准确业务名保留内部映射'),
  ('red-context','rules/chart-quality.md','Word说明必须结合正文','partial-explicit-override','quality.md','contracts.py','U5 contextual deep explanation','保留前文红字后文实际阅读，详细讲工况读法算例数值原因判断；有原式用关键符号，无式仅实施例'),
- ('word-position','rules/requirements.md','所有新增图片及图题','preserved','quality.md','contracts.py','chart_snapshot original-block/caption/drawing gate','原文原式原图及位置不改、原顺序媒体保留，新增图/下图题全原文后，红字留实施例每图独立引用'),
+ ('word-position','rules/requirements.md','所有新增图片及图题','preserved','quality.md','contracts.py','chart_snapshot original-block/caption/drawing gate','原文原式原图及位置不改、原顺序媒体保留，新增图/下图题全原文后，红字留实施例每图独立引用；恢复显式禁止新增完整原式副本，source-context-v2在既有chart_snapshot保守核对原生数学结构，其他表现仍实际独立阅读'),
  ('word-all-pages','rules/requirements.md','每一页打开检查','preserved','quality.md','contracts.py','parent final controlled render plus actual all-page review','最终修改后全页渲染逐页看；未变且真实已阅页hash合法继承，首次不能抽样'),
  ('chart-five','rules/chart-quality.md','meaning/data/legibility/layout/explanation','preserved','quality.md','contracts.py','strict actual review proof','各图五项具体证据，任一失败不pass；PNG/CSV/解释/Word上下文，缺图像能力不签'),
  ('rejected-versions','rules/chart-quality.md','用户明确否定','preserved','quality.md','contracts.py','frozen rejected hash gate plus review','用户否定版本/规则变更旧pass失效，冻结拒交hash，用户推进Word不等视觉认可'),

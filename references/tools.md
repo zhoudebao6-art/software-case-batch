@@ -125,7 +125,7 @@ implementation_hashes完整对应source-manifest打包有效成员；五类依�
 
 在同一个图manifest中说明每图问题/数据/图型/真实标签，完工补当前PNG hash及build_selfcheck，不新造计划台账。`labels`从绘图对象提取必要可见文本，覆盖轴/图例/矩阵行列/色标及短标记，无需人工抄全部自动数字刻度。
 
-新 `prepare` 和文档修订同时冻结 `explanation_context_policy="source-context-v1"`。每图在本 manifest 填 `explanation_after_source_block`，值为原件 `w:body` 排除 `sectPr` 的零起始块索引；多个语义落点可用不重复的索引数组。先理解对应实施例，选择实际正文段落。各处解释插入原段之后、下一原块之前，每图至少一处独立引用，可重复引用；同一间隙的联合说明可归属多图。不能落在空段/原图/图题之后或以末尾新标题冒充原文。`chart_snapshot` 在原有自检中核实全部新增说明/原生公式的结构归属，输出各图 `placements` 的原段、后段、引用及说明块位置和hash；未归属说明直接阻止通过，不能只登记正文占位句。review-input 沿用这些定位事实，审核仍真实阅读上下文，不能把结构通过当作语义通过。旧冻结 run 不添加此字段；只改源码包的修订继承原 policy，不重建 Word。
+新 `prepare` 和文档修订同时冻结 `explanation_context_policy="source-context-v2"`。每图在本 manifest 填 `explanation_after_source_block`，值为原件 `w:body` 排除 `sectPr` 的零起始块索引；多个语义落点可用不重复的索引数组。先理解对应实施例，选择实际正文段落。各处解释插入原段之后、下一原块之前，每图至少一处独立引用，可重复引用；同一间隙的联合说明可归属多图。不能落在空段/原图/图题之后或以末尾新标题冒充原文。`chart_snapshot` 在原有自检中核实全部新增说明/原生公式的结构归属，输出各图 `placements` 的原段、后段、引用及说明块位置和hash；未归属说明直接阻止通过，不能只登记正文占位句。review-input 沿用这些定位事实，审核仍真实阅读上下文，不能把结构通过当作语义通过。v2同时拦截新增的完整原生原式副本，给出原/新增块位置；不改原件、不自动删除、不做代数等价或图片识别。v1及无此字段的旧冻结 run 不追改；只改源码包的修订继承原 policy，不重建 Word。
 
 ```json
 {"figures":[
@@ -163,7 +163,7 @@ spawn_agent(task_name="本案独立验收", fork_turns="none", model="gpt-6.1-so
 
 建设者保存六类实际执行材料，独立ultra核验后写最后验收JSON：`checks` 恰含 `algorithm/api/persistence/browser/build/package_startup` 六类，每项含实际 `command`、`exit_code`、相对工作区的 `log` 和该日志 `sha256`。`package_startup` 必须从最终 ZIP 解压的新目录执行。另含 `source_zip_sha256`、`video_timeline_sha256`（父控完整5fps timeline）、`reviewed_files`（与scan全部成品路径→hash一致）、`visual_notes`（完整Word页/PNG/全部视频接触页、首尾及操作关键帧，区分实际打开和合法继承）、非空 `limitations`、`reviewer_agent_id`、`decision:"pass"`和chart_snapshot。父短证据索引通过evidence_index.py核实际已阅ID，不自动补签。建设者只提供事实，不写独立decision/pass。
 
-验收JSON的`chart_reviews`覆盖每个当前图，每项含`figure_id`、当前`png_sha256`、`no_title_header:true`及具体`no_title_header_evidence`，沿用`meaning/data/legibility/layout/explanation`五项，每项有`passed`和`evidence`。`analytical-v1/v2`还含`no_schematic:true`及非空`no_schematic_evidence`，说明已实际查看新增图与新图题无“示意”；原图原文不适用该禁词。五项及无标题项证据均为非空具体文本：meaning说明相对原图新增价值，explanation记录实际实施例位置、前文—红字—后文衔接、解释深度、原式关键符号首次简释（有原式才查）和Word页。沿同一review写实际证据，不另设上下文台账。没有实际查看或存在问题不能填true/pass，建设者不代独立验收签字。
+验收JSON的`chart_reviews`覆盖每个当前图，每项含`figure_id`、当前`png_sha256`、`no_title_header:true`及具体`no_title_header_evidence`，沿用`meaning/data/legibility/layout/explanation`五项，每项有`passed`和`evidence`。`analytical-v1/v2`还含`no_schematic:true`及非空`no_schematic_evidence`，说明已实际查看新增图与新图题无“示意”；原图原文不适用该禁词。五项及无标题项证据均为非空具体文本：meaning说明相对原图新增价值，explanation记录实际实施例位置、前文—红字—后文衔接、解释深度、必要原式符号简释及新增公式不完整重复原式（对照原件，不删原件既有重复，不误判独立符号或不同推导）和Word页。沿同一review写实际证据，不另设上下文台账。没有实际查看或存在问题不能填true/pass，建设者不代独立验收签字。
 
 独立ultra写完不可再改的验收JSON后，其**最终消息仅输出这个JSON对象**（SHA256实际读取文件计算）：
 

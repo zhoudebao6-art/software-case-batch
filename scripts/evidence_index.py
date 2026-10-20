@@ -80,7 +80,12 @@ def review_input(workspace,index,destination,compact=False):
             'These anchors only prove structural placement. Read the actual original example, '
             'preceding prose, inserted explanation and following prose. Confirm the same object, '
             'conditions, formula and results in each explanation judgment. Explanations collected '
-            'in an unrelated tail section are a material document defect, not a cosmetic suggestion.')
+            'in an unrelated tail section are a material document defect, not a cosmetic suggestion. '
+            'Compare every added formula with the source: a complete copied source equation is also '
+            'a material document defect even when placed correctly and colored red. Preserve all '
+            'original equations and their existing repeats; symbol references and genuinely distinct '
+            'grounded derivations are not full-formula copies. The native structure check is not '
+            'algebraic equivalence or OCR; actually inspect text/image formulas and redundant prose.')
     controlled=workspace/'.product-v2/controlled-video.json'
     if controlled.exists():
         media=read_json(controlled);timeline=no_links(media['timeline'])
