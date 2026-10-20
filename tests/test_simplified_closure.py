@@ -324,6 +324,37 @@ class SimplifiedClosureTests(unittest.TestCase):
     def test_actual_removed_header_passes_affected_visual_selfcheck(self):
         self.corrected_chart('no_title_header');self.assertEqual(self.close()['status'],'delivered')
 
+    def material_document(self):
+        self.corrected_chart('explanation')
+        self.f.proof['issues'][-1].update(severity='实质',affected_artifacts=[self.f.run['word_name']])
+        self.refresh_first()
+
+    def test_material_word_issue_uses_affected_visual_not_unrelated_business_checks(self):
+        self.material_document()
+        with patch('media_evidence.validate',side_effect=AssertionError('Unchanged video must be reused')):
+            result=self.close()
+        self.assertEqual(result['status'],'delivered')
+        self.assertFalse(result['independent_pass_claimed'])
+        self.assertEqual(read_json(self.f.proof_path)['issues'][-1]['severity'],'实质')
+
+    def test_material_word_requires_current_binding_and_resolved_explanation(self):
+        self.material_document()
+        visual=self.proof['affected_checks'][0]
+        original=digest(self.f.word)
+        visual['artifact_hashes'][self.f.run['word_name']]='0'*64;self.save()
+        with self.assertRaises(ValueError):self.close()
+        visual['artifact_hashes'][self.f.run['word_name']]=original
+        visual['chart_reviews'][0]['explanation']['passed']=False;self.save()
+        with self.assertRaisesRegex(ValueError,'corresponding affected'):self.close()
+
+    def test_word_scope_cannot_relabel_explicit_business_core(self):
+        self.material_document()
+        for severity, core in [('实质', True), ('core', False), ('critical', False)]:
+            with self.subTest(severity=severity,core=core):
+                self.f.proof['issues'][-1].update(severity=severity,core=core)
+                self.refresh_first()
+                with self.assertRaisesRegex(ValueError,'Core defect'):self.close()
+
     def test_word_caption_keep_next_fix_reuses_the_already_correct_png(self):
         self.word_caption_fix()
         with patch('media_evidence.validate',side_effect=AssertionError('Unchanged video must be reused')):

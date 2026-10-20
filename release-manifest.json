@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r26-desktop-rollout-20261019",
+  "release": "r28-explanation-context-20261020",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -29,13 +29,13 @@
     },
     {
       "relative_path": "README.md",
-      "sha256": "e866947a51711136b19760a776206f5709905cf896a12273c907b5b64426badb",
-      "size": 8865
+      "sha256": "4db74832cb9ce51c0f31e33cbf55fc2daccd5ca97e5db7632b41f18582063cff",
+      "size": 9126
     },
     {
       "relative_path": "SKILL.md",
-      "sha256": "b310c4d6940afe69349c13ca3180c4fc47442f63ec9f84e5c5fe63882e0e356f",
-      "size": 11092
+      "sha256": "f7293214ed121828c02808ced2809ea067ccf66cd2a401aa9ba54bf64bea98b9",
+      "size": 11524
     },
     {
       "relative_path": "agents/openai.yaml",
@@ -94,8 +94,8 @@
     },
     {
       "relative_path": "references/closure.md",
-      "sha256": "b7b928efa6197f3a863153293a36ad19b37b46f47fedd3f5d610cb03ca3cf925",
-      "size": 10003
+      "sha256": "df019d4859949a720d4ae9e84bebefde6e3b68346ed63fc855cd4328c71e0bfb",
+      "size": 10657
     },
     {
       "relative_path": "references/dispatch-evidence.md",
@@ -289,8 +289,8 @@
     },
     {
       "relative_path": "references/quality.md",
-      "sha256": "c86704fe725d454c5a56e9924505221aab37124badeb4421a0cf4a04b8ae12ad",
-      "size": 11507
+      "sha256": "55cd3b44262fc3e7f15792590c1fd37a591c211451559e3f65a290593ecc4f25",
+      "size": 13101
     },
     {
       "relative_path": "references/recording-concurrency.md",
@@ -314,8 +314,8 @@
     },
     {
       "relative_path": "references/tools.md",
-      "sha256": "1a4aeea685149d845687bfef690ae873a4f69ec2f021409aa8cb7e004bb934bb",
-      "size": 40786
+      "sha256": "4554a61519183a77042d8398ddb465b1f8c2607f26bb1e25a3d7150ab75ab435",
+      "size": 41783
     },
     {
       "relative_path": "references/ui-policy.json",
@@ -369,8 +369,8 @@
     },
     {
       "relative_path": "scripts/contracts.py",
-      "sha256": "daaaa87c61cd5159bcff1bc0b0adfce80b983e807d17f507b91c388bb71cfee8",
-      "size": 62040
+      "sha256": "a55419ce2b564496aed9d130e00e63d2fff57f571692a53e0823de1e05f65aed",
+      "size": 66936
     },
     {
       "relative_path": "scripts/control_decisions.py",
@@ -394,8 +394,8 @@
     },
     {
       "relative_path": "scripts/evidence_index.py",
-      "sha256": "629a6bbb80f853d9e7e6ee68fe71d4211e65886b4b6ed58c88e0182b7e56107b",
-      "size": 9267
+      "sha256": "0cd3bd578b1bbc62cc58c32018e4adbac2f1745544f991e451ccd9bff316a2f4",
+      "size": 10033
     },
     {
       "relative_path": "scripts/figure_preflight.py",
@@ -434,8 +434,8 @@
     },
     {
       "relative_path": "scripts/proflow.py",
-      "sha256": "6ff92831018f7a4731968068319eed6eac84c6e222840f561a8a40754ff49485",
-      "size": 109283
+      "sha256": "ad2c4712c4d68891cad744e8cad4ca1be30da1e9efcd0d5e96ffe393fbfe200a",
+      "size": 110698
     },
     {
       "relative_path": "scripts/progress_driver.py",
@@ -469,8 +469,8 @@
     },
     {
       "relative_path": "scripts/simplified_closure.py",
-      "sha256": "bff9083cf5e5d2b0e7ae66cca46780243318740c54004fd0eeee2086f48f375b",
-      "size": 37250
+      "sha256": "ebfd544822453e9821fd5a6035e926bab460dd8ce9be9c20793c6ea627008e4a",
+      "size": 38194
     },
     {
       "relative_path": "scripts/source_intake.py",
@@ -539,8 +539,8 @@
     },
     {
       "relative_path": "tests/test_contracts.py",
-      "sha256": "fddc9539c5349b4158713a56a2a8eebac5f2805baa04ea8b095b862567ae7591",
-      "size": 47100
+      "sha256": "e31706cad43be2afad03a259f37808b08133e427fe98ca8b5db5facb74a081ba",
+      "size": 47157
     },
     {
       "relative_path": "tests/test_control_decisions.py",
@@ -611,6 +611,11 @@
       "relative_path": "tests/test_expedited_sentence.py",
       "sha256": "86c78ff7c4aa9611f30a423b04a8b15eeccc2a2dce1efae31055a3def008ceb4",
       "size": 12497
+    },
+    {
+      "relative_path": "tests/test_explanation_context.py",
+      "sha256": "851d42dee03e50efddd4d136706d475b6b04e47fb0a419fb0ad7a5ca2f8e2066",
+      "size": 11089
     },
     {
       "relative_path": "tests/test_figure_preflight.py",
@@ -724,13 +729,13 @@
     },
     {
       "relative_path": "tests/test_simplified_closure.py",
-      "sha256": "79c3a1fa2886963e9b0ea5815b10d70c2f92962f9ab4bf57c4a969082bd23f3d",
-      "size": 38377
+      "sha256": "a9d9dca955d6efc1cc3ca4e1e015450a962dbb7879c85ebbd6b112d2a593d371",
+      "size": 40080
     },
     {
       "relative_path": "tests/test_source_intake.py",
-      "sha256": "4f12c8ecc223ceaca2f3645a49f45c2b313d8741c230e083e7c8bd2a01c5631e",
-      "size": 11550
+      "sha256": "73c78c17bc34425accf4591cfc0fa1f001c33916990b970c3935ee48e5f13c94",
+      "size": 11740
     },
     {
       "relative_path": "tests/test_whole_case_io.py",

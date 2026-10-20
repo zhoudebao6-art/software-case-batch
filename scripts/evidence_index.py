@@ -71,6 +71,16 @@ def review_input(workspace,index,destination,compact=False):
             'quality_evidence':['meaning','data','legibility','layout','explanation'],
             'visual_evidence':['no_title_header_evidence','no_schematic_evidence'],
             'instruction':'Open every current PNG and Word context; verify no 示意 and no title/header. Explain source-relative value in meaning and before/red explanation/after context in explanation. Declared captions/labels are not pixel OCR.'}
+    if run.get('explanation_context_policy'):
+        from contracts import chart_snapshot
+        snapshot=chart_snapshot(workspace,output/run['word_name'],run)
+        facts['current_charts'].update({
+            key:snapshot[key] for key in ('explanation_context_policy','explanation_contexts')})
+        facts['chart_review_requirements']['context_instruction']=(
+            'These anchors only prove structural placement. Read the actual original example, '
+            'preceding prose, inserted explanation and following prose. Confirm the same object, '
+            'conditions, formula and results in each explanation judgment. Explanations collected '
+            'in an unrelated tail section are a material document defect, not a cosmetic suggestion.')
     controlled=workspace/'.product-v2/controlled-video.json'
     if controlled.exists():
         media=read_json(controlled);timeline=no_links(media['timeline'])

@@ -71,13 +71,16 @@ class SourceIntakeTests(unittest.TestCase):
         media = dict(self.old_media)
         rels = list(self.old_rels)
         result_body = self.original_body if body is None else body
-        result_body += ''.join(p(f'请参考图{n}。本案计算结果。') for n in numbers)
+        split = result_body.index('</w:p>') + len('</w:p>')
+        result_body = (result_body[:split] + ''.join(p(f'请参考图{n}。本案计算结果。') for n in numbers)
+                       + result_body[split:])
         for n in numbers:
             payload = self.old_media[f'original{numbers.index(n)+1}.png'] if reuse_original else b'\x89PNG\r\n\x1a\nresult'+bytes([n])
             png = self.work/f'result{n}.png'
             png.write_bytes(payload)
             figure = {'figure_id': n, 'png': png.name, 'sha256': digest(png),
                       'caption': f'图{n} 当前计算结果', 'title_policy': 'none',
+                      'explanation_after_source_block': 0,
                       'question': '本图回答独立边界问题', 'data_source': '原实施例与当前计算记录',
                       'chart_type': 'heatmap', 'labels': ['时间', '工况', '计算量']}
             figures.append(figure)

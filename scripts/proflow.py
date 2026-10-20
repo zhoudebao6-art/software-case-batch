@@ -18,7 +18,7 @@ from common import (TEXT_SUFFIXES, META_COLUMNS, digest, file_map, forbidden, in
                     no_links, normalized, read_json, state, write_json, delivery_paths,
                     DEFAULT_DELIVERY_LAYOUT)
 from source_intake import source_figure_numbers
-from contracts import ANALYTICAL_CHART_POLICY, BUILD_CHART_POLICY, chart_policy
+from contracts import ANALYTICAL_CHART_POLICY, BUILD_CHART_POLICY, EXPLANATION_CONTEXT_POLICY, chart_policy
 from review_packet import execution_checks
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -143,8 +143,11 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
            **{key:str(paths[key]) for key in ('word','data_dir','source_zip','video')},'status':'prepared'}
     if not base or revision_scope=='document':
         run['chart_policy']=BUILD_CHART_POLICY
+        run['explanation_context_policy']=EXPLANATION_CONTEXT_POLICY
     elif 'chart_policy' in base_run:
         run['chart_policy']=base_run['chart_policy']
+    if base and revision_scope=='package' and 'explanation_context_policy' in base_run:
+        run['explanation_context_policy']=base_run['explanation_context_policy']
     if base:
         for policy_key in ('recording_policy_version','data_policy_version'):
             if policy_key in base_run:run[policy_key]=base_run[policy_key]
@@ -236,6 +239,8 @@ PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据
     if not base:
         prompt+='''\n本次录制前必须在现有.product-v2/build-checks.json按references/tools.md绑定algorithm/api/persistence/browser/build五类真实日志，各自非空input_files含实际代码、测试脚本及固定夹具，test_files列实际测试入口；顶层run_id/source_docx_sha256/implementation_hashes绑定本案当前源与source-manifest。check-build只读核验，失败或陈旧在capture前拒绝，只重做依赖变化的检查。规范化反例必须走最终消费函数/API而非只测helper。父接续先proflow.py status读取收据：已capture进入evidence，technical_ready进入待完成独立审查，published未变结束；不反复录制、编码、解码或重看已实际验收且依赖未变的部分，finalize完整门禁保持。\n'''
     prompt+='\n充分清洗数据一版真实通过后按references/tools.md和U14完成成品规则复用，不因后续代码、data-plan、工具、解释器或原始input_csv变化重审/扩量/生成/清洗，不新增逐项复用表、不重写原收据；当前软件算法及派生复算使用内部隔离输入/结果，完成CSV不自动覆盖。首次质量仍完整，CSV自身损坏/缺失/变化或明确数据错误才针对处理。\n'
+    if run.get('explanation_context_policy') and (not base or revision_scope=='document'):
+        prompt+='\n正文解释落点：红字解释必须插入对应实施例、计算或结果分析的原正文段落之后，读前文—说明—后文并自然衔接；仅图片和图题放文末。不得把全文末尾新加“实施例补充分析”标题当作正文插入，也不机械全部放实施例最后。每图在现chart-manifest填写explanation_after_source_block（原Word w:body排除sectPr后的零起始块索引，同图多个落点可填不重复的索引数组）；各处解释放所选原段之后、下一原块之前，每图至少一处独立“请参考图N”，可重复引用、可联合解释多图。原有chart_snapshot核全部新增说明及原生公式的归属，不能只移动引用留下文末解释；空段/原图/图题不是正文锚点。结构通过不能证明语义正确；独立审核按当前锚点真实阅读上下文。说明脱离实施例或集中堆在无关文末属于实质文档缺陷，必须定向修Word及受影响包，不按小瑕疵放行，不重录未受影响视频。\n'
     (record.parent/'深化命令词.txt').write_text(prompt, encoding='utf-8')
     return run
 

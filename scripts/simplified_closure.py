@@ -309,7 +309,20 @@ def validate(workspace,path,output,run):
         if (original.get('core') is True or original.get('severity') in {'core','critical','P0','P1','实质','重大'}
                 or original.get('priority') in {'P0','P1','0','1',0,1}
                 or (zip_rel in affected and zip_rel in changed and not container_only)):
-            if not set(fix['checks'])&{'algorithm','api','persistence','browser'}:
+            business_checks={'algorithm','api','persistence','browser'}
+            document_only=(original.get('core') is not True
+                           and original.get('severity') not in {'core','critical'}
+                           and original.get('affected_artifacts')==[run['word_name']]
+                           and set(affected)=={run['word_name']}
+                           and not set(required)&business_checks)
+            if document_only:
+                from contracts import unread_visual_evidence
+                visual=by_kind.get('word_visual',{})
+                if ('word_visual' not in fix['checks']
+                        or visual.get('artifact_hashes',{}).get(run['word_name'])!=current[run['word_name']]
+                        or not visual.get('visual_notes') or unread_visual_evidence(visual['visual_notes'])):
+                    raise ValueError('Material document defect requires current affected Word visual/context evidence')
+            elif not set(fix['checks'])&business_checks:
                 raise ValueError('Core defect requires actual affected business evidence, not only packaging')
         if not set(affected).issubset(tested):raise ValueError('Affected selfchecks must bind the repaired artifacts')
         if run['word_name'] in affected and run['word_name'] in changed:

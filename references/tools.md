@@ -125,6 +125,8 @@ implementation_hashes完整对应source-manifest打包有效成员；五类依�
 
 在同一个图manifest中说明每图问题/数据/图型/真实标签，完工补当前PNG hash及build_selfcheck，不新造计划台账。`labels`从绘图对象提取必要可见文本，覆盖轴/图例/矩阵行列/色标及短标记，无需人工抄全部自动数字刻度。
 
+新 `prepare` 和文档修订同时冻结 `explanation_context_policy="source-context-v1"`。每图在本 manifest 填 `explanation_after_source_block`，值为原件 `w:body` 排除 `sectPr` 的零起始块索引；多个语义落点可用不重复的索引数组。先理解对应实施例，选择实际正文段落。各处解释插入原段之后、下一原块之前，每图至少一处独立引用，可重复引用；同一间隙的联合说明可归属多图。不能落在空段/原图/图题之后或以末尾新标题冒充原文。`chart_snapshot` 在原有自检中核实全部新增说明/原生公式的结构归属，输出各图 `placements` 的原段、后段、引用及说明块位置和hash；未归属说明直接阻止通过，不能只登记正文占位句。review-input 沿用这些定位事实，审核仍真实阅读上下文，不能把结构通过当作语义通过。旧冻结 run 不添加此字段；只改源码包的修订继承原 policy，不重建 Word。
+
 ```json
 {"figures":[
   {"figure_id":3,"png":"evidence/新增图3.png","sha256":"当前PNG的64位SHA256","caption":"图3 候选动作资格与投影偏差矩阵","title_policy":"none","question":"哪些较近候选被约束排除，何者最终采用","data_source":"本案实施例的有限候选、当前约束与原式计算；实际源位置及计算记录保存在工作区","chart_type":"离散资格矩阵与连续偏差矩阵","labels":["首动作","可行 / 排除","投影偏差","采用"]}

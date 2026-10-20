@@ -16,6 +16,7 @@ NS = {'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
 
 ANALYTICAL_CHART_POLICY = 'analytical-v1'
 BUILD_CHART_POLICY = 'analytical-v2'
+EXPLANATION_CONTEXT_POLICY = 'source-context-v1'
 ANALYTICAL_POLICIES = {ANALYTICAL_CHART_POLICY, BUILD_CHART_POLICY}
 CONSTRUCTION_POLICY = 'dependency-bound-v1'
 CONSTRUCTION_KINDS = {'algorithm','api','persistence','browser','build'}
@@ -263,12 +264,86 @@ def delivery_layout(output, run):
     for path in data.iterdir():no_links(path)
     return word
 
+def explanation_contexts(source_blocks, blocks, original_positions, figures):
+    """Cover every added prose/math block in declared source gaps; semantics stay human."""
+    def text(block):
+        return ''.join(node.text or '' for node in block.iter()
+                       if node.tag in {'{'+NS['w']+'}t',
+                                       '{http://schemas.openxmlformats.org/officeDocument/2006/math}t'})
+    current_text = [text(block) for block in blocks]
+    original_set = set(original_positions)
+    captions = {figure['caption'] for figure in figures}
+    added_prose = {i for i, value in enumerate(current_text)
+                   if i not in original_set and value.strip() and value not in captions}
+    contexts, covered = {}, set()
+    for figure in figures:
+        number = figure['figure_id']
+        declared = figure.get('explanation_after_source_block')
+        anchors = declared if isinstance(declared, list) else [declared]
+        if (not anchors or any(type(a) is not int or not 0 <= a < len(source_blocks) for a in anchors)
+                or len(set(anchors)) != len(anchors)):
+            raise ValueError('Each explanation needs an actual zero-based source body anchor')
+        reference = re.compile(r'请参考图\s*'+str(number)+r'(?!\d)')
+        matches = [i for i, value in enumerate(current_text)
+                   if i not in original_set and reference.search(value)]
+        if not matches:
+            raise ValueError('Each explanation needs at least one added independent figure reference')
+        if any(not any(original_positions[a] < i <
+                       (original_positions[a + 1] if a + 1 < len(original_positions) else len(blocks))
+                       for a in anchors) for i in matches):
+            raise ValueError('Explanation is outside its declared original body context')
+        placements, figure_blocks = [], set()
+        for anchor in sorted(anchors):
+            source_block = source_blocks[anchor]
+            source_text = text(source_block).strip()
+            if (source_block.tag != '{'+NS['w']+'}p' or not source_text
+                    or source_block.findall('.//w:drawing', NS)
+                    or source_block.findall('.//w:pict', NS)
+                    or re.match(r'^图\s*\d+', source_text)):
+                raise ValueError('Explanation anchor must be original body prose, not a blank/image/caption')
+            start = original_positions[anchor] + 1
+            end = original_positions[anchor + 1] if anchor + 1 < len(original_positions) else len(blocks)
+            explanation_blocks = []
+            for i in range(start, end):
+                block = blocks[i]
+                if (block.findall('.//w:drawing', NS) or block.findall('.//w:pict', NS)
+                        or block.tag.endswith('}sectPr') or current_text[i] in captions):
+                    break
+                if i in added_prose:
+                    explanation_blocks.append(i)
+            prose = ''.join(re.sub(r'请参考图\s*\d+', '', current_text[i]) for i in explanation_blocks)
+            if not re.search(r'[\w\u4e00-\u9fff]', prose):
+                raise ValueError('A body reference without its explanation is not contextual placement')
+            figure_blocks.update(explanation_blocks)
+            placements.append({
+                'after_source_block': anchor,
+                'source_text': source_text,
+                'next_source_text': text(source_blocks[anchor + 1]) if anchor + 1 < len(source_blocks) else None,
+                'reference_blocks': [i for i in matches if i in explanation_blocks],
+                'explanation_blocks': explanation_blocks,
+                'explanation_sha256': hashlib.sha256(
+                    b''.join(ET.tostring(blocks[i]) for i in explanation_blocks)).hexdigest(),
+            })
+        if not set(matches).issubset(figure_blocks):
+            raise ValueError('Explanation is outside its declared original body context')
+        covered.update(figure_blocks)
+        contexts[str(number)] = {'placements': placements}
+    unbound = sorted(added_prose - covered)
+    if unbound:
+        raise ValueError('Added explanation prose/math is outside every declared body context: '
+                         + ','.join(map(str, unbound)))
+    return contexts
+
+
 def chart_snapshot(workspace, word, run):
     """Bind internal PNG bytes to actual Word drawings and captions.
 
     No pixel classifier is claimed. The independent review must check absence of
     title/header in the actual PNG and Word, tied to these hashes.
     """
+    context_policy=run.get('explanation_context_policy')
+    if context_policy not in (None, EXPLANATION_CONTEXT_POLICY):
+        raise ValueError('Unknown explanation context policy')
     source=no_links(run['source_docx'])
     if digest(source)!=run['source_docx_sha256'] or source.name!=run['word_name']:
         raise ValueError('Frozen source Word identity changed')
@@ -353,16 +428,21 @@ def chart_snapshot(workspace, word, run):
                     member='word/'+target if not target.startswith('/') else target.lstrip('/')
                     if relations.get(rid)!=target or media.get(member)!=hashlib.sha256(original.read(member)).hexdigest():
                         raise ValueError('Original Word drawing relationships and image bytes must remain unchanged')
-            originals=[ET.tostring(b) for b in source_body if not b.tag.endswith('}sectPr')]
+            source_blocks=[b for b in source_body if not b.tag.endswith('}sectPr')]
+            originals=[ET.tostring(b) for b in source_blocks]
             current=[ET.tostring(b) for b in blocks]
-            cursor=0
+            cursor=0;original_positions=[]
             for original_block in originals:
                 try: at=current.index(original_block,cursor)
                 except ValueError: raise ValueError('Original Word body blocks must remain unchanged and in order')
+                original_positions.append(at)
                 cursor=at+1
             if positions and cursor>min(positions)-1:
                 raise ValueError('All added images and captions must follow all original body content')
+            contexts=explanation_contexts(source_blocks,blocks,original_positions,figures) if context_policy else None
     snapshot={'manifest_sha256':digest(manifest),'figures':{str(f['figure_id']):f['sha256'] for f in figures}}
+    if context_policy:
+        snapshot.update(explanation_context_policy=context_policy,explanation_contexts=contexts)
     if chart_policy(run) is not None:snapshot['chart_policy']=run['chart_policy']
     if run.get('chart_policy')==BUILD_CHART_POLICY and spec.get('retained_results'):
         snapshot['retained_results']={str(f['figure_id']):f['sha256'] for f in spec['retained_results']}
