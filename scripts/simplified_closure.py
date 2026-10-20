@@ -356,13 +356,13 @@ def validate(workspace,path,output,run):
     timeline=no_links(controlled['timeline'])
     if workspace not in timeline.parents or digest(timeline)!=controlled['sha256'] or proof.get('video_timeline_sha256')!=controlled['sha256']:
         raise ValueError('Controlled media evidence missing or changed')
+    proflow.completed_recording(workspace,recording,paths['video'])
     video_rel=paths['video'].relative_to(output).as_posix()
     if current[video_rel]==old.get(video_rel):
         if first.get('video_timeline_sha256')!=controlled['sha256']:
             raise ValueError('Unchanged video must reuse its original qualified timeline')
     else:
         from media_evidence import validate as validate_video
-        proflow.completed_recording(workspace,recording,paths['video'])
         validate_video(workspace,timeline,paths['video'],workspace/'.product-v2/recording.json')
     provenance=read_json(inside(workspace,'.product-v2/data-provenance.json'))
     if any(not provenance.get(key) for key in ('nature','sources','validation')):

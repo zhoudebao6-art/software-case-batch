@@ -1042,9 +1042,9 @@
       "current_evidence": {
         "guidance": "references/quality.md",
         "entry": "scripts/contracts.py",
-        "status": "chart_snapshot original-block/caption/drawing gate"
+        "status": "chart_snapshot source parts, added drawings and contextual formula gates"
       },
-      "gap_and_fix": "原文原式原图及位置不改、原顺序媒体保留，新增图/下图题全原文后，红字留实施例每图独立引用；恢复显式禁止新增完整原式副本，source-context-v2在既有chart_snapshot保守核对原生数学结构，其他表现仍实际独立阅读",
+      "gap_and_fix": "保留原文原式原图和相对顺序；source-parts-v1在原结构检查保护原关系目标与节属性、全部新增图形唯一登记且在文末。source-context-v2保守拒绝新增完整原式副本；解释语义及其他公式表现仍实际独立阅读，历史策略冻结",
       "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
     },
     {
@@ -1237,9 +1237,9 @@
       "current_evidence": {
         "guidance": "references/execution.md",
         "entry": "scripts/evidence_index.py",
-        "status": "actual ID index and coverage check"
+        "status": "frozen required evidence index and authenticated coverage"
       },
-      "gap_and_fix": "父生成索引/前后hash，review具体短结论/五项/已阅ID，减少模型抄hash非减少范围",
+      "gap_and_fix": "父在原index冻结必查范围，普通提交与简化首审认证索引及实际已阅ID；新策略拦截残缺索引和明确未读声明。旧首审修后核冻结覆盖而不重hash已改源码，技术原始帧与必读视觉分开；ID完整不是实际阅读证明",
       "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
     },
     {
@@ -1370,9 +1370,9 @@
       "current_evidence": {
         "guidance": "references/system-data.md",
         "entry": "scripts/package_policy.py",
-        "status": "U7 explicit exclusion and semantic scan"
+        "status": "U7 shared package exclusion and source text scan"
       },
-      "gap_and_fix": "ZIP不放README/使用说明/制作来源构造说明/原件解析/模拟性质；内部事实完整保留，必要署名法律保留",
+      "gap_and_fix": "ZIP不放README、使用/运行/安装/部署说明及制作来源构造/原件解析说明；私密.env变体排除，PowerShell模块及保留配置范例仍扫描。内部事实完整保留，运行脚本和必要法律署名保留",
       "verification": "Current applicable regression and independently recorded evidence; this table never self-signs pass."
     },
     {

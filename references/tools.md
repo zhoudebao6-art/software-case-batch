@@ -92,7 +92,7 @@ status仅在新会话接续、阶段完成或实际依赖变化后用于决策�
 
 合格视频只完成一次。`.product-v2/recording.json`成功且成片、原controlled-video/timeline和真实操作收据仍同hash时，后续软件、数据、参数、一般文案或细节改变不再按recording.input_files或plan hash使视频失效；无需逐项差异清单、原字节快照、recording-reuse.json或新增审核确认字段。status显示video_completed并只列尚缺工作，finalize与继承修订共用完成媒体核验，原收据不改。不重复录制、编码、完整解码或重看此前真实已阅且未被否定的完整视频。
 
-首次视频仍须按原完整质量和真实性合同实际检查一次；技术就绪不等于首次独立视觉已通过。原成片/技术证据缺失、hash改变或真实失败仍拒绝，不凭完成文字假通过，只补必要证据。只有系统主体/主要操作路径重大改变或视频本身有实质问题才重新处理视频；建设在现有build-checks.json以非空`video_material_change`记录这一具体重大变化或问题（未发生则省略），不另造台账或模型阶段。完成必要新视频及检查后更新该事实，旧片和旧收据留历史，禁止把标记清空掩盖未解决问题。尚只有capture、未形成合格成片时仍按原输入严格恢复evidence。
+首次视频仍须按原完整质量和真实性合同实际检查一次；技术就绪不等于首次独立视觉已通过。原成片/技术证据缺失、hash改变或真实失败仍拒绝，不凭完成文字假通过，只补必要证据。只有系统主体/主要操作路径重大改变或视频本身有实质问题才重新处理视频；建设在现有build-checks.json以非空`video_material_change`记录这一具体重大变化或问题（未发生则省略），不另造台账或模型阶段。完成必要新视频及检查后更新该事实，旧片和旧收据留历史，禁止把标记清空掩盖未解决问题。普通与简化收尾共用这项已有重大变化检查；未变合格视频仍不重新解码或逐帧阅读。尚只有capture、未形成合格成片时仍按原输入严格恢复evidence。
 
 当前源码包、数据、Word、六类运行检查和原技术对应继续独立按各自当前hash/真实证据验收；旧片只证明其实际展示的合格流程，不作为当前算法/参数/数据正确性证明。小细节或数据不同不构成重录理由，也不在同一次独立验收之外新增视频复核会话。旧run无需补写新字段或重复确认。
 
@@ -133,7 +133,7 @@ implementation_hashes完整对应source-manifest打包有效成员；五类依�
 ]}
 ```
 
-以上片段只表示一张图的语义字段，不是完整可提交manifest；还须按文末建设自检字段绑定当前PNG，满足全案有效图覆盖。实际caption/labels/单位和源位置必须来自本案。新policy的`question/data_source/chart_type`为非空文本，`labels`为非空字符串数组；caption与labels禁“示意”。图号延续原文并递增，新增图不放顶部整体标题/表头/图N/长解释，必要轴/矩阵行列标签/色标/短图例保留。脚本检查PNG签名/hash、图下精确caption、独立“请参考图N”、实际drawing嵌入同字节PNG和原正文/原媒体保留。`title_policy`及labels声明不替代真实看图；用既有计算记录或manifest保留源锚点、原式、前后文和解释依据供独立审核。
+以上片段只表示一张图的语义字段，不是完整可提交manifest；还须按文末建设自检字段绑定当前PNG，满足全案有效图覆盖。实际caption/labels/单位和源位置必须来自本案。新policy的`question/data_source/chart_type`为非空文本，`labels`为非空字符串数组；caption与labels禁“示意”。图号延续原文并递增，新增图不放顶部整体标题/表头/图N/长解释，必要轴/矩阵行列标签/色标/短图例保留。脚本检查PNG签名/hash、图下精确caption、独立“请参考图N”、实际drawing嵌入同字节PNG和原正文/原媒体保留。新 source-parts-v1 还保护原关系与节属性，核全部新增图形均唯一归属登记图，不只检查登记图题。`title_policy`及labels声明不替代真实看图；用既有计算记录或manifest保留源锚点、原式、前后文和解释依据供独立审核。
 
 父会话实际调用如下工具阶段（不是PowerShell或自动caseflow命令）：
 
@@ -161,7 +161,7 @@ spawn_agent(task_name="本案独立验收", fork_turns="none", model="gpt-6.1-so
 
 `.product-v2/data-provenance.json` 保留 `nature`（真实数据性质）、`sources`（实际入口/检索失败/许可/下载哈希和适配记录）和 `validation`（规模、边界、主外键及分布验证）；不放进交付目录或源码包。没有成功下载时 `sources` 如实写尝试与限制，不能伪造取得。
 
-建设者保存六类实际执行材料，独立ultra核验后写最后验收JSON：`checks` 恰含 `algorithm/api/persistence/browser/build/package_startup` 六类，每项含实际 `command`、`exit_code`、相对工作区的 `log` 和该日志 `sha256`。`package_startup` 必须从最终 ZIP 解压的新目录执行。另含 `source_zip_sha256`、`video_timeline_sha256`（父控完整5fps timeline）、`reviewed_files`（与scan全部成品路径→hash一致）、`visual_notes`（完整Word页/PNG/全部视频接触页、首尾及操作关键帧，区分实际打开和合法继承）、非空 `limitations`、`reviewer_agent_id`、`decision:"pass"`和chart_snapshot。父短证据索引通过evidence_index.py核实际已阅ID，不自动补签。建设者只提供事实，不写独立decision/pass。
+建设者保存六类实际执行材料，独立ultra核验后写最后验收JSON：`checks` 恰含 `algorithm/api/persistence/browser/build/package_startup` 六类，每项含实际 `command`、`exit_code`、相对工作区的 `log` 和该日志 `sha256`。`package_startup` 必须从最终 ZIP 解压的新目录执行。另含 `source_zip_sha256`、`video_timeline_sha256`（父控完整5fps timeline）、`reviewed_files`（与scan全部成品路径→hash一致）、`visual_notes`（完整Word页/PNG/全部视频接触页、首尾及操作关键帧，区分实际打开和合法继承）、非空 `limitations`、`reviewer_agent_id`、`decision:"pass"`和chart_snapshot。新required-evidence-v1按closure.md在原索引声明完整Word页序及源映射；review_id/review_index与父review阶段绑定一致，最终入口核必读ID覆盖。实际阅读说明沿用visual_notes/limitations，不增加重复名单或审核阶段；脚本不自动补签，也不把哈希及ID完整等同实际阅读。旧冻结run保持原合同。建设者只提供事实，不写独立decision/pass。
 
 验收JSON的`chart_reviews`覆盖每个当前图，每项含`figure_id`、当前`png_sha256`、`no_title_header:true`及具体`no_title_header_evidence`，沿用`meaning/data/legibility/layout/explanation`五项，每项有`passed`和`evidence`。`analytical-v1/v2`还含`no_schematic:true`及非空`no_schematic_evidence`，说明已实际查看新增图与新图题无“示意”；原图原文不适用该禁词。五项及无标题项证据均为非空具体文本：meaning说明相对原图新增价值，explanation记录实际实施例位置、前文—红字—后文衔接、解释深度、必要原式符号简释及新增公式不完整重复原式（对照原件，不删原件既有重复，不误判独立符号或不同推导）和Word页。沿同一review写实际证据，不另设上下文台账。没有实际查看或存在问题不能填true/pass，建设者不代独立验收签字。
 

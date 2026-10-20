@@ -2,7 +2,9 @@
 import hashlib
 import json
 from pathlib import Path
+import posixpath
 import re
+from urllib.parse import unquote, urlsplit
 import xml.etree.ElementTree as ET
 import zipfile
 from common import digest, inside, no_links, read_json
@@ -21,6 +23,7 @@ EXPLANATION_CONTEXT_POLICIES = {'source-context-v1', EXPLANATION_CONTEXT_POLICY}
 ANALYTICAL_POLICIES = {ANALYTICAL_CHART_POLICY, BUILD_CHART_POLICY}
 CONSTRUCTION_POLICY = 'dependency-bound-v1'
 CONSTRUCTION_KINDS = {'algorithm','api','persistence','browser','build'}
+SOURCE_INTEGRITY_POLICY = 'source-parts-v1'
 
 def construction_checks(workspace, run, plan_path=None):
     """Read actual self-check bindings; never run commands or approve business logic.
@@ -124,9 +127,18 @@ def unread_visual_evidence(value):
         if not re.search(unread,statement,re.I):continue
         required=re.search(r'\b(?:word|docx|pngs?|charts?|figures?|videos?|documents?|pages?)\b|文档|图表|图题|页面|全部页|视频|关键帧',statement,re.I)
         external=(re.search(r'deploy(?:ment)?|生产部署|现场部署',statement,re.I)
-                  and re.search(r'outside|out.of.scope|范围外|不(?:属于|在|包含|含).{0,12}(?:本案|范围|验收)',statement,re.I))
+                  and re.search(r'outside|out.of.scope|范围外|不(?:属于|在|包含|含).{0,12}(?:本案|范围|验收)',value,re.I))
         if required or not external:return True
     return False
+
+
+def reject_unread_visual_evidence(proof, message='Required independent visual evidence was explicitly unread'):
+    """Reject an admitted lack of required reading; absence is not reading proof."""
+    if (any(value for key,value in proof.items() if key.startswith('unread'))
+            or proof.get('visual_read_complete') is False
+            or unread_visual_evidence([proof.get(key) for key in
+                ('visual_notes','limitations','coverage','chart_reviews','retained_result_reviews')])):
+        raise ValueError(message)
 
 def zip_member_hashes(path):
     """Hash real member bytes, rejecting ambiguous Windows archive names."""
@@ -217,7 +229,7 @@ def chart_records(spec, run):
             if (check.get('geometry_status') not in {'pass','review_required'} or check.get('collisions')
                     or check.get('png_sha256')!=figure.get('sha256')
                     or visual.get('png_sha256')!=figure.get('sha256') or visual.get('inspected') is not True
-                    or not _nonempty_text(visual.get('evidence'))):
+                    or not _nonempty_text(visual.get('evidence')) or unread_visual_evidence(visual.get('evidence'))):
                 raise ValueError('Current PNG must pass construction collision checks and actual visual self-check before Word submission')
             width=check.get('final_width_mm')
             if isinstance(width,bool) or not isinstance(width,(int,float)) or not 0<width<=500 or visual.get('final_width_mm')!=width:
@@ -233,7 +245,8 @@ def chart_records(spec, run):
                 raise ValueError('Retained results must identify actual original statistical results; original workflows do not count')
             ids.add(old['figure_id'])
             viewed=old.get('visual_review',{})
-            if viewed.get('inspected') is not True or viewed.get('png_sha256')!=old.get('sha256') or not _nonempty_text(viewed.get('evidence')):
+            if (viewed.get('inspected') is not True or viewed.get('png_sha256')!=old.get('sha256')
+                    or not _nonempty_text(viewed.get('evidence')) or unread_visual_evidence(viewed.get('evidence'))):
                 raise ValueError('Actually inspect any original statistical result counted toward the figure mix')
         baseline=[f for f in figures+retained if f.get('analysis_role')=='baseline_result']
         professional=[f for f in figures if f.get('analysis_role')=='professional_analysis']
@@ -431,6 +444,151 @@ def explanation_contexts(source_blocks, blocks, original_positions, figures):
     return contexts
 
 
+def _relationship_records(package, member):
+    """Read unique OPC relationships without depending on XML prefix/ordering."""
+    if member not in package.namelist():
+        return {}
+    try:
+        root = ET.fromstring(package.read(member))
+    except ET.ParseError as exc:
+        raise ValueError('Invalid Word relationship part: '+member) from exc
+    records = {}
+    for element in root:
+        record = {key: element.get(key) for key in ('Id','Type','Target','TargetMode')}
+        identity = record['Id']
+        if not identity or identity in records or not record['Target']:
+            raise ValueError('Missing/duplicate Word relationship identity or target: '+member)
+        records[identity] = record
+    return records
+
+
+def _relationship_member(rels_member, record):
+    """Resolve internal OPC targets; external links are preserved, never fetched."""
+    if record.get('TargetMode') == 'External':
+        return None
+    target = urlsplit(record.get('Target') or '')
+    if target.scheme or target.netloc:
+        raise ValueError('Internal Word relationship has an external target')
+    path = unquote(target.path)
+    if not path:
+        return None  # A same-document bookmark has no separate package member.
+    owner = (rels_member[:-5].replace('/_rels/', '/') if '/_rels/' in rels_member
+             else rels_member.removeprefix('_rels/')[:-5])
+    member = posixpath.normpath(path.lstrip('/') if path.startswith('/')
+                              else posixpath.join(posixpath.dirname(owner), path))
+    if member in {'.','..'} or member.startswith('../') or '\\' in member:
+        raise ValueError('Word relationship target escapes its package')
+    return member
+
+
+def _preserve_source_relationships(original, current):
+    """Keep old records/resources; document image relationships may be appended."""
+    current_records = _relationship_records(current, 'word/_rels/document.xml.rels')
+    old_members, new_members = set(original.namelist()), set(current.namelist())
+    mutable = {'word/document.xml','word/_rels/document.xml.rels'}
+    edit_metadata = {'http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties',
+                     NS['r']+'/extended-properties'}
+    for member in sorted(name for name in old_members if name.endswith('.rels')):
+        if member not in new_members:
+            raise ValueError('Original Word relationship part is missing: '+member)
+        records = _relationship_records(original, member)
+        actual = current_records if member == 'word/_rels/document.xml.rels' else _relationship_records(current, member)
+        for identity, record in records.items():
+            if actual.get(identity) != record:
+                raise ValueError('Original Word relationship Id/Type/Target/TargetMode changed: '+member+'#'+identity)
+            target = _relationship_member(member, record)
+            if target is None or target in mutable:
+                continue
+            if record['Type'] in edit_metadata and target in old_members and target in new_members:
+                continue  # Word may update save/editor timestamps and statistics.
+            if ((target in old_members) != (target in new_members)
+                    or target in old_members and original.read(target) != current.read(target)):
+                raise ValueError('Original Word relationship resource changed: '+target)
+    return current_records
+
+
+def _preserve_final_section(source_body, body):
+    """Anchor numbering excludes sectPr; template preservation does not."""
+    tag = '{'+NS['w']+'}sectPr'
+    old, new = source_body.findall(tag), body.findall(tag)
+    if (len(old) > 1 or len(new) > 1 or bool(old) != bool(new)
+            or old and list(source_body)[-1] is not old[0]
+            or new and list(body)[-1] is not new[0]
+            or old and ET.tostring(old[0]) != ET.tostring(new[0])):
+        raise ValueError('Original Word final section properties must remain unchanged and last')
+    if ([ET.tostring(section) for section in source_body.iter(tag)]
+            != [ET.tostring(section) for section in body.iter(tag)]):
+        raise ValueError('Original Word section properties must remain unchanged; no added section breaks')
+
+
+_VML = 'urn:schemas-microsoft-com:vml'
+_MC = 'http://schemas.openxmlformats.org/markup-compatibility/2006'
+_PIC = 'http://schemas.openxmlformats.org/drawingml/2006/picture'
+_VML_SHAPES = {'shape','group','rect','roundrect','oval','line','polyline','curve','arc','image'}
+_GRAPHIC_TAGS = ({'{'+NS['w']+'}'+name for name in ('drawing','pict','object')}
+                 | {'{'+NS['a']+'}'+name for name in ('blip','graphic','graphicData')}
+                 | {'{'+_PIC+'}pic'}
+                 | {'{'+_VML+'}'+name for name in _VML_SHAPES | {'imagedata'}})
+
+
+def _registered_graphic_count(node, relationships, media, expected_sha):
+    """Count actual objects, treating equivalent Choice/Fallback as one image."""
+    if node.tag == '{'+_MC+'}AlternateContent':
+        choices = list(node)
+        if not choices or any(child.tag not in {'{'+_MC+'}Choice','{'+_MC+'}Fallback'} for child in choices):
+            raise ValueError('Invalid alternate representation of a registered chart')
+        counts = [_registered_graphic_count(child, relationships, media, expected_sha) for child in choices]
+        if not counts[0] or any(count != counts[0] for count in counts):
+            raise ValueError('Every alternate chart representation must contain the same single image')
+        return counts[0]
+    if node.tag in {'{'+NS['w']+'}drawing','{'+NS['w']+'}pict'}:
+        is_vml = node.tag == '{'+NS['w']+'}pict'
+        descendants = list(node.iter())[1:]
+        if any(child.tag in {'{'+NS['w']+'}drawing','{'+NS['w']+'}pict','{'+NS['w']+'}object',
+                             '{'+_VML+'}group','{'+NS['w']+'}txbxContent'}
+               or child.tag.startswith(('{http://schemas.microsoft.com/office/word/2010/wordprocessingGroup}',
+                                        '{http://schemas.microsoft.com/office/word/2010/wordprocessingShape}'))
+               for child in descendants):
+            raise ValueError('Registered chart contains an additional or grouped graphical object')
+        shapes = [child for child in descendants if child.tag in {'{'+_VML+'}'+name for name in _VML_SHAPES}]
+        if (is_vml and len(shapes) != 1 or not is_vml and shapes
+                or len(node.findall('.//a:graphic',NS)) > 1
+                or len(list(node.iter('{'+_PIC+'}pic'))) > 1
+                or any(child.get('uri') not in {None,'',_PIC} for child in node.findall('.//a:graphicData',NS))):
+            raise ValueError('Registered chart must contain one raster image, without extra graphics')
+        references = []
+        for child in descendants:
+            if child.tag == '{'+NS['a']+'}blip':
+                if child.get('{'+NS['r']+'}link'):
+                    raise ValueError('New chart must embed its checked PNG, not a linked image')
+                references.append(child.get('{'+NS['r']+'}embed'))
+            elif child.tag == '{'+_VML+'}imagedata':
+                references.append(child.get('{'+NS['r']+'}id') or child.get('{urn:schemas-microsoft-com:office:office}relid'))
+        if len(references) != 1 or references[0] not in relationships:
+            raise ValueError('Registered chart must bind exactly one embedded PNG')
+        member = _relationship_member('word/_rels/document.xml.rels', relationships[references[0]])
+        if member is None or media.get(member) != expected_sha:
+            raise ValueError('Registered chart graphical object differs from its checked PNG')
+        return 1
+    if node.tag in _GRAPHIC_TAGS:
+        raise ValueError('New unregistered graphical object is outside its chart drawing')
+    return sum(_registered_graphic_count(child, relationships, media, expected_sha) for child in node)
+
+
+def _bind_all_new_graphics(blocks, original_positions, figures, caption_positions, relationships, media):
+    """Only one registered image per appended image/caption pair is permitted."""
+    original_set = set(original_positions)
+    boundary = max(original_positions, default=-1)
+    expected = {at-1: figure['sha256'] for figure,at in zip(figures,caption_positions)}
+    for index, block in enumerate(blocks):
+        if index in original_set or not any(node.tag in _GRAPHIC_TAGS for node in block.iter()):
+            continue
+        if index <= boundary or index not in expected:
+            raise ValueError('Every added graphical object must be a registered chart after all original body content')
+        if _registered_graphic_count(block, relationships, media, expected[index]) != 1:
+            raise ValueError('Each appended chart/caption pair must contain exactly one graphical object')
+
+
 def chart_snapshot(workspace, word, run):
     """Bind internal PNG bytes to actual Word drawings and captions.
 
@@ -440,6 +598,9 @@ def chart_snapshot(workspace, word, run):
     context_policy=run.get('explanation_context_policy')
     if context_policy not in {None} | EXPLANATION_CONTEXT_POLICIES:
         raise ValueError('Unknown explanation context policy')
+    source_policy = run.get('source_integrity_policy')
+    if source_policy not in {None, SOURCE_INTEGRITY_POLICY}:
+        raise ValueError('Unknown source integrity policy')
     source=no_links(run['source_docx'])
     if digest(source)!=run['source_docx_sha256'] or source.name!=run['word_name']:
         raise ValueError('Frozen source Word identity changed')
@@ -515,7 +676,10 @@ def chart_snapshot(workspace, word, run):
             if not old_media.issubset(set(media.values())):
                 raise ValueError('Original Word images must remain unchanged')
             source_body=ET.fromstring(original.read('word/document.xml')).find('w:body',NS)
-            if source_body.findall('.//a:blip',NS):
+            if source_policy:
+                protected_relationships = _preserve_source_relationships(original, z)
+                _preserve_final_section(source_body, body)
+            elif source_body.findall('.//a:blip',NS):
                 original_rels=ET.fromstring(original.read('word/_rels/document.xml.rels'))
                 original_targets={r.attrib['Id']:r.attrib['Target'] for r in original_rels}
                 for blip in source_body.findall('.//a:blip',NS):
@@ -535,6 +699,8 @@ def chart_snapshot(workspace, word, run):
                 cursor=at+1
             if positions and cursor>min(positions)-1:
                 raise ValueError('All added images and captions must follow all original body content')
+            if source_policy:
+                _bind_all_new_graphics(blocks, original_positions, figures, positions, protected_relationships, media)
             if context_policy == EXPLANATION_CONTEXT_POLICY:
                 repeats = repeated_source_formulas(source_blocks, blocks, original_positions)
                 if repeats:
@@ -545,6 +711,7 @@ def chart_snapshot(workspace, word, run):
     if context_policy:
         snapshot.update(explanation_context_policy=context_policy,explanation_contexts=contexts)
     if chart_policy(run) is not None:snapshot['chart_policy']=run['chart_policy']
+    if source_policy:snapshot['source_integrity_policy']=source_policy
     if run.get('chart_policy')==BUILD_CHART_POLICY and spec.get('retained_results'):
         snapshot['retained_results']={str(f['figure_id']):f['sha256'] for f in spec['retained_results']}
     return snapshot
@@ -853,6 +1020,28 @@ def model_review(workspace, proof, files, charts, evidence_path):
     return _model_review(workspace,proof,files,charts,evidence_path)
 
 
+def _review_request_index_binding(workspace, message, review_record, reference, call, result):
+    """Bind visible request bytes; opaque requests retain actual call/final proof authentication."""
+    workspace = no_links(workspace)
+    if _encrypted_dispatch_message(message):
+        return {'kind':'encrypted-dispatch-and-independent-final-proof',
+                'review_index_sha256':reference['sha256'],
+                'dispatch_event_sha256':hashlib.sha256(json.dumps([call,result],sort_keys=True,ensure_ascii=False).encode()).hexdigest()}
+    if isinstance(message,str) and reference['sha256'] in message:
+        return {'kind':'index-sha256-in-request','review_index_sha256':reference['sha256']}
+    facts = review_record.get('review_facts')
+    if isinstance(message,str) and isinstance(facts,dict) and _nonempty_text(facts.get('path')):
+        sha = facts.get('sha256')
+        path = no_links(facts['path']) if Path(facts['path']).is_absolute() else inside(workspace,facts['path'])
+        if (workspace in path.parents and isinstance(sha,str) and sha in message
+                and path.is_file() and digest(path)==sha):
+            neutral = read_json(path)
+            if isinstance(neutral,dict) and neutral.get('index')==reference:
+                return {'kind':'facts-sha256-in-request','review_index_sha256':reference['sha256'],
+                        'review_facts_sha256':sha}
+    raise ValueError('Actual review dispatch message must bind its frozen review index SHA256 or exact neutral facts')
+
+
 def first_review_binding(workspace, proof, evidence_path, dispatch_path):
     """Authenticate a preserved first revise, without turning it into a pass.
 
@@ -863,9 +1052,7 @@ def first_review_binding(workspace, proof, evidence_path, dispatch_path):
     execution_checks(proof.get('checks'))
     if not proof.get('reviewed_files') or not proof.get('visual_notes') or not proof.get('limitations'):
         raise ValueError('First review requires its actual artifact snapshot, visual notes and limitations')
-    if (any(value for key,value in proof.items() if key.startswith('unread')) or proof.get('visual_read_complete') is False
-            or unread_visual_evidence([proof['visual_notes'],proof['limitations']])):
-        raise ValueError('First necessary independent visual evidence was unread')
+    reject_unread_visual_evidence(proof, 'First necessary independent visual evidence was unread')
     charts=proof.get('chart_snapshot',{})
     first_chart_failures(proof,chart_policy(read_json(inside(workspace,'.product-v2/run.json'))))
     return _model_review(workspace,proof,proof['reviewed_files'],charts,evidence_path,
@@ -873,6 +1060,8 @@ def first_review_binding(workspace, proof, evidence_path, dispatch_path):
 
 
 def _model_review(workspace, proof, files, charts, evidence_path, hash_file=digest, _recorded_dispatch=None, _first_dispatch=None):
+    if _recorded_dispatch is None and _first_dispatch is None:
+        reject_unread_visual_evidence(proof)
     run=read_json(inside(workspace,'.product-v2/run.json'))
     policy=chart_policy(run)
     analytical=policy in ANALYTICAL_POLICIES
@@ -884,6 +1073,11 @@ def _model_review(workspace, proof, files, charts, evidence_path, hash_file=dige
             or any(k not in {'build','review'} and not re.fullmatch(r'repair-[1-9][0-9]*',k) for k in stages)):
         raise ValueError('Actual build and independent review dispatch records required')
     agents,call_ids,verified={},set(),{}
+    from evidence_index import validate_review_coverage
+    coverage = validate_review_coverage(workspace,run,proof,stages['review'],
+                                        current=_recorded_dispatch is None and _first_dispatch is None)
+    if coverage['required']:
+        verified['review_coverage'] = coverage
     mode=spec.get('review_mode','ordinary')
     from batch_control import media_binding,batch,load_review_admission,load_review_dispatch_permit,REVIEW_ADMISSION_CONTRACT
     binding=media_binding(workspace)
@@ -955,6 +1149,9 @@ def _model_review(workspace, proof, files, charts, evidence_path, hash_file=dige
             elif (not isinstance(message,str) or admission['token'] not in message or dispatch_permit['dispatch_nonce'] not in message or admission['run_id'] not in message or
                   admission['workspace'].casefold() not in message.casefold()):
                 raise ValueError('Actual review dispatch message must name its admission token, verified permit nonce, run and workspace')
+        if stage=='review' and coverage['required']:
+            verified['review_coverage']['request_binding'] = _review_request_index_binding(
+                workspace,args.get('message'),record,coverage['review_index'],call,result)
         expected_model=review_model if stage=='review' else 'gpt-6.1-sol'
         if args.get('fork_turns')!='none' or args.get('model')!=expected_model or args.get('reasoning_effort')!=effort:
             raise ValueError('Actual '+stage+' dispatch must explicitly use '+expected_model+'/'+effort+' with fork_turns=none')

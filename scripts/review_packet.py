@@ -12,7 +12,7 @@ import re
 import zipfile
 
 from common import digest, inside, no_links, product_location, read_json
-from evidence_index import check, review_input
+from evidence_index import check, review_input, review_coverage_policy, review_coverage_snapshot
 
 EXECUTION_KINDS = ('algorithm', 'api', 'persistence', 'browser', 'build', 'package_startup')
 STAGES = ('build-start', 'build-complete', 'data-ready', 'pre-review')
@@ -138,7 +138,12 @@ def execution_checks(value, kinds=EXECUTION_KINDS):
 
 def inspect(workspace, execution, index=None, manifest=None):
     workspace = no_links(workspace)
-    errors, paths = [], set()
+    errors, paths, hashes = [], set(), {}
+
+    def cached_digest(path):
+        path = no_links(path)
+        if path not in hashes: hashes[path] = digest(path)
+        return hashes[path]
 
     def issue(code, location, message):
         errors.append({'code': code, 'location': str(location), 'message': str(message)[:1000]})
@@ -156,7 +161,7 @@ def inspect(workspace, execution, index=None, manifest=None):
             if not path.is_file():
                 issue('missing', value, 'Missing regular evidence file'); return None
             paths.add(path.relative_to(workspace).as_posix())
-            if expected is not None and digest(path) != expected:
+            if expected is not None and cached_digest(path) != expected:
                 issue('stale', value, 'Declared SHA256 differs from current evidence')
             return path
         except (ValueError, OSError, TypeError) as exc:
@@ -179,10 +184,18 @@ def inspect(workspace, execution, index=None, manifest=None):
     run = document('.product-v2/run.json')
     if run.get('workspace') != str(workspace) or not run.get('run_id'):
         issue('schema', '.product-v2/run.json', 'Current workspace and run_id required')
+    coverage_policy = None
+    try:
+        coverage_policy = review_coverage_policy(run)
+    except ValueError as exc:
+        issue('schema', 'review_coverage_policy', exc)
+    document_revision = bool(coverage_policy and run.get('revision_of') and run.get('revision_scope', 'document') == 'document')
+    package_revision = bool(coverage_policy and run.get('revision_of') and run.get('revision_scope') == 'package')
     proof = document(execution)
     checks = []
     try:
-        checks = execution_checks(proof.get('checks'))
+        kinds = () if document_revision else (('package_startup',) if package_revision else EXECUTION_KINDS)
+        checks = execution_checks(proof.get('checks', []), kinds)
     except ValueError as exc:
         issue('schema', 'checks', exc)
     for item in checks:
@@ -212,14 +225,17 @@ def inspect(workspace, execution, index=None, manifest=None):
             if not isinstance(item, dict):
                 issue('schema', 'chart-manifest.figures', 'Chart must be an object'); continue
             actual(item.get('png'), item.get('sha256', ''))
-    package = document('.product-v2/source-package.json')
+    if coverage_policy:
+        for item in charts.get('retained_results', []):
+            if isinstance(item, dict): actual(item.get('png'), item.get('sha256', ''))
+    package = {} if document_revision else document('.product-v2/source-package.json')
     members = package.get('files', {})
-    if not isinstance(members, dict) or not members:
+    if not document_revision and (not isinstance(members, dict) or not members):
         issue('schema', 'source-package.files', 'Explicit current source hash map required')
     else:
         for rel, sha in members.items():
             actual(rel, sha)
-    controlled = document('.product-v2/controlled-video.json')
+    controlled = {} if document_revision or package_revision else document('.product-v2/controlled-video.json')
     if controlled:
         timeline = document(controlled.get('timeline'), expected=controlled.get('sha256', ''))
         for group in ('frames', 'contact_sheets', 'interaction_frames'):
@@ -232,6 +248,10 @@ def inspect(workspace, execution, index=None, manifest=None):
                 actual(item.get('file'), item.get('sha256', ''))
     for name in ('recording.json', 'data-cleaning.json', 'data-quality.json',
                  'data-provenance.json', 'cleanup.json', 'model-dispatch.json', 'build-checks.json'):
+        if (document_revision or package_revision) and name != 'cleanup.json':
+            continue  # Inherited system evidence is checked by the revision gate.
+        if coverage_policy and name == 'model-dispatch.json':
+            continue  # The actual review stage is appended after this draft.
         doc = document('.product-v2/' + name, required=False)
         if name == 'build-checks.json' and isinstance(doc.get('checks'), dict):
             for item in doc['checks'].values():
@@ -243,14 +263,18 @@ def inspect(workspace, execution, index=None, manifest=None):
                     for rel, sha in inputs.items():
                         actual(rel, sha)
 
+    review_scope = None
     if manifest:
-        extra = document(manifest).get('files')
+        extra_spec = document(manifest)
+        review_scope = extra_spec.get('review_scope')
+        extra = extra_spec.get('files')
         if not isinstance(extra, list) or not all(isinstance(rel, str) for rel in extra):
             issue('schema', 'manifest.files', 'Explicit evidence file list required')
         else:
             for rel in extra:
                 actual(rel)
     output = None
+    source_zip_sha256 = proof.get('source_zip_sha256')
     try:
         output = product_location(workspace, run)
         if output == workspace or workspace in output.parents or output in workspace.parents:
@@ -261,9 +285,10 @@ def inspect(workspace, execution, index=None, manifest=None):
         archive = delivery_paths(run, output)['source_zip']
         if not archive.is_file():
             issue('missing', archive, 'Current final source ZIP required')
-        elif digest(archive) != proof.get('source_zip_sha256') or digest(archive) != package.get('sha256'):
+        elif not document_revision and (cached_digest(archive) != proof.get('source_zip_sha256') or cached_digest(archive) != package.get('sha256')):
             issue('stale', 'source_zip_sha256', 'Execution and package receipt must bind the final ZIP')
-        if proof.get('video_timeline_sha256') != controlled.get('sha256'):
+        if document_revision and archive.is_file(): source_zip_sha256 = cached_digest(archive)
+        if controlled and proof.get('video_timeline_sha256') != controlled.get('sha256'):
             issue('stale', 'video_timeline_sha256', 'Execution facts must bind the current controlled timeline')
     except (ValueError, OSError, KeyError, TypeError) as exc:
         issue('schema', 'run.output', exc)
@@ -271,18 +296,35 @@ def inspect(workspace, execution, index=None, manifest=None):
     records = []
     if index:
         try:
-            check(index, [], workspace)
-            records = read_json(index)['evidence']
+            if not coverage_policy: check(index, [], workspace)
+            index_spec = read_json(index)
+            records = index_spec['evidence']
+            review_scope = index_spec.get('review_scope')
         except (ValueError, OSError, KeyError, TypeError, AttributeError) as exc:
             issue('stale', 'index', exc)
-    elif not errors:
-        records = [{'id': 'E' + str(i + 1).zfill(3), 'path': rel, 'sha256': digest(inside(workspace, rel))}
+    if coverage_policy and isinstance(review_scope, dict):
+        word_scope = review_scope.get('word', {})
+        for page in word_scope.get('pages', []) if isinstance(word_scope, dict) else []:
+            if isinstance(page, dict): actual(page.get('path'))
+        mappings = review_scope.get('source_mappings', [])
+        if isinstance(mappings, list):
+            for mapping in mappings: actual(mapping)
+    if not index and not errors:
+        records = [{'id': 'E' + str(i + 1).zfill(3), 'path': rel, 'sha256': cached_digest(inside(workspace, rel))}
                    for i, rel in enumerate(sorted(paths))]
+    coverage_snapshot = {}
+    if coverage_policy and not errors:
+        try:
+            coverage_snapshot = review_coverage_snapshot(workspace, run, records, review_scope, checks,
+                                                        paths, inherited=proof.get('inherited_evidence_chain'), _hash_file=cached_digest)
+        except (ValueError, OSError, KeyError, TypeError, AttributeError) as exc:
+            issue('coverage', 'review_scope', exc)
     return {'schema_version': 1, 'kind': 'review-input-preflight',
             'status': 'blocked' if errors else 'inputs_ready', 'errors': errors,
             'workspace': str(workspace), 'run_id': run.get('run_id'), 'evidence': records,
-            'execution_checks': checks, 'source_zip_sha256': proof.get('source_zip_sha256'),
-            'video_timeline_sha256': controlled.get('sha256'),
+            'execution_checks': checks, 'source_zip_sha256': source_zip_sha256,
+            'video_timeline_sha256': controlled.get('sha256', proof.get('video_timeline_sha256')),
+            **({'coverage_snapshot': coverage_snapshot} if coverage_snapshot else {}),
             'scope': 'Declared current evidence only; discovery is not proof of complete review scope. '
                      'Supply an existing complete index or explicit manifest for rendered Word pages and source mappings. '
                      'No commands executed, visuals viewed, review approved or receipt modified.'}
@@ -310,8 +352,9 @@ def draft(workspace, execution, destination, index=None, manifest=None, root=Non
     archive = delivery_paths(run, no_links(run['output']))['source_zip']
     try:
         members = zip_member_hashes(archive)
-        package = read_json(inside(workspace, '.product-v2/source-package.json'))
-        if digest(archive) != report['source_zip_sha256'] or package.get('files') != members:
+        document_revision = bool(review_coverage_policy(run) and run.get('revision_of') and run.get('revision_scope', 'document') == 'document')
+        package = {} if document_revision else read_json(inside(workspace, '.product-v2/source-package.json'))
+        if digest(archive) != report['source_zip_sha256'] or (not document_revision and package.get('files') != members):
             raise ValueError('Current ZIP members differ from the actual source package receipt')
     except (ValueError, OSError, zipfile.BadZipFile) as exc:
         report['status'] = 'blocked'
@@ -320,6 +363,7 @@ def draft(workspace, execution, destination, index=None, manifest=None, root=Non
     destination.mkdir(parents=True, exist_ok=False)
     records = report['evidence']
     snapshot = {'schema_version': 1, 'workspace': str(workspace), 'evidence': records,
+                **report.get('coverage_snapshot', {}),
                 'review_id': hashlib.sha256(json.dumps(records, sort_keys=True).encode()).hexdigest()[:12]}
 
     def save(name, value):
@@ -330,16 +374,22 @@ def draft(workspace, execution, destination, index=None, manifest=None, root=Non
     facts_path = destination / 'facts.json'
     review_input(workspace, destination / 'index.json', facts_path, compact)
     save('preflight.json', report)
-    save('review-draft.json', {**metadata, 'kind': 'non-authoritative-review-draft', 'run_id': report['run_id'],
+    facts = read_json(facts_path)
+    coverage_binding = ({'review_index': facts['review_index'], 'review_id': facts['review_id']}
+                        if report.get('coverage_snapshot') else {})
+    if 'inherited_evidence_chain' in report.get('coverage_snapshot', {}):
+        coverage_binding['inherited_evidence_chain'] = report['coverage_snapshot']['inherited_evidence_chain']
+    save('review-draft.json', {**metadata, **coverage_binding, 'kind': 'non-authoritative-review-draft', 'run_id': report['run_id'],
          'checks': report['execution_checks'], 'source_zip_sha256': report['source_zip_sha256'],
          'source_package': {'sha256': report['source_zip_sha256'], 'files': members},
          'video_timeline_sha256': report['video_timeline_sha256'],
-         'reviewed_files': read_json(facts_path)['current_artifacts'],
+          'reviewed_files': facts['current_artifacts'],
          'reviewed_evidence': [], 'chart_reviews': [], 'visual_notes': [], 'limitations': [],
          'instruction': 'Copied execution facts are unreviewed. Reviewer must actually inspect evidence, '
                         'write independent findings, actual coverage and identity, then attest the final proof hash. '
                         'This draft has no decision or signature and cannot finalize.'})
     return {'status': 'draft_created', 'directory': str(destination), 'evidence_items': len(records),
+            **({'review_index': facts['review_index']} if coverage_binding else {}),
             'facts_path': str(facts_path), 'facts_sha256': digest(facts_path),
             'scope': report['scope']}
 

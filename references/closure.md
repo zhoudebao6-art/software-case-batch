@@ -6,6 +6,29 @@
 
 facts的 `visual_navigation` 直接列当前图、视频接触页、首尾及操作关键帧的路径/hash和已有证据ID。审核者直接打开这些文件及完整索引中的全部Word页，不为找图反复输出数百个均匀帧条目；全部原帧和覆盖要求保留，需要辨读的帧仍看原尺寸。导航不是已阅或通过证明，未在索引中的文件不伪造ID；发现问题仍一次读完其余稳定材料。
 
+新案与合法新文档修订冻结 `review_coverage_policy=required-evidence-v1`。在原有 manifest（或已有完整 index）内声明 `review_scope`，引用已经生成的逐页图和源映射，不新增渲染器或台账：
+
+```json
+{
+  "files": ["本案既有补充证据路径"],
+  "review_scope": {
+    "word": {
+      "sha256": "当前成品Word实际SHA256",
+      "page_count": 2,
+      "pages": [
+        {"page": 1, "path": "evidence/word/page-1.png"},
+        {"page": 2, "path": "evidence/word/page-2.png"}
+      ]
+    },
+    "source_mappings": ["evidence/source_audit.json", "evidence/formula_registry.json", "evidence/source_trace.json", "evidence/calculation_trace_map.json", "evidence/coverage_matrix.json"]
+  }
+}
+```
+
+页数、路径和文件名必须对应本案实际完整渲染结果；兼容的既有 CSV 映射仍可引用，不为格式重抄。脚本核当前 Word 哈希、连续页序、文件及已声明必查范围，不能证明页图内容完整或审核者真的阅读。负责人核范围，独立审核实际读全部页。`draft` 在原 index 冻结 run、当前产物、`required_evidence` 与上述 scope；`review_scope.video` 从原录制时间线自动产生，无需人工填写，源码成员与逐图快照复用原 proof 字段。显式 index 不能省略已声明必查文件，也不能塞入会在派发时变化的 `model-dispatch.json`，实际派发另由原合同认证。完整原始技术帧仍绑定哈希，但只把完整接触页、首尾与操作关键帧列作对应视觉必读，不能把所有均匀原始帧另变成逐帧模型任务。
+
+同一审核草稿保留 `review_id` 和 `review_index:{path,sha256}`，父在原 review 阶段记录中绑定同一引用，派发引用当前 index 或 facts 哈希。审核者只填真实 `reviewed_evidence`，阅读说明沿用 `visual_notes/limitations`；不由脚本补已阅或通过。最终入口拒绝未知/重复/缺失必读 ID、索引被换或明确未读声明。旧 run、已签收据不回填；包修订继承父策略与合法旧视觉事实。简化收尾认证原首审冻结索引和覆盖，修后只核受影响项，不拿已修改源码重新校验旧首审字节，不追加整案审核。
+
 既有draft会从实际源码ZIP读取成员哈希，内嵌到原审查草稿的source_package；首审保留这一事实即可，无需新台账。后续仅压缩方式改变且成员完全相同时，只检查当前包的完整性、解压启动与原核心流程，不重做未受影响的业务测试；源码成员变化或缺少可信旧成员依据时，仍核实际受影响功能。
 
 审核结束统一使用 [父编排的 complete-review](execution.md#r19-接续与交接优先规则)，真实结果先落盘，必要返修关联后再放票。随后按下节分流；首审revise保留原样，小修自检不伪写成独立pass。不重复计算未变的合格数据或重录合格视频。

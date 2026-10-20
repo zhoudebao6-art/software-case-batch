@@ -117,7 +117,7 @@ Web 以案件用户的工作过程组织，所有导航和按钮均有实际业�
 }
 ```
 
-若本案记录天然由对象、时间和状态唯一确定，可将例中的主明细改为`"primary_key_kind":"natural", "primary_key":["对象编号","时间","状态"], "effective_key":["对象编号","时间","状态"]`，保留对应object_columns/time_column/event_column及真实类型；声明time_column必须为timestamp类型。只有实体加一个业务字段时须有匹配的time/event语义声明；两个以上经类型校验的非ID业务字段可使用前述另一合法分支。无需为了通过检查额外制造行主键，也不将纯编号键标成natural绕过扩量校验。
+若本案记录天然由对象、时间和状态唯一确定，可将例中的主明细改为`"primary_key_kind":"natural", "primary_key":["对象编号","时间","状态"], "effective_key":["对象编号","时间","状态"]`，保留对应object_columns/time_column/event_column及真实类型；声明time_column必须为timestamp类型。只有实体加一个业务字段时须有匹配的time/event语义声明；两个以上经类型校验的非ID业务字段可使用前述另一合法分支。无需为了通过检查额外制造行主键，也不将纯编号键标成natural绕过扩量校验。明细表声明 surrogate 时，effective_key 不得混入其行主键列；否则仅重新编号就会虚增有效行数。任何明细 effective_key，以及 natural 主键中的 id 列，都须是原 schema 的 object_columns 已声明实体；不能混入非实体流水号凑有效行数。合法多实体编号和维表 dimension 路径继续保留，声明的业务含义仍由原质量核对判断。已充足且清洗通过、字节未变的数据按原完成证据复用。
 
 high在数据适配/导出环节先用`data_preflight.audit_csv_exports`检查准备交付的实际CSV；它只读且逐行检查，不修改源材料或静默删除单元格。完成`clean-data`后，运行`proflow.py check-data --workspace '本案绝对工作区'`重读实际候选CSV并调用`check_expansion`，结果存入现`data-cleaning.json`的quality。`data_status=fail`必须修复；`review_required`说明当前hash的真实专名检查未齐，不是通过。确定性检查只涵盖声明schema、有效键、已知专名、哈希绑定审查和可定位的引用，不能自动证明完整语言专名识别、领域机理正确或现场实测。建设者仍验证计算、关联、汇总及页面/初始化一致性。finalize按实际当前文件再次计算并要求与已有quality匹配；旧run数据合同冻结，不追改历史收据。
 
@@ -126,3 +126,5 @@ high在数据适配/导出环节先用`data_preflight.audit_csv_exports`检查�
 源码通过显式白名单压成成品 `系统材料/源代码.zip`，不直接复制整座工作区。排除所有层级、任何大小写的 README 与变体，以及针对原技术文档的解析、抽取、公式登记、原文映射、分析报告、解压媒体目录。业务系统自身需要的文件导入/解析模块应保留，不把所有名叫 parser 的业务代码一概删除；遇不明确文件，核对用途后加入排除表。源码包必须能从清洗后的外部 CSV 初始化数据，不能暗中依赖被排除的技术材料或旧工作区绝对路径。原工作区被排除文件完整保留。
 
 源码ZIP内不放使用/运行说明、制作过程、原件解析和数据构造/来源说明，也不放揭示模拟性质的文案。内部README与数据出处如实保留数据性质、计算扩展过程、假设和未验证范围，不因排除交付说明删除证据或改称实测。必要第三方署名/入口/DOI/许可URL及变更指示集中许可证，法律必要内容保留；非必要制作用语也走语义审查，LICENSES不能作全文件藏说明豁免。不在每行CSV重复性质列，不在界面堆标签。
+
+源码的既有白名单打包与最终 ZIP 扫描共用排除规则：各层级 `.env.local`、`.env.production` 等私密运行配置不得进入包；仅明确的 example/sample/template 配置范例保留，范例内容仍扫描。PowerShell `.psm1/.psd1` 和 `.rst` 等文本同样受当前内容规则约束；安装/部署说明、指南、手册按现有交付要求排除，合法启动/安装脚本、运行解析模块和许可证保留。检查报告不输出被排除配置的内容，内部原文件不删除。

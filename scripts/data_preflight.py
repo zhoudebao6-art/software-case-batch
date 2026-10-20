@@ -61,7 +61,10 @@ def audit_csv_exports(paths, schema, known_names=(), allowed_terms=(), name_revi
     foreign_keys}. primary_key_kind defaults to 'surrogate'; 'natural' explicitly
     allows a meaningful typed business key to also be the effective key.
     effective_key must describe business identity/content, including real entity,
-    time/event/measurement context as appropriate; surrogate row ID alone fails.
+    time/event/measurement context as appropriate; surrogate primary keys must
+    stay outside detail effective keys so renumbering cannot inflate scale.
+    IDs in detail effective keys or natural primary keys must be declared
+    entities in object_columns, never undeclared record/sequence identifiers.
     Legitimate identifier-only dimensions may declare table_role='dimension'.
     name_review maps basename -> {sha256, filename_checked, columns_checked,
     text_checked, evidence}, supplied only after actual high review of THIS CSV.
@@ -133,8 +136,17 @@ def audit_csv_exports(paths, schema, known_names=(), allowed_terms=(), name_revi
                     eventful = event in fields and columns[event]['kind'] == 'enum'
                     if not (entity and (timed or eventful)) and len(typed_business) < 2:
                         raise ValueError('Natural '+label+' needs entity/time/event semantics or two typed business fields: '+name)
-            elif set(effective) <= set(primary):
-                raise ValueError('effective_key cannot consist only of surrogate primary keys: '+name)
+            elif set(effective) & set(primary):
+                raise ValueError('Detail effective_key must exclude surrogate primary keys; '
+                                 'declare genuine natural business keys explicitly: '+name)
+            business_keys=[('effective_key',effective)]
+            if primary_kind=='natural':business_keys.append(('primary_key',primary))
+            for label,key_columns in business_keys:
+                undeclared_ids=[column for column in key_columns
+                                if columns[column]['kind']=='id' and column not in object_columns]
+                if undeclared_ids:
+                    raise ValueError('Detail '+label+' ID fields must be declared entity object_columns: '
+                                     +name+': '+', '.join(undeclared_ids))
         start_hash = _digest(path)
         if start_hash in file_hashes:
             issue(name, 'duplicate-export', other_file=file_hashes[start_hash])

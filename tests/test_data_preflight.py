@@ -192,7 +192,7 @@ class DataPreflightTests(unittest.TestCase):
         schema = copy.deepcopy(self.schema)
         schema['记录.csv']['foreign_keys'] = [{'columns': ['对象编号'], 'target_file': '对象.csv',
                                              'target_columns': ['对象编号']}]
-        schema['对象.csv'] = {'columns': {'对象编号': {'kind': 'id', 'pattern': r'O\d+'},
+        schema['对象.csv'] = {'table_role': 'dimension', 'columns': {'对象编号': {'kind': 'id', 'pattern': r'O\d+'},
                                          '类别': {'kind': 'enum', 'values': ['设备']}},
                              'primary_key': ['对象编号'], 'effective_key': ['对象编号', '类别']}
         paths = [self.path, parent]

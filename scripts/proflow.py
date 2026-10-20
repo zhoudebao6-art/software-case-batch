@@ -144,10 +144,16 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
     if not base or revision_scope=='document':
         run['chart_policy']=BUILD_CHART_POLICY
         run['explanation_context_policy']=EXPLANATION_CONTEXT_POLICY
+        run['source_integrity_policy']='source-parts-v1'
+        run['review_coverage_policy']='required-evidence-v1'
     elif 'chart_policy' in base_run:
         run['chart_policy']=base_run['chart_policy']
     if base and revision_scope=='package' and 'explanation_context_policy' in base_run:
         run['explanation_context_policy']=base_run['explanation_context_policy']
+    if base and revision_scope=='package' and 'source_integrity_policy' in base_run:
+        run['source_integrity_policy']=base_run['source_integrity_policy']
+    if base and revision_scope=='package' and 'review_coverage_policy' in base_run:
+        run['review_coverage_policy']=base_run['review_coverage_policy']
     if base:
         for policy_key in ('recording_policy_version','data_policy_version'):
             if policy_key in base_run:run[policy_key]=base_run[policy_key]
@@ -241,6 +247,10 @@ PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据
     prompt+='\n充分清洗数据一版真实通过后按references/tools.md和U14完成成品规则复用，不因后续代码、data-plan、工具、解释器或原始input_csv变化重审/扩量/生成/清洗，不新增逐项复用表、不重写原收据；当前软件算法及派生复算使用内部隔离输入/结果，完成CSV不自动覆盖。首次质量仍完整，CSV自身损坏/缺失/变化或明确数据错误才针对处理。\n'
     if run.get('explanation_context_policy') and (not base or revision_scope=='document'):
         prompt+='\n正文解释落点：红字解释必须插入对应实施例、计算或结果分析的原正文段落之后，读前文—说明—后文并自然衔接；仅图片和图题放文末。不得把全文末尾新加“实施例补充分析”标题当作正文插入，也不机械全部放实施例最后。每图在现chart-manifest填写explanation_after_source_block（原Word w:body排除sectPr后的零起始块索引，同图多个落点可填不重复的索引数组）；各处解释放所选原段之后、下一原块之前，每图至少一处独立“请参考图N”，可重复引用、可联合解释多图。原有chart_snapshot核全部新增说明及原生公式的归属，不能只移动引用留下文末解释；空段/原图/图题不是正文锚点。结构通过不能证明语义正确；独立审核按当前锚点真实阅读上下文。说明脱离实施例、集中堆在无关文末或新增完整重复原式均属实质文档缺陷。source-context-v2在原有自检拦截新增原生数学关系的原式副本，忽略普通显示样式但保留数学结构；原件已有重复不动，独立符号和有依据的不同推导不误删，文本或图片公式仍须实际阅读比较。必须定向修Word及受影响包，不按小瑕疵放行，不重录未受影响视频。\n'
+    if run.get('source_integrity_policy') and (not base or revision_scope=='document'):
+        prompt+='\n原有chart_snapshot同时核原Word关系、目标资源和末尾节属性；全部新增图形必须唯一登记、紧邻其图题并位于全部原文后，不夹带额外图，不改原模板页面设置。沿原建设自检处理，不增加模型阶段。\n'
+    if run.get('review_coverage_policy'):
+        prompt+='\n首次独立交接沿既有review_packet draft准备完整索引，按references/closure.md声明当前Word完整页序和原技术映射；review proof与原review阶段记录绑定同一review_index。只由实际审核者填写已阅ID，不能空列表或缩减必查集合冒充完成。原始技术帧与必须实际看的完整接触页、首尾和操作关键帧分开，保留全部技术证据。普通发布和首审简化收尾均拒绝明确未读的矛盾声明；已实际通过且未变的材料继续合法继承，小修只查受影响项，不增加整案审核。\n'
     (record.parent/'深化命令词.txt').write_text(prompt, encoding='utf-8')
     return run
 
@@ -418,7 +428,9 @@ def excluded_source(relative, extra=()):
     if (name in EXCLUDED_NAMES or re.match(r'^(source[-_]analysis|docx[-_](extract|analysis)|extracted[-_]text|document[-_]text|原文解析|文档解析|解析报告)',name)
             or path.suffix.lower() in {'.docx','.doc','.pdf','.log','.pyc','.pyo','.db','.sqlite','.sqlite3','.pem','.key'}):
         return 'document-analysis-or-runtime-file'
-    if name in {'.env','credentials.json','token.json','tokens.json','id_rsa','id_ed25519'}:
+    dotenv_example=bool(re.fullmatch(r'\.env(?:\.[a-z0-9_-]+)*\.(?:example|sample|template)',name))
+    if (name in {'.env','credentials.json','token.json','tokens.json','id_rsa','id_ed25519'}
+            or (name.startswith('.env.') and not dotenv_example)):
         return 'credential-file'
     for pattern in extra:
         if path.match(pattern) or relative == pattern or relative.startswith(pattern.rstrip('/')+'/'):
@@ -479,12 +491,27 @@ def scan_text(name,data):
     hits=[]
     suffix=Path(name).suffix.lower()
     if suffix in TEXT_SUFFIXES or Path(name).name.casefold() in {'dockerfile','makefile','procfile'}:
-        try:
-            text=data.decode('utf-8-sig')
-        except UnicodeDecodeError:
-            try: text=data.decode('gb18030')
-            except UnicodeDecodeError:
+        # UTF-32 LE shares UTF-16 LE's prefix, so check the longer BOM first.
+        if data.startswith((b'\xff\xfe\x00\x00',b'\x00\x00\xfe\xff')):
+            encodings=('utf-32',)
+        elif data.startswith((b'\xff\xfe',b'\xfe\xff')):
+            encodings=('utf-16',)
+        elif data.startswith(b'\xef\xbb\xbf'):
+            encodings=('utf-8-sig',)
+        else:
+            if b'\x00' in data:
                 return [{'path':name,'error':'Text encoding is unreadable'}]
+            encodings=('utf-8','gb18030')
+        for encoding in encodings:
+            try:
+                text=data.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            return [{'path':name,'error':'Text encoding is unreadable'}]
+        if '\x00' in text:
+            return [{'path':name,'error':'Text encoding is unreadable'}]
         from package_policy import audit_delivery_text
         hits.extend(audit_delivery_text(name,text))
         for number,line in enumerate(text.splitlines(),1):

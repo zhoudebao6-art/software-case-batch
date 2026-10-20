@@ -9,7 +9,7 @@ from urllib.parse import unquote
 CHINESE_TERMS = ('模拟', '虚拟', '仿真', '物理仿真', '参考', '源文件', '公式', '正文')
 DOCUMENT_SUFFIXES = {'.txt', '.md', '.rst', '.html', '.htm', '.pdf', '.doc', '.docx', '.json', '.yaml', '.yml'}
 _DOC_NAMES = re.compile(
-    r'(运行说明|使用说明|操作说明|用户手册|使用手册|操作手册|开发说明|开发文档|设计制作说明|'
+    r'((?:运行|使用|操作|安装|部署)[\s._-]*(?:说明|指南|手册)|用户手册|开发说明|开发文档|设计制作说明|'
     r'制作过程|制作说明|生成过程|生成说明|原件解析|原文解析|文档解析|原件分析|原文分析|'
     r'材料解析|源文档解析|技术文档解析|ai制作|ai生成说明|提示词|命令词|'
     r'^(?:user|usage|operation|run|running|runtime|setup|installation|deployment|developer|development|'

@@ -20,7 +20,7 @@ class DataWorkflowTests(unittest.TestCase):
             path.write_text('对象编号,时间,数值\nOBJ_001,2026-01-01T00:00:00,1\nOBJ_001,2026-01-02T00:00:00,2\n',encoding='utf-8-sig')
             write_json(metadata/'run.json',{'output':str(out),'data_policy_version':'neutral-expanded-v1'})
             write_json(metadata/'data-cleaning.json',{'files':[{'name':path.name,'sha256':digest(path)}]})
-            plan={'export_schema':{path.name:{'columns':{'对象编号':{'kind':'id','pattern':r'OBJ_\d{3}'},'时间':{'kind':'timestamp'},'数值':{'kind':'number'}},'primary_key':['对象编号','时间'],'effective_key':['对象编号','时间','数值'],'time_column':'时间','object_columns':['对象编号']}},
+            plan={'export_schema':{path.name:{'columns':{'对象编号':{'kind':'id','pattern':r'OBJ_\d{3}'},'时间':{'kind':'timestamp'},'数值':{'kind':'number'}},'primary_key_kind':'natural','primary_key':['对象编号','时间'],'effective_key':['对象编号','时间','数值'],'time_column':'时间','object_columns':['对象编号']}},
                   'name_review':{path.name:{'sha256':digest(path),'filename_checked':True,'columns_checked':True,'text_checked':True,'evidence':'真实逐项检查编号及固定业务字段，无专名'}},
                   'expansion_plan':{'main_tables':{path.name:{'target_effective_rows':2}},'generation_method':'按对象时序的确定性业务计算'}}
             write_json(metadata/'data-plan.json',plan)
@@ -40,7 +40,7 @@ class DataReuseTests(unittest.TestCase):
         write_json(self.metadata/'run.json',{'data_policy_version':'neutral-expanded-v1','run_id':'data-fixture','workspace':str(self.work),'output':str(self.out)})
         write_json(self.metadata/'data-cleaning.json',{'status':'cleaned','files':[{'name':self.path.name,'sha256':digest(self.path)}]})
         self.plan={'export_schema':{self.path.name:{'columns':{'对象编号':{'kind':'id','pattern':r'OBJ_\d{3}'},'时间':{'kind':'timestamp'},'数值':{'kind':'number'}},
-            'primary_key':['对象编号','时间'],'effective_key':['对象编号','时间','数值'],'time_column':'时间','object_columns':['对象编号']}},
+            'primary_key_kind':'natural','primary_key':['对象编号','时间'],'effective_key':['对象编号','时间','数值'],'time_column':'时间','object_columns':['对象编号']}},
             'name_review':{self.path.name:{'sha256':digest(self.path),'filename_checked':True,'columns_checked':True,'text_checked':True,'evidence':'实际专名检查夹具'}},
             'expansion_plan':{'main_tables':{self.path.name:{'target_effective_rows':2}},'generation_method':'确定性业务计算'}}
         self.plan_path=self.metadata/'data-plan.json';write_json(self.plan_path,self.plan)

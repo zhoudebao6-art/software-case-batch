@@ -15,9 +15,9 @@ META_COLUMNS = {'生成数据', '数据来源', '是否生成', '是否生成数
                 'datasource', 'dataprovenance', 'sourcetype', 'generationmethod'}
 TEXT_SUFFIXES = {'.py','.js','.cjs','.mjs','.jsx','.ts','.tsx','.html','.htm','.css','.scss',
                  '.json','.jsonl','.csv','.yaml','.yml','.toml','.ini','.cfg','.env','.txt',
-                 '.md','.sql','.sh','.bat','.cmd','.ps1','.xml','.svg','.vue','.svelte',
+                 '.md','.rst','.sql','.sh','.bat','.cmd','.ps1','.psm1','.psd1','.xml','.svg','.vue','.svelte',
                  '.java','.kt','.c','.h','.cpp','.cs','.go','.rs','.lock','.properties','.conf',
-                 '.ipynb','.r','.example'}
+                 '.ipynb','.r','.example','.sample','.template'}
 
 LEGACY_DELIVERY_LAYOUT = 'legacy-v1'
 DEFAULT_DELIVERY_LAYOUT = 'system-materials-v2'
