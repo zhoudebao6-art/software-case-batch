@@ -215,6 +215,19 @@ def controller_commands(command):
     return result
 
 
+def _desktop_root_without_thread_source(meta):
+    """Recognize only the observed Desktop 0.160.1 root metadata omission.
+
+    This is not identity proof: session_proof still checks the authoritative
+    path/UUID, platform capacity and successful batch/root/owner command. An
+    explicit thread_source (including null) never enters this compatibility path.
+    """
+    return ('thread_source' not in meta and meta.get('source') == 'vscode' and
+            meta.get('originator') == 'Codex Desktop' and meta.get('cli_version') == '0.160.1' and
+            not any(key in meta for key in ('parent_thread_id', 'parent_session_id', 'parent_id',
+                                           'parent', 'subagent', 'thread_spawn', 'agent_path', 'agent_id')))
+
+
 def session_proof(root, batch_id, pid, request):
     """Only a registered owner's completed controller command proves association.
 
@@ -229,10 +242,16 @@ def session_proof(root, batch_id, pid, request):
     with path.open('rb') as stream:
         raw_meta = stream.readline(); meta_event = json.loads(raw_meta)
         meta = meta_event.get('payload', {})
+        desktop_root = _desktop_root_without_thread_source(meta)
         if (meta_event.get('type') != 'session_meta' or meta.get('id') != session_id or
-            meta.get('session_id', session_id) != session_id or meta.get('thread_source') not in ('user', 'agent_created_thread') or
+            meta.get('session_id', session_id) != session_id or
+            (meta.get('thread_source') not in ('user', 'agent_created_thread') and not desktop_root) or
             meta.get('parent_thread_id') or isinstance(meta.get('source'), dict)):
             raise ValueError('Controller requires an actual independent user parent session identity')
+        if desktop_root:
+            capacity = runtime_capacity(path)
+            if not capacity or capacity['worker_capacity'] <= 0:
+                raise ValueError('Desktop root without thread_source requires actual platform worker capacity evidence')
         # Native create_thread opens a user-owned root chat. Child/worker identity
         # remains excluded above, and the real matching owner command is required below.
         while True:
