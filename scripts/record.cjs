@@ -580,7 +580,7 @@ function finishRecording(workspace,lease=null) {
   validateMeasuredDuration({...c,duration:seconds},policyVersion(run.recording_policy_version));
   if(stream.width!==1920||stream.height!==1080) throw Error('Video geometry check failed');
   fs.mkdirSync(path.dirname(final),{recursive:true});if(!fs.existsSync(final)) fs.copyFileSync(staged,final,fs.constants.COPYFILE_EXCL);
-  const evidenceDir=path.join(dir,'controlled-video-'+crypto.randomUUID()),frames=path.join(evidenceDir,'frames');
+  const evidenceDir=path.join(workspace,'.product-v2','video-'+crypto.randomUUID()),frames=path.join(evidenceDir,'frames');
   const report={passed:true,duration:seconds,width:1920,height:1080,sha256:sha(fs.readFileSync(final)),video:final,raw_video:rawPath,prelude_seconds:prelude,input_files:inputs,service_identity:identity,events,texts,frames,visual_review_required:true,capture_receipt_sha256:pending.sha256,encoding_threads:2,construction_checks:c.construction_checks,plan_path:c.plan_path,
     recording_policy_version:policyVersion(c.recording_policy_version),plan_sha256:c.plan_sha256,estimated_duration_seconds:c.estimated_duration_seconds,timeout_seconds:c.timeout_seconds,planned_step_count:c.planned_step_count,completed_step_count:c.completed_step_count,final_result_completion:c.final_result_completion};
   save(path.join(workspace,'.product-v2/recording.json'),report);

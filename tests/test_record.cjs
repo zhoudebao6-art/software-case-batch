@@ -594,6 +594,7 @@ test('evidence completion preserves exact creation ticks from a legacy numeric c
   if(exe==='fixture-probe')return {status:0,stdout:JSON.stringify({format:{duration:'60'},streams:[{width:1920,height:1080}]})};
   assert.equal(exe,'fixture-validator');assert.equal(path.basename(args[0]),'media_evidence.py');assert.equal(args[1],'generate');
   const report=JSON.parse(fs.readFileSync(args[args.indexOf('--recording')+1],'utf8'));assert.equal(report.service_identity.created_ticks,ticks);
+  const output=args[args.indexOf('--output')+1];assert.equal(path.dirname(output),control);assert.match(path.basename(output),/^video-[0-9a-f-]{36}$/);assert.ok(!output.startsWith(path.join(root,'deep-capture')+path.sep));
   return {status:0,stdout:'{}'};
  }}:require(name);
  const sandbox={require:mediaRequire,module:{exports:{}},__dirname:path.dirname(script),
@@ -603,8 +604,9 @@ test('evidence completion preserves exact creation ticks from a legacy numeric c
  try{
   const raw=path.join(root,'raw.webm'),input=path.join(root,'app.js'),final=path.join(root,'final.mp4'),capture=path.join(root,'capture.json');
   fs.writeFileSync(raw,'fixture raw');fs.writeFileSync(input,'frozen input');save(path.join(control,'run.json'),{workspace:root,run_id:'fixture',video:final});
-  const facts={status:'captured',workspace:root,run_id:'fixture',final,dir:root,rawPath:raw,raw_sha256:hash(raw),errors:[],inputs:{'app.js':hash(input)},
+  const facts={status:'captured',workspace:root,run_id:'fixture',final,dir:path.join(root,'deep-capture','controlled-'+'x'.repeat(180)),rawPath:raw,raw_sha256:hash(raw),errors:[],inputs:{'app.js':hash(input)},
    prelude:0,duration:60,events:[],texts:[],identity:{pid:41001,created_ticks:1000,command_sha256:'verified-command-hash',ports:[8123]}};
+  fs.mkdirSync(facts.dir,{recursive:true});
   fs.writeFileSync(capture,JSON.stringify(facts).replace('"created_ticks":1000','"created_ticks":'+ticks));
   const captureHash=hash(capture);save(path.join(control,'capture-pending.json'),{path:capture,sha256:captureHash});
   sandbox.module.exports.finishRecording(root);
