@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r33-modules-data-20261021",
+  "release": "r34-supplemental-integration-20261021",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -34,8 +34,8 @@
     },
     {
       "relative_path": "SKILL.md",
-      "sha256": "483b38d47fa67f8bb05d5490eb8542085c402e09e4345d43a51a54712417f0da",
-      "size": 12777
+      "sha256": "b7ce8a484aad7f18293bb1169bfd592fc09c1b2bc41bc21a972d4e40f94335f5",
+      "size": 13908
     },
     {
       "relative_path": "agents/openai.yaml",
