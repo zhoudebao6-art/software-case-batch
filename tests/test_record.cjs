@@ -462,6 +462,15 @@ test('visible data-production copy is rejected while real business actions remai
  for(const text of ['经计算生成数据','通过计算生成的数据','由计算生成的数据','计算生成数据','生成数据','样例数据','种子数据','由模型生成的数据'])assert.ok(auditUiText(text).length,text);
  for(const text of ['生成报告','经计算生成报告','通过计算生成报告','由模型生成报告','计算结果','预测结果','运行记录','任务已保存'])assert.deepEqual(auditUiText(text),[],text);
 });
+test('implementation promotion in observed workbench copy is rejected',()=>{
+ const observed='任务工作台\n本系统真实可用，已连接业务接口。\n本系统已通过独立验收，可查看以下为系统实现证明。';
+ assert.ok(auditUiText(observed).length>0);
+ assert.deepEqual(auditUiText('任务工作台\n待处理 18 项\n选择任务后查看处理结果。'),[]);
+});
+test('necessary help technical limits uncertainty and error recovery remain valid UI copy',()=>{
+ const observed='参数说明：处理温度范围为 5–40 ℃，超过阈值时停止运行。\n技术规则：最少选择 2 个时间点。\n数据尚不完整，预测结果存在不确定性，请核对输入后重试。\n上传失败：文件超过 20 MB，请压缩后重新上传。\n当前结果未保存，关闭前请保存。';
+ assert.deepEqual(auditUiText(observed),[]);
+});
 test('browser launches inherit private lane temp and downloads without changing parent environment',()=>{
  const previous=process.env.TEMP;
  const one=isolatedBrowserOptions('D:\\codex+\\temp\\lane1','D:\\codex+\\temp\\lane1\\downloads');

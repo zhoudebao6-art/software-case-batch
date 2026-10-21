@@ -1,5 +1,5 @@
 {
-  "source": "original/rules/web-visible-copy.md:5-10; user instruction 2026-10-14: business-facing copy without data-construction explanations",
+  "source": "original/rules/web-visible-copy.md:5-10; user instruction 2026-10-14: business-facing copy without data-construction explanations; user instruction 2026-10-21: remove production promotion and implementation-proof copy from Web UI",
   "chinese": [
     "物理仿真",
     "专利",
@@ -30,7 +30,12 @@
     "数据经计算生成",
     "数据通过计算生成",
     "数据由计算生成",
-    "数据由模型生成"
+    "数据由模型生成",
+    "本系统真实可用",
+    "本系统已通过独立验收",
+    "本页面用于展示实现效果",
+    "本系统已完成源码打包",
+    "以下为系统实现证明"
   ],
   "english_patterns": [
     "\\bmock\\b",

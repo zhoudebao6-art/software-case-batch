@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r31-case-web-20261021",
+  "release": "r32-web-presentation-20261021",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -34,8 +34,8 @@
     },
     {
       "relative_path": "SKILL.md",
-      "sha256": "8540c34d05c4f696eda688da60c44fc1b370f65364862dd764436223a3bec829",
-      "size": 12214
+      "sha256": "9365f5b9dc26d575008fb5f7a8195ecbe379262af56af5ea0a697a937b655431",
+      "size": 12371
     },
     {
       "relative_path": "agents/openai.yaml",
@@ -94,8 +94,8 @@
     },
     {
       "relative_path": "references/closure.md",
-      "sha256": "50630fa461bb751ef1fa1560b23eea2ac3066e8fe3116002db4c6fd82bcae7a7",
-      "size": 13609
+      "sha256": "631a6c293ebde70fb3eaf9bb4f70331c8917ce579c9d2a65448ea8215799e2c1",
+      "size": 13849
     },
     {
       "relative_path": "references/dispatch-evidence.md",
@@ -319,18 +319,23 @@
     },
     {
       "relative_path": "references/ui-policy.json",
-      "sha256": "81e41b23f7c210837b937b36e72fda8ec3ea424d660e3f38ed05422258665fa1",
-      "size": 1051
+      "sha256": "2cb0bad3aeaf535cb744284ed0058ce4a45beda29f4f16ac8c135532ff29ee26",
+      "size": 1288
     },
     {
       "relative_path": "references/web-design.md",
-      "sha256": "09b6e3fc60a6362e2a1030fefb4b5aa5b1907b0ee0cbb55f73df8da782507f41",
-      "size": 14541
+      "sha256": "ec50825ba487357fe83a3a1a4acd516420f610da2bbef27480ca25d4a5ef6c07",
+      "size": 14479
     },
     {
       "relative_path": "references/web-evidence-example.json",
       "sha256": "6a290e1034674b25202d526d297129b50f7442ba8ec0ae0f39ba4f9924d9c6ca",
       "size": 4341
+    },
+    {
+      "relative_path": "references/web-presentation.md",
+      "sha256": "f44ee12a0d65199194ebbb37fcec53abccd5dffd2749c884944f9fd0a69d1594",
+      "size": 8755
     },
     {
       "relative_path": "requirements-ci.txt",
@@ -689,8 +694,8 @@
     },
     {
       "relative_path": "tests/test_record.cjs",
-      "sha256": "86b7fd31032772af3b33ee74907085cb8625180e8bf185a5c8bd27203e798fe6",
-      "size": 53875
+      "sha256": "66e33750c672c777f2f30e8ce282f97ad33b5e4de207cf2993df47f72d27acd3",
+      "size": 54757
     },
     {
       "relative_path": "tests/test_recording_concurrency.py",
