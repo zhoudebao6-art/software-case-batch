@@ -135,6 +135,18 @@ implementation_hashes完整对应source-manifest打包有效成员；五类依�
 
 以上片段只表示一张图的语义字段，不是完整可提交manifest；还须按文末建设自检字段绑定当前PNG，满足全案有效图覆盖。实际caption/labels/单位和源位置必须来自本案。新policy的`question/data_source/chart_type`为非空文本，`labels`为非空字符串数组；caption与labels禁“示意”。图号延续原文并递增，新增图不放顶部整体标题/表头/图N/长解释，必要轴/矩阵行列标签/色标/短图例保留。脚本检查PNG签名/hash、图下精确caption、独立“请参考图N”、实际drawing嵌入同字节PNG和原正文/原媒体保留。新 source-parts-v1 还保护原关系与节属性，核全部新增图形均唯一归属登记图，不只检查登记图题。`title_policy`及labels声明不替代真实看图；用既有计算记录或manifest保留源锚点、原式、前后文和解释依据供独立审核。
 
+### 逐图关键事实定位
+
+新prepare及新的文档修订冻结`explanation_fact_policy="key-facts-v1"`；现chart-manifest每图补`key_facts`，不新建台账或审核阶段。示例如下（仅字段形状，实际值必须来自本案）：
+
+```json
+{"key_facts":[{"fact_id":"valve-open","kind":"event","chart_text":"12 s / 80 ℃ / 阀门开启","basis":{"path":"evidence/calculation.csv","locator":"工况A，数据行12，时刻/温度/事件列"},"after_source_block":8,"explanation_block":10,"explanation_excerpt":"工况A下，12 s时温度达到80 ℃并触发阀门开启"}]}
+```
+
+`kind`取`value/time/unit/event/turning_point/extremum/threshold/start/end/condition`之一；关系图可登记关键状态或条件，不造数值。fact_id每图唯一。`chart_text`是图上实际关键标记的文字。`basis.path`仅本工作区内安全相对路径，指向已有非空原件、数据或计算证据，`locator`给其具体段落/表行/记录/算例位置；脚本绑定文件hash，审核实际核位置及依据。`after_source_block`须属于本图已声明锚点；`explanation_block`是最终Word `w:body`的零起始块号，须为该锚点内的新增说明块，可用现`chart_snapshot.explanation_contexts`的块位置核对。`explanation_excerpt`摘该块的实际完整技术短句，包含相关对象、工况、时间基准、值/单位或事件，不能只写一个数字。多图共用间隙也指定具体块/片段；显式只引用别图的块不能借来覆盖本图。无显式引用的接续说明可归属同图，实际语义由审核判断。
+
+现chart_snapshot仅检查本图该块的片段存在性，容忍Word分run、空白、全角及兼容单位字形；数字12不因正文312或12.5碰巧包含而通过。它不做OCR、同义词推断或单位换算；等义或有据换算摘正文实际短句，原首次独立阅读核其真实性及逻辑。输出`explanation_key_facts`供原review-input直接使用，包含当前依据hash、实际块号及段落文本，不能据此签语义pass。建设者及独立审核实际对照图检查漏声明的关键注释、转折、极值、阈值、起止/事件与正文因果；不要求抄所有采样点和自动刻度，不凑字或补造结论。旧run不增策略，包修订原样继承，输入变化只更新受影响绑定和既有检查。
+
 父会话实际调用如下工具阶段（不是PowerShell或自动caseflow命令）：
 
 若桌面原始日志将 `spawn_agent.message` 保存为加密串，沿用 [真实派发证据兼容](dispatch-evidence.md)：工具只提取冻结permit和实际call的绑定事实，由真实独立验收者在当前proof和自身final中确认。不要解密、伪造明文日志或让父代签；旧明文合同保持原校验。

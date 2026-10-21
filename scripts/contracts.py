@@ -20,6 +20,7 @@ ANALYTICAL_CHART_POLICY = 'analytical-v1'
 BUILD_CHART_POLICY = 'analytical-v2'
 EXPLANATION_CONTEXT_POLICY = 'source-context-v2'
 EXPLANATION_CONTEXT_POLICIES = {'source-context-v1', EXPLANATION_CONTEXT_POLICY}
+EXPLANATION_FACT_POLICY = 'key-facts-v1'
 ANALYTICAL_POLICIES = {ANALYTICAL_CHART_POLICY, BUILD_CHART_POLICY}
 CONSTRUCTION_POLICY = 'dependency-bound-v1'
 CONSTRUCTION_KINDS = {'algorithm','api','persistence','browser','build'}
@@ -454,6 +455,90 @@ def explanation_contexts(source_blocks, blocks, original_positions, figures):
     return contexts
 
 
+def explanation_key_facts(workspace, blocks, figures, contexts):
+    """Locate declared facts in their own added explanation, not anywhere in Word.
+
+    These are exact textual/source bindings, not OCR, numeric equivalence or a
+    semantic judgment. The existing independent reading checks declaration
+    completeness and whether the cited data and explanation actually agree.
+    """
+    import unicodedata
+
+    def normalized_text(value):
+        return re.sub(r'\s+', '', unicodedata.normalize('NFKC', value))
+
+    def contains_excerpt(text, excerpt):
+        # Whitespace and fullwidth presentation can vary across Word runs.
+        # Numeric fragments cannot match inside another number or decimal.
+        needle = normalized_text(excerpt)
+        leading_number = needle.lstrip('+-−')
+        before = (r'(?<![\d.+\-−eE])' if leading_number
+                  and (leading_number[0].isdigit() or leading_number[0] == '.') else '')
+        after = r'(?![\d.eE])' if needle[-1].isdigit() or needle[-1] == '.' else ''
+        return bool(re.search(before + re.escape(needle) + after, normalized_text(text)))
+
+    workspace = no_links(workspace)
+    result = {}
+    kinds = {'value', 'time', 'unit', 'event', 'turning_point', 'extremum',
+             'threshold', 'start', 'end', 'condition'}
+    for figure in figures:
+        number = str(figure['figure_id'])
+        facts = figure.get('key_facts')
+        if not isinstance(facts, list) or not facts:
+            raise ValueError('Each chart needs nonempty key_facts for its actual key data/events')
+        identities, bindings = set(), []
+        placements = {p['after_source_block']: p for p in contexts[number]['placements']}
+        for fact in facts:
+            if not isinstance(fact, dict):
+                raise ValueError('Each chart key fact must be an object')
+            identity = fact.get('fact_id')
+            if not _nonempty_text(identity) or identity in identities:
+                raise ValueError('Distinct nonempty key fact IDs required within each chart')
+            identities.add(identity)
+            if not isinstance(fact.get('kind'), str) or fact['kind'] not in kinds:
+                raise ValueError('Unknown chart key fact kind')
+            if any(not _nonempty_text(fact.get(key)) for key in ('chart_text', 'explanation_excerpt')):
+                raise ValueError('Key fact needs its actual chart text and contextual explanation excerpt')
+            excerpt = normalized_text(fact['explanation_excerpt'])
+            if not re.search(r'[^\W\d_]', excerpt, re.UNICODE):
+                raise ValueError('Key fact explanation excerpt cannot be an isolated number or punctuation')
+            anchor = fact.get('after_source_block')
+            if type(anchor) is not int or anchor not in placements:
+                raise ValueError('Key fact must use one of its own figure explanation anchors')
+            block_index = fact.get('explanation_block')
+            if type(block_index) is not int or block_index not in placements[anchor]['explanation_blocks']:
+                raise ValueError('Key fact needs a specific block in its own declared explanation')
+            basis = fact.get('basis')
+            if (not isinstance(basis, dict) or not _nonempty_text(basis.get('path'))
+                    or not _nonempty_text(basis.get('locator'))):
+                raise ValueError('Key fact needs an existing source/data basis and a specific locator')
+            path = inside(workspace, basis['path'])
+            if not path.is_file() or path.stat().st_size == 0:
+                raise ValueError('Key fact source/data basis must be a nonempty workspace file')
+            matches = []
+            for index in (block_index,):
+                text = ''.join(node.text or '' for node in blocks[index].iter()
+                               if node.tag in {'{'+NS['w']+'}t',
+                                               '{http://schemas.openxmlformats.org/officeDocument/2006/math}t'})
+                references = set(re.findall(r'请参考图\s*(\d+)', text))
+                if references and number not in references:
+                    raise ValueError('Key fact explanation block explicitly refers only to a different figure')
+                if contains_excerpt(text, fact['explanation_excerpt']):
+                    matches.append({'block': index, 'text': text})
+            if not matches:
+                raise ValueError('Chart '+number+' key fact '+identity+
+                                 ' is absent from its declared contextual explanation')
+            bindings.append({'fact_id': identity, 'kind': fact['kind'],
+                             'chart_text': fact['chart_text'], 'after_source_block': anchor,
+                             'explanation_block': block_index,
+                             'explanation_excerpt': fact['explanation_excerpt'],
+                             'matches': matches,
+                             'basis': {'path': path.relative_to(workspace).as_posix(),
+                                       'sha256': digest(path), 'locator': basis['locator']}})
+        result[number] = bindings
+    return result
+
+
 def _relationship_records(package, member):
     """Read unique OPC relationships without depending on XML prefix/ordering."""
     if member not in package.namelist():
@@ -608,6 +693,11 @@ def chart_snapshot(workspace, word, run):
     context_policy=run.get('explanation_context_policy')
     if context_policy not in {None} | EXPLANATION_CONTEXT_POLICIES:
         raise ValueError('Unknown explanation context policy')
+    fact_policy = run.get('explanation_fact_policy')
+    if fact_policy is not None and fact_policy != EXPLANATION_FACT_POLICY:
+        raise ValueError('Unknown explanation fact policy')
+    if fact_policy and not context_policy:
+        raise ValueError('Explanation key facts require their frozen context policy')
     source_policy = run.get('source_integrity_policy')
     if source_policy not in {None, SOURCE_INTEGRITY_POLICY}:
         raise ValueError('Unknown source integrity policy')
@@ -717,9 +807,12 @@ def chart_snapshot(workspace, word, run):
                     raise ValueError('Added complete formula repeats original source formula: '
                                      + json.dumps(repeats, ensure_ascii=False))
             contexts=explanation_contexts(source_blocks,blocks,original_positions,figures) if context_policy else None
+            key_facts=explanation_key_facts(workspace,blocks,figures,contexts) if fact_policy else None
     snapshot={'manifest_sha256':digest(manifest),'figures':{str(f['figure_id']):f['sha256'] for f in figures}}
     if context_policy:
         snapshot.update(explanation_context_policy=context_policy,explanation_contexts=contexts)
+    if fact_policy:
+        snapshot.update(explanation_fact_policy=fact_policy,explanation_key_facts=key_facts)
     if chart_policy(run) is not None:snapshot['chart_policy']=run['chart_policy']
     if source_policy:snapshot['source_integrity_policy']=source_policy
     if run.get('chart_policy')==BUILD_CHART_POLICY and spec.get('retained_results'):

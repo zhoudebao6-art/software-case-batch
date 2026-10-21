@@ -453,6 +453,20 @@ def review_input(workspace,index,destination,compact=False):
             'original equations and their existing repeats; symbol references and genuinely distinct '
             'grounded derivations are not full-formula copies. The native structure check is not '
             'algebraic equivalence or OCR; actually inspect text/image formulas and redundant prose.')
+        if run.get('explanation_fact_policy'):
+            facts['current_charts'].update({key:snapshot[key] for key in
+                ('explanation_fact_policy','explanation_key_facts')})
+            facts['chart_review_requirements']['key_fact_instruction']=(
+                'Within this same first review, compare every actual chart with its key_facts '
+                'and the located explanation blocks. Independently find omitted meaningful '
+                'annotations, turning points, extrema, thresholds, start/end conditions and '
+                'events; declarations and exact excerpt matches do not prove completeness. '
+                'Check the cited source/data locator, value, time reference, unit, object, '
+                'conditions and cause/result together, including before/after prose. '
+                'Continuous samples and automatic ticks need not be transcribed point by point. '
+                'Explain this actual comparison in each existing chart_reviews.explanation '
+                'judgment; a missing or inconsistent necessary explanation is a material '
+                'document defect. No new review stage or semantic pass is created by the script.')
     controlled=workspace/'.product-v2/controlled-video.json'
     use_controlled=controlled.exists() and revision is None
     if use_controlled:

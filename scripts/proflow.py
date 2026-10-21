@@ -18,7 +18,8 @@ from common import (TEXT_SUFFIXES, META_COLUMNS, digest, file_map, forbidden, in
                     no_links, normalized, read_json, state, write_json, delivery_paths,
                     DEFAULT_DELIVERY_LAYOUT)
 from source_intake import source_figure_numbers
-from contracts import ANALYTICAL_CHART_POLICY, BUILD_CHART_POLICY, EXPLANATION_CONTEXT_POLICY, chart_policy
+from contracts import (ANALYTICAL_CHART_POLICY, BUILD_CHART_POLICY, EXPLANATION_CONTEXT_POLICY,
+                       EXPLANATION_FACT_POLICY, chart_policy)
 from review_packet import execution_checks
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -147,12 +148,15 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
     if not base or revision_scope=='document':
         run['chart_policy']=BUILD_CHART_POLICY
         run['explanation_context_policy']=EXPLANATION_CONTEXT_POLICY
+        run['explanation_fact_policy']=EXPLANATION_FACT_POLICY
         run['source_integrity_policy']='source-parts-v1'
         run['review_coverage_policy']='required-evidence-v1'
     elif 'chart_policy' in base_run:
         run['chart_policy']=base_run['chart_policy']
     if base and revision_scope=='package' and 'explanation_context_policy' in base_run:
         run['explanation_context_policy']=base_run['explanation_context_policy']
+    if base and revision_scope=='package' and 'explanation_fact_policy' in base_run:
+        run['explanation_fact_policy']=base_run['explanation_fact_policy']
     if base and revision_scope=='package' and 'source_integrity_policy' in base_run:
         run['source_integrity_policy']=base_run['source_integrity_policy']
     if base and revision_scope=='package' and 'review_coverage_policy' in base_run:
@@ -257,6 +261,8 @@ PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据
     prompt+='\n充分清洗数据一版真实通过后按references/tools.md和U14完成成品规则复用，不因后续代码、data-plan、工具、解释器或原始input_csv变化重审/扩量/生成/清洗，不新增逐项复用表、不重写原收据；当前软件算法及派生复算使用内部隔离输入/结果，完成CSV不自动覆盖。首次质量仍完整，CSV自身损坏/缺失/变化或明确数据错误才针对处理。\n'
     if run.get('explanation_context_policy') and (not base or revision_scope=='document'):
         prompt+='\n正文解释落点：红字解释必须插入对应实施例、计算或结果分析的原正文段落之后，读前文—说明—后文并自然衔接；仅图片和图题放文末。不得把全文末尾新加“实施例补充分析”标题当作正文插入，也不机械全部放实施例最后。每图在现chart-manifest填写explanation_after_source_block（原Word w:body排除sectPr后的零起始块索引，同图多个落点可填不重复的索引数组）；各处解释放所选原段之后、下一原块之前，每图至少一处独立“请参考图N”，可重复引用、可联合解释多图。原有chart_snapshot核全部新增说明及原生公式的归属，不能只移动引用留下文末解释；空段/原图/图题不是正文锚点。结构通过不能证明语义正确；独立审核按当前锚点真实阅读上下文。说明脱离实施例、集中堆在无关文末或新增完整重复原式均属实质文档缺陷。source-context-v2在原有自检拦截新增原生数学关系的原式副本，忽略普通显示样式但保留数学结构；原件已有重复不动，独立符号和有依据的不同推导不误删，文本或图片公式仍须实际阅读比较。必须定向修Word及受影响包，不按小瑕疵放行，不重录未受影响视频。\n'
+    if run.get('explanation_fact_policy') and (not base or revision_scope=='document'):
+        prompt+='\n逐图关键事实与解释：沿现chart-manifest的key_facts登记图上实际关键数值、时刻/基准、单位、事件、转折、极值、阈值和起止条件；无此类量的关系图登记关键状态或条件，不补造数字。每条填fact_id、kind、chart_text、basis={path,locator}、after_source_block、explanation_block及explanation_excerpt。explanation_block是最终Word body零起始块号，限定为本图该锚点的具体新增说明块；同间隙多图不借别图说明抵充。basis复用工作区内非空原件/数据/计算证据及具体位置；不另建重复台账。explanation_excerpt摘对应已声明锚点新增说明中的实际完整技术短句，连同对象、工况、时间基准、值和单位或事件，不能只填孤立数字。等义表述或有据单位换算写正文实际短句，由原独立阅读核实换算与源一致。原chart_snapshot核当前依据hash及短句确在本图该锚点说明内，不能以全文某处出现同一数字抵充解释。连续采样和自动坐标刻度不逐点抄，关键标记不得漏讲；先读前后文，解释原因、成立条件及接续逻辑，不凑字、不补造源结论。high在原建设自检实看实际图逐条核漏项，原首次独立审核实际对照图、依据和正文，在现chart_reviews.explanation说明是否完整且一致；声明和文字匹配不能代替语义判断，不新增阶段。\n'
     if run.get('source_integrity_policy') and (not base or revision_scope=='document'):
         prompt+='\n原有chart_snapshot同时核原Word关系、目标资源和末尾节属性；全部新增图形必须唯一登记、紧邻其图题并位于全部原文后，不夹带额外图，不改原模板页面设置。沿原建设自检处理，不增加模型阶段。\n'
     if run.get('review_coverage_policy'):

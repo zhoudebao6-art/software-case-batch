@@ -40,6 +40,7 @@ class ContractTests(unittest.TestCase):
         self.run.pop('data_policy_version',None)
         self.run.pop('construction_check_policy_version',None)
         self.run.pop('explanation_context_policy',None)
+        self.run.pop('explanation_fact_policy',None)
         self.run.pop('source_integrity_policy',None)
         self.run.pop('review_coverage_policy',None)
         self.run.pop('web_experience_policy',None)
