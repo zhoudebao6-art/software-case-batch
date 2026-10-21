@@ -99,7 +99,9 @@ def construction_checks(workspace, run, plan_path=None):
         bindings[kind]={'log':check['log'],'sha256':check['sha256'],'input_files':inputs,'test_files':test_files}
     if not set(required).issubset(covered):
         raise ValueError('Construction checks omit current source/recording dependencies: '+', '.join(sorted(set(required)-covered)))
-    return {'required':True,'status':'ready','policy':policy,'run_id':run['run_id'],
+    from web_contract import validate_web_experience
+    web=validate_web_experience(workspace,run,spec)
+    return {'web_experience':web,'required':True,'status':'ready','policy':policy,'run_id':run['run_id'],
             'source_docx_sha256':run['source_docx_sha256'],'build_checks_sha256':digest(spec_path),
             'source_manifest_sha256':digest(manifest_path),'plan_sha256':digest(plan_path),
             'implementation_hashes':declared,'checks':bindings,

@@ -162,6 +162,8 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
         run['data_policy_version']='neutral-expanded-v1'
         from contracts import CONSTRUCTION_POLICY
         run['construction_check_policy_version']=CONSTRUCTION_POLICY
+        from web_contract import WEB_EXPERIENCE_POLICY
+        run['web_experience_policy']=WEB_EXPERIENCE_POLICY
     # Historical finalized revisions keep their frozen numbering contract.
     if not base or base_run.get('chart_numbering_policy') == 'source-sequential-v1':
         run['chart_numbering_policy'] = 'source-sequential-v1'
@@ -240,6 +242,8 @@ PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据
         prompt+='''\n建设开始在现有data-plan制定足量数据：对现有不足版本先统计清洗后主要明细有效规模，以约2倍作为扩容起点，按业务粒度和性能说明调整，维表不机械翻倍；新案按领域对象、时间跨度及关键事件覆盖安排。使用批量可复现计算，不复制换号凑行。导出文件名、表头、备注和单元格不得有真实或编造的地名、公司名称、人名，统一稳定编号，保持跨表与Web下载一致。原始来源、性质和映射只留内部，不伪称实测。先用data_preflight实际检查规模、引用和专名，再清洗输出并核对初始化、分页和导出；沿现有数据清洗记录绑定当前文件哈希，见references/system-data.md。\n'''
     if not base:
         prompt+='\n建设开始实际读取references/web-design.md和references/system-data.md：从本案原材料形成角色、核心任务、主工作区、关键交互的短设计画像，按业务主对象设计页面结构，不仅换颜色；沿已有source_trace、calculation_trace_map、coverage_matrix绑定原段/原式→实际函数→真实边界测试，不新增第二张台账。同一次high browser自检实际主页面、关键详情、空状态和错误提示的可见文字，调用现有record.cjs.auditUiText（共用references/ui-policy.json），在录制前修齐，不新增preflight模型；不展示“经计算生成数据”等制作过程说明，保留真实“生成报告/计算结果/预测结果”，不伪称实测或已上线，不自动改写原文或源码。建设自检在原有映射与六类检查中记录原定义→具体接受/拒绝断言→最终同引擎派生结果重算；先用最小业务闭环和关键反例调用真实最终函数，按源机制核验执行边界、集合门槛、真实输出误差和输入传递；同一次high内以当前部署入口实跑启动、健康身份、核心接口、必要持久化和停止/端口释放，通过后再扩量及制作依赖图文和录制；只前移便宜必要自检，不要求先完成全部后端，已有合格数据、计算和图文按原同hash规则复用，业务失败立即停止依赖生成、保留未变成果和独立验收，不以结构校验或成功状态代替业务正确，不新增台账或模型阶段。\n'
+    if not base:
+        prompt+='\n本案Web必须按references/web-design.md完成全部适用业务任务及可导航页面，不能将三页作为固定目标、上限或用空菜单凑数。工作台有真实任务/对象处理及结果去向；视觉识别接入合法真实图片，输入真正进入后端方法，展示原图/实际结果与适用复核，不用装饰图、预画框、标签或固定JSON冒充。监测、控制、调度、工艺和评估分别按原文业务类型组织主视图与交互。所有页面在原browser自检里运行，沿现有build-checks.json的web_experience绑定原技术映射、页面截图、实际动作断言及输入结果文件；新run冻结case-workflow-v1，缺业务覆盖证据在录制前拒绝。必要运行图像/权重/许可纳入源码白名单，实际解包检查可加载，不能被制作附图清理规则误删。既有独立审核实看全部业务页并对照源技术，不新建审核阶段或重做历史成果。\n'
     if not base or revision_scope=='package':
         prompt+='''\n建设自检及最终源码ZIP解压验证沿既有检查核验部署生命周期：PowerShell输出CIM/JSON前在子进程内明确[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false)，Python读取明确encoding='utf-8',errors='strict'并检查returncode；编码异常或非零退出如实失败，保留stdout/stderr，不用替换解码或吞错。启动返回后先保有Popen、PID、创建时间和本案entry归属再做探查，finally中失败也精确清退已核归属子树，无法核准时记录cleanup_pending，保留Codex/MCP及其他项目，不放宽process_guard边界。启动/停止使用同一真实entry，按当前部署目录解析绝对路径，入口变更时同步；建设内实际跑启动→停止→端口释放并核PID退出，最终ZIP解压后核对同一入口及清退效果、绑定ZIP哈希。命令、日志和哈希沿原有检查保存，不新增模型阶段、审批或全量重复测试。\n'''
     if not base:

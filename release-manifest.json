@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r32-media-evidence-path-20261021",
+  "release": "r31-case-web-20261021",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -34,8 +34,8 @@
     },
     {
       "relative_path": "SKILL.md",
-      "sha256": "8f23f0a69a27d5c684a6ef38a910bfca0364ec9a533f10fa6be850e71c8a9532",
-      "size": 11759
+      "sha256": "8540c34d05c4f696eda688da60c44fc1b370f65364862dd764436223a3bec829",
+      "size": 12214
     },
     {
       "relative_path": "agents/openai.yaml",
@@ -94,8 +94,8 @@
     },
     {
       "relative_path": "references/closure.md",
-      "sha256": "b6652f2e5a58a0139d88ed258ea8741ff450bcdd7072ea551a15fba663982c80",
-      "size": 12910
+      "sha256": "50630fa461bb751ef1fa1560b23eea2ac3066e8fe3116002db4c6fd82bcae7a7",
+      "size": 13609
     },
     {
       "relative_path": "references/dispatch-evidence.md",
@@ -309,8 +309,8 @@
     },
     {
       "relative_path": "references/system-data.md",
-      "sha256": "668edb05021ea105dd0d61680fc550e6612c51cc90e3c5b98a5945c0df51ab48",
-      "size": 21835
+      "sha256": "ced730be6b121bf69d8d46f56b01efd29617000b664fe534ed92557ef2454f83",
+      "size": 21931
     },
     {
       "relative_path": "references/tools.md",
@@ -324,8 +324,13 @@
     },
     {
       "relative_path": "references/web-design.md",
-      "sha256": "d423590b27463559742e7e35f6d353ef82a64dbe47892e05d6c3d86f81eed6c7",
-      "size": 6873
+      "sha256": "09b6e3fc60a6362e2a1030fefb4b5aa5b1907b0ee0cbb55f73df8da782507f41",
+      "size": 14541
+    },
+    {
+      "relative_path": "references/web-evidence-example.json",
+      "sha256": "6a290e1034674b25202d526d297129b50f7442ba8ec0ae0f39ba4f9924d9c6ca",
+      "size": 4341
     },
     {
       "relative_path": "requirements-ci.txt",
@@ -369,8 +374,8 @@
     },
     {
       "relative_path": "scripts/contracts.py",
-      "sha256": "d1c2acf0dc35596be2f92f9c2f95c42c9801da93901a69c7ff874e43487466b0",
-      "size": 83929
+      "sha256": "498c7aecf1ad71b6a77086b1a5f9674141f7265d74ebc1134e6102e36cd0d5c5",
+      "size": 84055
     },
     {
       "relative_path": "scripts/control_decisions.py",
@@ -394,8 +399,8 @@
     },
     {
       "relative_path": "scripts/evidence_index.py",
-      "sha256": "50f9c21ef2112bc2ff16113279d85c77fd96206b7ba145581d65a7f5b0e8d2df",
-      "size": 34163
+      "sha256": "8acdff259874506765de3f59d67e64cc105ce604755fc5ee1381a5cc8fa89873",
+      "size": 36900
     },
     {
       "relative_path": "scripts/figure_preflight.py",
@@ -434,8 +439,8 @@
     },
     {
       "relative_path": "scripts/proflow.py",
-      "sha256": "3edb0efc293203f8dcd2fb0f1803e95b7da2eceab0c4fbfb312e449f2f7d5965",
-      "size": 113406
+      "sha256": "bcd6879342360cdd319eaa4470c16763794a22672121623136acde7477fe88c4",
+      "size": 113203
     },
     {
       "relative_path": "scripts/progress_driver.py",
@@ -476,6 +481,11 @@
       "relative_path": "scripts/source_intake.py",
       "sha256": "b9c5c1825b4162ec286d21a4f3656abb356a10f6d96e61f5aefe7754aca5d8e5",
       "size": 944
+    },
+    {
+      "relative_path": "scripts/web_contract.py",
+      "sha256": "56a8c2fef4fe26570d7e6760891761f178ff6f53f22e1334023f740421c0fde2",
+      "size": 13848
     },
     {
       "relative_path": "skill/SKILL.compatibility.txt",
@@ -534,13 +544,13 @@
     },
     {
       "relative_path": "tests/test_construction_progress.py",
-      "sha256": "25393c5903561a257c69cacb8f5cb14785238f835056063c46a0f42d1986ec5d",
-      "size": 24574
+      "sha256": "b43fac95c72e028f518e7691f913a5d60e68b3f65ff1b6482855f154645c31fa",
+      "size": 24414
     },
     {
       "relative_path": "tests/test_contracts.py",
-      "sha256": "893529c0642bc3500c5becd21d8725268ff4535fbb4fcdc9c0250a7ddb114c4f",
-      "size": 47264
+      "sha256": "91b071f6992be05671e3f160dd3ee5edf6189f06e8ef3dbe061c8a1f2b8f0eb2",
+      "size": 47316
     },
     {
       "relative_path": "tests/test_control_decisions.py",
@@ -771,6 +781,16 @@
       "relative_path": "tests/test_visual_read_consistency.py",
       "sha256": "06f309d831118068c18bdbbf407cce926ffa17c800a8c02f8eaa778476e022a4",
       "size": 3749
+    },
+    {
+      "relative_path": "tests/test_web_contract.py",
+      "sha256": "6a8fbf72744d52d32bcccb310281f15d7fbc083752fadb5782ac69f882cd6f5d",
+      "size": 15791
+    },
+    {
+      "relative_path": "tests/test_web_integration.py",
+      "sha256": "8168a779ef4faf7d820696e6515e22eda3d9479fae414e49256d9674a5fad307",
+      "size": 4832
     },
     {
       "relative_path": "tests/test_whole_case_io.py",

@@ -1,0 +1,43 @@
+{
+  "_notice": "SCHEMA EXAMPLE ONLY. NOT A CASE, EXECUTION, PROVENANCE OR REVIEW RECORD. Replace placeholders with existing actual evidence; this example is not valid production proof.",
+  "run_field": {"web_experience_policy": "case-workflow-v1"},
+  "build_checks_web_experience": {
+    "system_types": ["vision"],
+    "source_mapping": ["source_trace.json"],
+    "pages": [{"id": "workbench", "route": "/tasks", "purpose": "本案实际主任务工作区", "workflow_ids": ["recognize"], "screenshot": "evidence/workbench.png"}],
+    "workflows": [{
+      "id": "recognize", "purpose": "按本案原段处理图像识别任务", "implemented": true,
+      "source_refs": [{"path": "source_trace.json", "locator": "原文实施例段落标识；应替换成本案真实位置"}],
+      "page_ids": ["workbench"], "actions": ["提交图像并查看实际识别结果"],
+      "expected_result": "本案材料定义的业务结果", "implementation_paths": ["backend/recognition.py"],
+      "assertion_ids": ["recognize-result"]
+    }],
+    "report": "evidence/browser-report.json"
+  },
+  "actual_browser_report_shape": {
+    "run_id": "<actual run_id>", "source_docx_sha256": "<actual source hash>",
+    "assertions": [{"id": "recognize-result", "workflow_id": "recognize", "page_ids": ["workbench"], "action": "提交图像并查看实际识别结果", "expected": "具体预期值/状态", "actual": "实际返回值及页面可见状态", "passed": true, "evidence_paths": ["evidence/browser-execution.log"]}],
+    "vision": {
+      "workflow_id": "recognize", "task_type": "本案实际分类/检测/分割/其他任务类型",
+      "samples": [{
+        "id": "<actual sample 1 ID; at least two different decoded inputs required>",
+        "input_path": "assets/actual-input-1.jpg", "input_sha256": "<actual hash>", "input_kind": "real_image",
+        "provenance": {"origin": "public_licensed", "source": "真实来源URL或用户材料身份", "license": "真实许可或授权", "record": "internal/image-provenance.json"},
+        "backend": {"entry_path": "backend/recognition.py", "entrypoint": "实际函数/API入口", "request_id": "<actual unique request ID>"},
+        "output": {"path": "evidence/recognition-1.json", "sha256": "<actual output hash>", "input_sha256": "<same actual input hash>", "request_id": "<same actual request ID>", "summary": "实际结果可读摘要"},
+        "assertions": [{"action": "实际结果对照动作", "expected": "本案实际预期", "actual": "实际返回对照详情", "passed": true, "evidence_paths": ["evidence/recognition-1.json", "evidence/browser-execution.log"]}]
+      }],
+      "edge_cases": [{"kind": "no_target", "action": "实际失败或无目标状态检查", "expected": "预期空态/错误", "actual": "实际显示和返回", "passed": true, "evidence_paths": ["evidence/browser-execution.log"]}]
+    }
+  },
+  "actual_vision_output_shape": {"run_id": "<actual run_id>", "source_docx_sha256": "<actual source hash>", "input_sha256": "<actual input hash>", "request_id": "<actual unique request ID>", "result": {"domain_specific_result": "actual result value"}},
+  "actual_no_target_output_shape": {"run_id": "<actual run_id>", "source_docx_sha256": "<actual source hash>", "input_sha256": "<actual input hash>", "request_id": "<actual unique request ID>", "status": "no_target", "result": []},
+  "binding_notes": [
+    "Every referenced path must be a nonempty file inside workspace, with current SHA256 in existing checks.browser.input_files. Screenshots and image inputs must decode with Pillow.",
+    "implementation_paths and backend.entry_path must also match current implementation_hashes.",
+    "Pages and workflows reference each other exactly; actual assertions cover every declared action and page; no fixed page-count rule.",
+    "source_mapping reuses existing technical maps. All referenced evidence is returned in evidence_paths for existing independent review.",
+    "Nonvision cases omit report.vision and have no real-input requirement. Historical runs without policy retain the historical contract.",
+    "Gate binds structure and bytes only. Existing independent review must assess source match, real images, licensing and actual backend inference; generated or decorative inputs are forbidden by policy, not authenticated by a decoder."
+  ]
+}

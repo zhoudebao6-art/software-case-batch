@@ -86,6 +86,16 @@ def _required_review_paths(workspace, run, scope, checks, artifacts, current=Tru
         if not isinstance(item, dict): raise ValueError('Actual execution check objects required')
         add(item.get('log'))
     if not current:
+        if run.get('web_experience_policy') and not package_revision and not document_revision:
+            from web_contract import WEB_EXPERIENCE_POLICY
+            web = scope.get('web', {})
+            if (run['web_experience_policy'] != WEB_EXPERIENCE_POLICY or
+                    not isinstance(web, dict) or web.get('policy') != WEB_EXPERIENCE_POLICY or
+                    not isinstance(web.get('evidence_hashes'), dict) or not web['evidence_hashes'] or
+                    not web.get('page_ids') or not web.get('workflow_ids')):
+                raise ValueError('Frozen review must preserve complete Web workflow evidence')
+            add('.product-v2/build-checks.json')
+            for path in web['evidence_hashes']: add(path)
         if not package_revision and not document_revision:
             video = scope.get('video', {})
             if not isinstance(video, dict) or not isinstance(video.get('timeline'), dict):
@@ -148,6 +158,12 @@ def _required_review_paths(workspace, run, scope, checks, artifacts, current=Tru
     for name in ('recording.json', 'data-cleaning.json', 'data-quality.json', 'data-provenance.json', 'cleanup.json', 'build-checks.json'):
         value = document(name, optional=True)
         if name == 'build-checks.json':
+            if run.get('web_experience_policy'):
+                from web_contract import validate_web_experience
+                web = validate_web_experience(workspace, run, value)
+                scope['web'] = {key: web[key] for key in
+                                ('policy', 'system_types', 'page_ids', 'workflow_ids', 'evidence_hashes')}
+                for path in web['evidence_paths']: add(path)
             for check in value.get('checks', {}).values():
                 add(check.get('log'))
                 for path in check.get('input_files', {}): add(path)
@@ -188,6 +204,12 @@ def _known_frozen_bindings(workspace, run, proof, spec, indexed, required):
         if (not isinstance(sha, str) or not re.fullmatch('[0-9a-f]{64}', sha)
                 or not any(row and row['sha256'] == sha and (not human or row['id'] in required) for row in rows)):
             raise ValueError('Frozen review omits known required source/chart/video evidence')
+    if run.get('web_experience_policy') and not package_revision and not document_revision:
+        scope = spec.get('review_scope', {})
+        web = scope.get('web', {}) if isinstance(scope, dict) else {}
+        if not isinstance(web, dict) or not isinstance(web.get('evidence_hashes'), dict) or not web['evidence_hashes']:
+            raise ValueError('Frozen review requires bound Web evidence')
+        for path, sha in web['evidence_hashes'].items(): require_hash(sha, path)
     charts = proof.get('chart_snapshot', {})
     if not isinstance(charts, dict) or not charts:
         raise ValueError('Frozen review must preserve its existing chart_snapshot')
@@ -459,6 +481,13 @@ def review_input(workspace,index,destination,compact=False):
                              for group in ('contact_sheets','interaction_frames')}
         navigation['video']['endpoints']=[reference(item['file'],item['sha256'],type=item['type'])
                                          for item in report.get('frames',[]) if item.get('type') in {'first','last'}]
+    if run.get('web_experience_policy') and not revision:
+        web = spec['review_scope']['web']
+        facts['web_review_requirements'] = {
+            'policy': web['policy'], 'page_ids': web['page_ids'], 'workflow_ids': web['workflow_ids'],
+            'instruction': 'Read every business page screenshot and actual task assertion with its original-source mapping and implementation. Check complete case-specific tasks, navigation, input-to-backend-to-result/persistence/export and suitable system form. For vision, inspect real input images, licensing/provenance and actual backend results; reject decoration, prepainted labels or fixed outputs masquerading as recognition. A declared task list, page count, hashes and structural success do not establish semantic completeness. Include all material findings in the existing independent review, no extra design review stage.'}
+        navigation['web'] = [reference(path, sha) for path, sha in web['evidence_hashes'].items()
+                             if Path(path).suffix.lower() in {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tif', '.tiff'}]
     facts['visual_navigation']=navigation
     destination=no_links(destination)
     if workspace not in destination.parents or destination.exists():raise ValueError('Use a new internal facts path; do not overwrite any review')

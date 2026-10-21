@@ -22,6 +22,8 @@ class DependencyFixture(unittest.TestCase):
         self.source=self.work/'原技术材料.docx'
         with zipfile.ZipFile(self.source,'w') as package:package.writestr('word/document.xml','<document/>')
         self.run=prepare(self.work,self.out,'运行管理',self.source)
+        self.run.pop('web_experience_policy',None)  # Frozen pre-r31 dependency fixture.
+        write_json(self.control/'run.json',self.run)
         self.file('app.py','engine');self.file('web/app.js','web');self.file('LICENSES/license.txt','license')
         self.file('data/input.csv','编号,值\n001,10\n')
         self.plan=self.control/'record-plan.json';write_json(self.plan,{'input_files':['app.py','data/input.csv']})
