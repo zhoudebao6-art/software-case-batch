@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r32-web-presentation-20261021",
+  "release": "r33-modules-data-20261021",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -34,8 +34,8 @@
     },
     {
       "relative_path": "SKILL.md",
-      "sha256": "9365f5b9dc26d575008fb5f7a8195ecbe379262af56af5ea0a697a937b655431",
-      "size": 12371
+      "sha256": "483b38d47fa67f8bb05d5490eb8542085c402e09e4345d43a51a54712417f0da",
+      "size": 12777
     },
     {
       "relative_path": "agents/openai.yaml",
@@ -94,8 +94,8 @@
     },
     {
       "relative_path": "references/closure.md",
-      "sha256": "631a6c293ebde70fb3eaf9bb4f70331c8917ce579c9d2a65448ea8215799e2c1",
-      "size": 13849
+      "sha256": "0b3f63ed511e1f4435b0724eef338d6e118ce0faa6fca1eac3b87a6b2c6a1ab5",
+      "size": 14135
     },
     {
       "relative_path": "references/dispatch-evidence.md",
@@ -119,8 +119,8 @@
     },
     {
       "relative_path": "references/figure-design.md",
-      "sha256": "c2037afc99348e0467ab11dcbdfa4a61077410518b27af3825d1accac93c76de",
-      "size": 8411
+      "sha256": "c0d6ec44dfafd43b30a159089ab8b37e4cc36c405e58737fd566270ae03bce24",
+      "size": 9311
     },
     {
       "relative_path": "references/inheritance-coverage.json",
@@ -309,8 +309,8 @@
     },
     {
       "relative_path": "references/system-data.md",
-      "sha256": "ced730be6b121bf69d8d46f56b01efd29617000b664fe534ed92557ef2454f83",
-      "size": 21931
+      "sha256": "f7f86ec4a55961ad1da550df1a6da755a531f008fe2fd84ec4b40d747f7f1299",
+      "size": 22052
     },
     {
       "relative_path": "references/tools.md",
@@ -324,8 +324,8 @@
     },
     {
       "relative_path": "references/web-design.md",
-      "sha256": "ec50825ba487357fe83a3a1a4acd516420f610da2bbef27480ca25d4a5ef6c07",
-      "size": 14479
+      "sha256": "896dda8df1b30ccba3b6c3f44d5936066b9623d14efd4fa8ffb16e4ea9217ef3",
+      "size": 14807
     },
     {
       "relative_path": "references/web-evidence-example.json",
@@ -444,8 +444,8 @@
     },
     {
       "relative_path": "scripts/proflow.py",
-      "sha256": "bcd6879342360cdd319eaa4470c16763794a22672121623136acde7477fe88c4",
-      "size": 113203
+      "sha256": "a262760272cf02ba8473d709c27c71599d12da3fd8a0055c9bed3e4abf309705",
+      "size": 114497
     },
     {
       "relative_path": "scripts/progress_driver.py",
