@@ -33,6 +33,9 @@ def construction_checks(workspace, run, plan_path=None):
     an independent reviewer still checks whether those scopes are truthful.
     """
     policy=run.get('construction_check_policy_version')
+    from common import delivery_requirements
+    if delivery_requirements(run) and policy != CONSTRUCTION_POLICY:
+        raise ValueError('Rich delivery requires its frozen construction check policy')
     if 'construction_check_policy_version' not in run:
         return {'required':False,'status':'historical-contract'}
     if policy!=CONSTRUCTION_POLICY:raise ValueError('Unknown construction check policy')
@@ -269,8 +272,13 @@ def delivery_layout(output, run):
         raise ValueError('Delivery root must contain exactly the original Word filename and '+paths['system_name'])
     word = inside(output, run['word_name'])
     system = paths['system']
-    if not system.is_dir() or {p.name for p in system.iterdir()} != {paths['source_name'],paths['video_name'],'数据'}:
+    members = {paths['source_name'],paths['video_name'],'数据'}
+    if 'screenshot' in paths: members.add('界面截图.png')
+    if not system.is_dir() or {p.name for p in system.iterdir()} != members:
         raise ValueError(paths['system_name']+' must contain exactly '+paths['source_name']+', '+paths['video_name']+' and 数据')
+    if 'screenshot' in paths:
+        from web_contract import native_delivery_png
+        native_delivery_png(inside(system, '界面截图.png'))
     for name in (paths['source_name'],paths['video_name']):
         if inside(system,name).stat().st_size == 0:
             raise ValueError('Empty deliverable: '+name)

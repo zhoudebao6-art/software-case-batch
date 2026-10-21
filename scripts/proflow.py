@@ -23,7 +23,7 @@ from review_packet import execution_checks
 
 ROOT = Path(__file__).resolve().parent.parent
 # Compatibility import only; operations resolve their own run's frozen layout.
-SYSTEM = delivery_paths({'output': str(ROOT), 'delivery_layout_version': DEFAULT_DELIVERY_LAYOUT})['system_name']
+SYSTEM = '系统材料'  # Historical compatibility constant; real operations use frozen paths.
 DEFAULT_OUTPUT_ROOT = r'D:\研发图表'
 EXCLUDED_DIRS = {'.git','.product-v2','node_modules','.venv','venv','__pycache__',
                  '.pytest_cache','.cache','evidence','recording','recordings','logs',
@@ -120,7 +120,9 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
             return previous
         raise ValueError('Workspace already has a different product-v2 run; preserve it')
     adopted=None
-    layout_run={'output':str(output),'word_name':source_docx.name,'delivery_layout_version':layout_version}
+    layout_run={'output':str(output),'title':title,'word_name':source_docx.name,'delivery_layout_version':layout_version}
+    if layout_version == DEFAULT_DELIVERY_LAYOUT:
+        layout_run['materials_case_name'] = base_run.get('materials_case_name',base_run['title']) if base else title
     paths=delivery_paths(layout_run)
     if output.exists():
         if not adopt_draft or not base:
@@ -140,7 +142,8 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
            'workspace':str(workspace),'output':str(output),'title':title,'created_at':utc(),
            'source_docx':str(source_docx),'source_docx_sha256':source_hash,
            'word_name':source_docx.name,'delivery_layout_version':layout_version,
-           **{key:str(paths[key]) for key in ('word','data_dir','source_zip','video')},'status':'prepared'}
+           **{key:str(paths[key]) for key in ('word','data_dir','source_zip','video','screenshot') if key in paths},'status':'prepared'}
+    if 'materials_case_name' in layout_run:run['materials_case_name']=layout_run['materials_case_name']
     if not base or revision_scope=='document':
         run['chart_policy']=BUILD_CHART_POLICY
         run['explanation_context_policy']=EXPLANATION_CONTEXT_POLICY
@@ -158,7 +161,9 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
         for policy_key in ('recording_policy_version','data_policy_version'):
             if policy_key in base_run:run[policy_key]=base_run[policy_key]
     else:
-        run['recording_policy_version']='flow-complete-v1'
+        from common import DELIVERY_REQUIREMENTS_VERSION
+        run['delivery_requirements_version']=DELIVERY_REQUIREMENTS_VERSION
+        run['recording_policy_version']='flow-complete-v2'
         run['data_policy_version']='neutral-expanded-v1'
         from contracts import CONSTRUCTION_POLICY
         run['construction_check_policy_version']=CONSTRUCTION_POLICY
@@ -181,7 +186,7 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
 最终视频：{run['video']}
 
 父会话必须使用实际spawn_agent工具(fork_turns=none, model=gpt-6.1-sol, reasoning_effort=high)分派建设和自检，完成后另行分派独立只读验收(fork_turns=none, model=gpt-6.1-sol, reasoning_effort=ultra)。未支持明确目标时停在未验收状态，不静默降级、不用当前会话替代、不称自动caseflow接入。保存真实call_id、返回的独立task_name和原会话JSONL路径；按references/tools.md绑定当前产物哈希。建设者只写建设和自检记录，不写独立pass。
-先从上述显式冻结的原技术Word盘点正文、原式、原图、实施例和输入约束；新案不依赖已有测试成品。同案同源哈希且已合格的图文、定义与代码才可复用，不能套用上一案件的业务、图或数据。原流程图、结构图和示意图全保留，不计入新增结果图数量；源正文和图题已占用的阿拉伯图号为{source_numbers}，新增结果图从图{max(source_numbers, default=0)+1}起连续编号；只有正文引用而无对应图题时先人工核对，仍保守占号，不改原文。逐图结合原技术实施例，读前文—新增红字—后文，详细自然讲清工况、读图、计算依据、可复核算例、结果原因和适用判断。有原式时承接计算含义并按需引用关键符号，原文已解释的定义不再堆写，禁止完整抄写原公式再改红色；符号保留上下标、帽号和希腊字母；无公式只按实施例解释，不强塞数学，不凑字数。每图独立“请参考图N”，原文原式原图不动；仅新增图及图下图题放全部原文之后。PNG图内禁止顶部title/suptitle、表头、图N或说明框，轴与必要图例正常。PNG、图设计manifest、渲染及证据留工作区，不放成品根目录。
+先从上述显式冻结的原技术Word盘点正文、原式、原图、实施例和输入约束；新案不依赖已有测试成品。同案同源哈希且已合格的图文、定义与代码才可复用，不能套用上一案件的业务、图或数据。原流程图、结构图和示意图全保留，不计入新增结果图数量；源正文和图题已占用的阿拉伯图号为{source_numbers}，新增结果图从图{max(source_numbers, default=0)+1}起连续编号；只有正文引用而无对应图题时先人工核对，仍保守占号，不改原文。逐图结合原技术实施例，读前文—新增红字—后文，详细自然讲清工况、读图、计算依据、可复核算例、结果原因和适用判断。有原式时承接计算含义并按需引用关键符号，原文已解释的定义不再堆写，禁止完整抄写原公式再改红色；符号保留上下标、帽号和希腊字母；无公式只按实施例解释，不强塞数学，不凑字数。每图独立“请参考图N”，原文原式原图不动；仅新增图及图下图题放全部原文之后。PNG图内禁止顶部title/suptitle、表头、图N或说明框，轴与必要图例正常。技术附图PNG、图设计manifest、渲染及证据留工作区，不放成品根目录。
 在原工作区对后端算法做尽可能深入的完善，补全领域约束、异常处理、持久化、批量处理和可验证业务闭环。Web优先多有效业务模块、充足有效数据，沿既有简洁质感指导实施；纯风格微调不返修阻塞，技术真实、可启动、文件完整、核心业务及首次必要质量核对不减。所有可见模块和按钮有效，不出现数学推导和过量英文。
 实际检索同类型开源项目及原始数据，核对许可、字段、单位和分布，用项目领域机理进行可复现扩充；数据量按实体、时间、频率和代表工况充分覆盖，不用复制或无约束随机数凑行数。保留内部出处、参数、种子、日志和限制，不冒充现场实测。
 完成图文、系统与数据后，再实际操作最终网页录制一分多钟，不录十秒版，按本案有效操作与结果阅读自然结束，不固定60秒、不为凑时长空等、加速或截断。展示筛选、详情、业务提交、结果、历史和导出等完整使用过程。连续真实浏览器录屏，不能拼图、循环或假响应。实际测试算法、接口、保存重启、浏览器、构建和压缩包解压后的启动。
@@ -191,7 +196,7 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
 录制和在线验证结束后核实并关闭本案全部专属后台，保留Codex/MCP、共享服务及其他项目。之后仅把白名单重要CSV清洗到上述数据目录；每个CSV整列删除“生成数据”“数据来源”及明确同义元数据列，保留其他字段和值，数据目录仅CSV，不删原工作区数据或数据库。
 本项目交付代码、Web和数据内容不得出现：模拟、虚拟、仿真、物理仿真、参考、源文件、公式、正文。固定容器目录“{paths['system_name']}”按run冻结布局保留；原技术Word原样保留，许可证单独核对。禁词命中按语义修复，不能转义藏词或破坏算法。
 将实际可运行的项目源码压成上述ZIP，排除所有层级README及任何针对原技术文档的解析、抽取、原文映射和分析文件，同时排除原技术文档、过程证据、日志、缓存、依赖目录与凭据。使用明确打包白名单，不复制整个工作区；业务软件必需的导入解析模块保留。原工作区被排除内容仍保留。压缩包不得依赖被排除文件或旧绝对路径。
-成品根目录只能有上述原名Word和“{paths['system_name']}”文件夹；该目录内只能有{paths['source_name']}、{paths['video_name']}、数据/*.csv。使用/运行/安装/部署说明及制作/原件解析/数据构造来源说明留内部工作区，排除源码ZIP，不在外面交付图表、使用说明或其他文件。原Word名称即使包含禁词，只豁免这一冻结文件名和原Word，不扩大到代码、网页或数据。
+成品根目录只能有上述原名Word和“{paths['system_name']}”文件夹；该目录内只能有{paths['source_name']}、{paths['video_name']}、{('界面截图.png、' if 'screenshot' in paths else '')}数据/*.csv。使用/运行/安装/部署说明及制作/原件解析/数据构造来源说明留内部工作区，排除源码ZIP，不在外面交付图表、使用说明或其他文件。原Word名称即使包含禁词，只豁免这一冻结文件名和原Word，不扩大到代码、网页或数据。
 按技能运行清洗、打包、扫描、真实录制与进程收尾工具，建设自检后由独立ultra首次实际检查最终Word页、图表、关键视频帧和完整交付。首轮pass走finalize及publish；首轮revise后原修复者做定向修补与受影响自检，在原调用一次返回时保存真实handoff及hash，父按references/closure.md用close-simplified一次发布成品、整案ZIP和真实简化收据，不要求先跑旧finalize失败，不新增整案审核轮次。未解决核心问题、缺失损坏成品仍拒绝。只报告有证据的完成状态。当前任务不覆盖原技能、不改旧批次、不上传GitHub、不擅自公网部署。
 '''
     if base:
@@ -209,7 +214,7 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
 结合源技术实施例实际读前文—红字—后文，逐图详细自然解释工况、读图、计算依据、可复核结果、原因和适用判断；有对应原式时承接计算含义，按需简释关键符号但不重复原文已有定义，禁止完整抄写原公式；符号保留上下标、帽号和希腊字母；无公式按实施例解释，不强塞数学、不凑字数。每图独立“请参考图N”，原文原式原图及位置保持不动，仅新增图和对应图下图题按图号放全部原文之后。新增PNG图内无顶部title/suptitle、表头、图N或说明框，正常轴和必要图例保留；核对最终PNG及Word实际尺寸图例/符号与数据一致。
 PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据都留本次修订工作区。按references/tools.md生成内部.product-v2/chart-manifest.json，核对Word嵌图同字节PNG、独立引用、图下caption和全页衔接，供独立ultra实际审核。
 旧系统按冻结system_files完整沿用：{paths['source_name']}、{paths['video_name']}和全部数据CSV字节不变；旧源码、六类执行日志、ZIP启动证据、原充分清洗CSV及质量事实、原录制及技术证据、数据出处和旧complete收据均冻结继承；后续原始input_csv或data-plan变化不作废完成数据。旧软件的建设模型及执行身份保留历史事实，本轮high仅证明文档修订，不伪称旧软件由本轮high建设。无需新系统建设、重新取数或录制；原软件相关证据变化时此修订继承门禁拒绝通过，交负责人重新确定受影响范围。
-成品根目录仅上述原名Word和{paths['system_name']}，系统内仅{paths['source_name']}、{paths['video_name']}、数据/*.csv，与旧系统hash完全一致。所有PNG、证据及说明在工作区；此次Word-only修订软件字节继承原包；若用户还要求删ZIP说明必须另走package revision，不扩大本次范围。源Word完整basename即使含禁词仅豁免该Word，代码、Web和CSV豁免范围不扩大。
+成品根目录仅上述原名Word和{paths['system_name']}，系统内仅{paths['source_name']}、{paths['video_name']}、{('原界面截图.png、' if 'screenshot' in paths else '')}数据/*.csv，与旧系统hash完全一致。技术附图PNG、证据及说明在工作区；此次Word-only修订软件及既有界面截图字节继承原包；若用户还要求删ZIP说明必须另走package revision，不扩大本次范围。源Word完整basename即使含禁词仅豁免该Word，代码、Web和CSV豁免范围不扩大。
 在本次修订及旧工作区核对本案后台退出记录（process_guard stop，保留Codex/MCP及其他项目），执行scan；独立ultra实际核验当前Word全部页、PNG、正文衔接及未变系统继承证据。它写当前reviewed_files/visual_notes/limitations/reviewer_agent_id/decision/chart_snapshot/chart_reviews；完成后仅执行finalize-document-revision --workspace "{workspace}" --evidence "独立ultra当前review.json绝对路径"。保留旧finalized run、旧收据及旧交付，在本次新工作区另存document-revision收据，不重写历史通过。只报告实际证据支持的完成状态。
 '''
     if base and revision_scope=='package':
@@ -243,6 +248,7 @@ PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据
     if not base:
         prompt+='\n建设开始实际读取references/web-design.md和references/system-data.md：从本案原材料形成角色、核心任务、主工作区、关键交互的短设计画像，按业务主对象设计页面结构，不仅换颜色；沿已有source_trace、calculation_trace_map、coverage_matrix绑定原段/原式→实际函数→真实边界测试，不新增第二张台账。同一次high browser自检实际主页面、关键详情、空状态和错误提示的可见文字，调用现有record.cjs.auditUiText（共用references/ui-policy.json），在录制前修齐，不新增preflight模型；不展示“经计算生成数据”等制作过程说明，保留真实“生成报告/计算结果/预测结果”，不伪称实测或已上线，不自动改写原文或源码。建设自检在原有映射与六类检查中记录原定义→具体接受/拒绝断言→最终同引擎派生结果重算；先用最小业务闭环和关键反例调用真实最终函数，按源机制核验执行边界、集合门槛、真实输出误差和输入传递；同一次high内以当前部署入口实跑启动、健康身份、核心接口、必要持久化和停止/端口释放，通过后再扩量及制作依赖图文和录制；只前移便宜必要自检，不要求先完成全部后端，已有合格数据、计算和图文按原同hash规则复用，业务失败立即停止依赖生成、保留未变成果和独立验收，不以结构校验或成功状态代替业务正确，不新增台账或模型阶段。\n'
     if not base:
+        prompt+='''\n本次新完整案件冻结delivery_requirements_version=rich-delivery-v1及research-materials-v3：至少10份有独立业务用途、实际数据且跨表一致的CSV，至少6个真实业务模块，两项均不设数量上限；默认8—12模块只是规划起点，不能因特殊小案说明而低于6。CSV在现export_schema逐份写dataset_id/purpose，原check-data拒绝不足、空表、直接复制内容或改名凑表。模块在现web_experience.modules逐项绑定purpose/ui_locator/page_ids/workflow_ids/assertion_ids，真实动作断言不可重复凑数，同页的明确业务功能区可以独立计数。技术含义、充分规模及覆盖仍在原自检和首次独立检查核，不另增审核循环。参考规模按本案实体、时序、场景和关联充分覆盖，10只是最低线，不机械统一行数。\n视频新合同flow-complete-v2：实测大于60秒且最多300秒，有效流程通常规划2—4分钟留余量；超时保护独立，不加速、不截断操作或结果、不补静止尾段。原生viewport和recordVideo均1920×1080，原片尺寸实核后仅一次CRF18编码，不放大；不能靠缩小浏览器文字装下全部模块，沿原browser/首次审查实读正常字号。CRF只能减少新增损失，不能恢复原WebM细节。\n同一次browser自检保存至少一张代表核心业务的原生高清PNG（至少1920×1080，可更高），沿web_experience.delivery_screenshot绑定原pages.screenshot、page_id、native_width/native_height和resized=false。用proflow.py export-screenshot --workspace 本案工作区将原PNG逐字节导出为新材料目录/界面截图.png；不放大、不重编码冒充高清。其余页面内部截图与首次完整业务检查保留，不强制每页交付截图。\n'''
         prompt+='\n本案Web按references/web-design.md默认以8—12个有独立业务目的的模块作为可调整规划起点，可为导航页或明确功能分区；不能把三页作为固定模板或上限。按源技术/生命周期适配对象、批次、采集输入、配置、处理、诊断分析、处置复核、历史比较、报表导出等适用功能。不用同表换名、关于页、空页、统计卡或重复面板凑数；小案/特殊领域可调整，在现source_trace、coverage_matrix或建设计划一句说明，不另建台账/审批，不全领域强加。工作台有真实任务/对象处理及结果去向；视觉识别接入合法真实图片，输入真正进入后端方法，展示原图/实际结果与适用复核，不用装饰图、预画框、标签或固定JSON冒充。监测、控制、调度、工艺和评估分别按原文业务类型组织主视图与交互。所有页面在原browser自检里运行，沿现有build-checks.json的web_experience绑定原技术映射、页面截图、实际动作断言及输入结果文件；新run冻结case-workflow-v1，缺业务覆盖证据在录制前拒绝。必要运行图像/权重/许可纳入源码白名单，实际解包检查可加载，不能被制作附图清理规则误删。既有独立审核实看全部业务页并对照源技术，不新建审核阶段或重做历史成果。\n'
     if not base or revision_scope=='package':
         prompt+='''\n建设自检及最终源码ZIP解压验证沿既有检查核验部署生命周期：PowerShell输出CIM/JSON前在子进程内明确[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false)，Python读取明确encoding='utf-8',errors='strict'并检查returncode；编码异常或非零退出如实失败，保留stdout/stderr，不用替换解码或吞错。启动返回后先保有Popen、PID、创建时间和本案entry归属再做探查，finally中失败也精确清退已核归属子树，无法核准时记录cleanup_pending，保留Codex/MCP及其他项目，不放宽process_guard边界。启动/停止使用同一真实entry，按当前部署目录解析绝对路径，入口变更时同步；建设内实际跑启动→停止→端口释放并核PID退出，最终ZIP解压后核对同一入口及清退效果、绑定ZIP哈希。命令、日志和哈希沿原有检查保存，不新增模型阶段、审批或全量重复测试。\n'''
@@ -357,13 +363,14 @@ def clean_csv(workspace, output, manifest_path):
     write_json(workspace/'.product-v2/data-cleaning.json',receipt)
     return receipt
 
-def completed_data_quality(workspace,cleaning,current_files):
+def completed_data_quality(workspace,cleaning,current_files,requirements=None):
     """Reuse the original sufficient, cleaned CSV result; no new plan binding."""
     checks=workspace/'.product-v2/build-checks.json'
     if checks.is_file() and read_json(checks).get('data_material_error'):
         raise ValueError('Known material data error requires targeted correction')
     quality=cleaning.get('quality')
     if not isinstance(quality,dict) or quality.get('policy')!='neutral-expanded-v1':return None
+    if requirements and quality.get('delivery_requirements_version')!=requirements:return None
     audit=quality.get('audit');expansion=quality.get('expansion')
     if (not isinstance(audit,dict) or not isinstance(expansion,dict) or
             audit.get('data_status')!='pass' or audit.get('findings') or
@@ -372,6 +379,9 @@ def completed_data_quality(workspace,cleaning,current_files):
     if not isinstance(recorded,dict) or not recorded or not all(isinstance(v,dict) for v in recorded.values()):return None
     if ({name:item.get('sha256') for name,item in recorded.items()}!=current_files or
             {f['name']:f['sha256'] for f in cleaning['files']}!=current_files):return None
+    if requirements:
+        from data_preflight import validate_delivery_datasets
+        validate_delivery_datasets(audit)
     if 'result_sha256' in quality:
         original={key:quality.get(key) for key in ('policy','plan_sha256','audit','expansion')}
         actual=hashlib.sha256(json.dumps(original,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
@@ -382,6 +392,10 @@ def completed_data_quality(workspace,cleaning,current_files):
 def check_data_quality(workspace,output,update=False):
     """Completed CSVs retain their actual original pass; first audits stay full."""
     run=read_json(inside(workspace,'.product-v2/run.json'));policy=run.get('data_policy_version')
+    from common import delivery_requirements
+    requirements=delivery_requirements(run)
+    if requirements and policy!='neutral-expanded-v1':
+        raise ValueError('Rich delivery requires its frozen data policy')
     delivery=delivery_paths(run,output)
     if policy is None:
         checks=workspace/'.product-v2/build-checks.json'
@@ -396,13 +410,18 @@ def check_data_quality(workspace,output,update=False):
         raise ValueError('Selected important CSVs required for data quality checks')
     for path in paths:no_links(path)
     current_files={p.name:digest(p) for p in paths}
-    completed=completed_data_quality(workspace,cleaning,current_files)
+    if requirements and len(current_files)<10:
+        raise ValueError('Rich delivery requires at least 10 actual CSV datasets; no upper limit')
+    completed=completed_data_quality(workspace,cleaning,current_files,requirements)
     if completed is not None:return completed
     from data_preflight import audit_csv_exports,check_expansion
     plan_path=inside(workspace,'.product-v2/data-plan.json');plan_bytes=plan_path.read_bytes()
     plan=json.loads(plan_bytes.decode('utf-8-sig'));plan_sha=hashlib.sha256(plan_bytes).hexdigest()
     audit=audit_csv_exports(paths,plan['export_schema'],known_names=plan.get('known_names',[]),
                             allowed_terms=plan.get('allowed_terms',[]),name_review=plan.get('name_review',{}))
+    if requirements:
+        from data_preflight import validate_delivery_datasets
+        validate_delivery_datasets(audit)
     expansion=check_expansion(plan.get('baseline_metrics'),audit,plan['expansion_plan'])
     if audit.get('data_status')!='pass' or expansion.get('expansion_status')!='pass':
         raise ValueError('Construction data checks incomplete: '+json.dumps(
@@ -413,6 +432,7 @@ def check_data_quality(workspace,output,update=False):
         raise ValueError('Data checks must bind the actual cleaned CSV snapshot')
     if digest(plan_path)!=plan_sha:raise ValueError('Data plan changed during quality verification')
     quality={'policy':policy,'plan_sha256':plan_sha,'audit':audit,'expansion':expansion}
+    if requirements:quality['delivery_requirements_version']=requirements
     if update:
         cleaning['quality']=quality;write_json(cleaning_path,cleaning)
     elif cleaning.get('quality')!=quality:
@@ -522,6 +542,27 @@ def scan_text(name,data):
             words=forbidden(line)
             if words: hits.append({'path':name,'line':number,'words':words})
     return hits
+
+def export_screenshot(workspace, output, run):
+    """Copy the already tested native browser PNG; no render, resize or new review."""
+    from web_contract import validate_web_experience
+    target = current_delivery_paths(workspace, output).get('screenshot')
+    if target is None:
+        raise ValueError('Historical layout has no screenshot deliverable; keep its frozen layout')
+    if (run.get('status') in {'finalized','published'} or
+            any((workspace/'.product-v2'/name).exists() for name in
+                ('final-receipt.json','simplified-final-receipt.json'))):
+        raise ValueError('Finalized evidence is frozen')
+    spec = read_json(inside(workspace, '.product-v2/build-checks.json'))
+    result = validate_web_experience(workspace, run, spec, check_delivery=False)['delivery_screenshot']
+    source = inside(workspace, result['path'])
+    target.parent.mkdir(parents=True, exist_ok=True)
+    scratch = no_links(target.with_suffix('.png.new'))
+    shutil.copyfile(source, scratch)
+    if digest(scratch) != result['sha256']: raise ValueError('Screenshot changed during copy')
+    os.replace(scratch, target)
+    return {'screenshot': str(target), **result}
+
 
 def scan_delivery(output, word_name=None, run=None):
     output=no_links(output)
@@ -801,8 +842,11 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
         if actual!={item['name'] for item in files}:changed.append('CSV member set')
         if changed:return {'state':'stale','changed_dependencies':changed,'receipt':str(path)}
         policy=run.get('data_policy_version')
+        from common import delivery_requirements
+        requirements=delivery_requirements(run)
+        if requirements and policy!='neutral-expanded-v1':raise ValueError('Rich delivery requires its frozen data policy')
         if policy not in {None,'neutral-expanded-v1'}:raise ValueError('Unknown frozen data policy')
-        quality=completed_data_quality(workspace,value,{item['name']:item['sha256'] for item in files})
+        quality=completed_data_quality(workspace,value,{item['name']:item['sha256'] for item in files},requirements)
         completed=policy is None or quality is not None
         return {'state':'completed' if completed else 'cleaned','data_completed':completed,
                 'next_action':None if completed else 'check-data','changed_dependencies':[],'receipt':str(path)}
@@ -1254,7 +1298,7 @@ def main(argv=None):
     prep=sub.add_parser('prepare');prep.add_argument('--workspace',required=True);prep.add_argument('--output',required=True);prep.add_argument('--title',required=True);prep.add_argument('--source-docx',required=True);prep.add_argument('--revision-of');prep.add_argument('--adopt-draft',action='store_true');prep.add_argument('--revision-scope',choices=['document','package'],default='document');prep.add_argument('--allow-untracked-base',action='store_true')
     closure=sub.add_parser('close-simplified');closure.add_argument('--workspace',required=True);closure.add_argument('--evidence',required=True);closure.add_argument('--destination',required=True);closure.add_argument('--archive',required=True);closure.add_argument('--owner-pid',type=int)
     draft=sub.add_parser('draft-closure');draft.add_argument('--workspace',required=True);draft.add_argument('--manifest',required=True);draft.add_argument('--evidence',required=True)
-    for name in ('clean-data','check-data','check-build','status','pack-source','scan','record','finalize','finalize-document-revision','finalize-package-revision','publish','preserve-draft'):
+    for name in ('clean-data','check-data','check-build','status','pack-source','export-screenshot','scan','record','finalize','finalize-document-revision','finalize-package-revision','publish','preserve-draft'):
         item=sub.add_parser(name);item.add_argument('--workspace',required=True)
         if name in ('check-build','status'):item.add_argument('--plan')
         if name=='status':item.add_argument('--evidence')
@@ -1285,6 +1329,7 @@ def main(argv=None):
                 cleanup_ready(workspace);result=clean_csv(workspace,output,args.manifest)
             elif args.command=='check-data':result=check_data_quality(workspace,output,update=True)
             elif args.command=='pack-source': result=pack_source(workspace,output,args.manifest)
+            elif args.command=='export-screenshot': result=export_screenshot(workspace,output,run)
             elif args.command=='scan':
                 result=scan_delivery(output,run.get('word_name'),run);write_json(workspace/'.product-v2/scan.json',result)
                 if not result['passed']:

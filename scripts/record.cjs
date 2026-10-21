@@ -27,7 +27,7 @@ const pause = (ms,signal) => new Promise((resolve,reject)=>{
   const timer=setTimeout(finish,ms),abort=()=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);reject(Error('Recording runtime timeout exceeded before flow completion'));};
   signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
 });
-const LEGACY_POLICY='legacy-fixed-v1',FLOW_POLICY='flow-complete-v1';
+const LEGACY_POLICY='legacy-fixed-v1',FLOW_POLICY='flow-complete-v1',BOUNDED_FLOW_POLICY='flow-complete-v2';
 const TYPE_DELAY_MS=110,DEFAULT_ACTION_TIMEOUT_MS=30000;
 function actionTimeout(step) {
   const timeout=step.timeout_ms??DEFAULT_ACTION_TIMEOUT_MS;
@@ -43,7 +43,7 @@ function inputBudget(step,index) {
   return typingMs;
 }
 function policyVersion(value=LEGACY_POLICY) {
-  if(![LEGACY_POLICY,FLOW_POLICY].includes(value))throw Error('Unknown recording policy');
+  if(![LEGACY_POLICY,FLOW_POLICY,BOUNDED_FLOW_POLICY].includes(value))throw Error('Unknown recording policy');
   return value;
 }
 function boundPolicy(plan,run) {
@@ -55,8 +55,8 @@ function validateMeasuredDuration(proof,runPolicy) {
   const version=policyVersion(proof.recording_policy_version);
   if(runPolicy!==undefined&&version!==policyVersion(runPolicy))throw Error('Recording policy differs from frozen run');
   const seconds=proof.duration;
-  if(!Number.isFinite(seconds)||(version===LEGACY_POLICY?(seconds<55||seconds>75):seconds<=60))throw Error('Video duration violates frozen recording policy');
-  if(version===FLOW_POLICY) {
+  if(!Number.isFinite(seconds)||(version===LEGACY_POLICY?(seconds<55||seconds>75):seconds<=60)||(version===BOUNDED_FLOW_POLICY&&seconds>300))throw Error('Video duration violates frozen recording policy');
+  if(version!==LEGACY_POLICY) {
     const end=proof.final_result_completion,events=proof.events??[];
     if(!Number.isFinite(proof.estimated_duration_seconds)||proof.estimated_duration_seconds<=60||
        !Number.isFinite(proof.timeout_seconds)||proof.timeout_seconds<=proof.estimated_duration_seconds||seconds>proof.timeout_seconds+.12||
@@ -105,11 +105,12 @@ function validatePlan(plan) {
   if(!localUrl(plan.url)) throw Error('Recording URL must be local');
   if(typeof plan.health_path!=='string'||!plan.health_path.startsWith('/')||plan.health_path.startsWith('//')||!plan.version) throw Error('Health path and frozen service version required');
   if(!plan.ready || !Array.isArray(plan.steps) || plan.steps.length<6) throw Error('Ready selector and at least six actions required');
-  const flexible=policyVersion(plan.recording_policy_version)===FLOW_POLICY;
+  const flexible=policyVersion(plan.recording_policy_version)!==LEGACY_POLICY;
   const duration=flexible?plan.estimated_duration_seconds:(plan.duration_seconds ?? 60);
   if(flexible) {
     if('duration_seconds' in plan||!Number.isFinite(duration)||duration<=60)throw Error('Flow recording needs a one-minute-plus estimate, not a fixed duration');
     if(!Number.isFinite(plan.timeout_seconds)||plan.timeout_seconds<=duration)throw Error('Runtime timeout must be separate and exceed the estimate');
+    if(policyVersion(plan.recording_policy_version)===BOUNDED_FLOW_POLICY&&duration>300)throw Error('New recording estimate must not exceed 300 seconds');
     if(!plan.final_result?.selector)throw Error('Final business result selector required');
     reading(plan.final_result,true);
   } else if(duration<55 || duration>75) throw Error('Legacy duration must be 55–75 seconds');
@@ -128,17 +129,18 @@ function validatePlan(plan) {
     minimumMs+=inputBudget(step,index)+(flexible?reading(step)*1000:0);
     if(step.at!==undefined)last=step.at;
   }
+  if(policyVersion(plan.recording_policy_version)===BOUNDED_FLOW_POLICY&&minimumMs>=300000)throw Error('Complete input and reading cannot fit within 300 seconds; use meaningful UI import or a concise core flow');
   if(minimumMs>=(flexible?plan.timeout_seconds:duration)*1000)throw Error('Complete planned input and required reading exceed the recording runtime budget');
   if((!flexible&&duration-last>10) || new Set(plan.steps.map(s=>s.action)).size<3) throw Error('Need varied real operations; legacy timeline must reach the final ten seconds');
   return duration;
 }
 async function executeTimeline(plan,perform,observeFinal,{now,wait=pause}={}) {
-  const flexible=policyVersion(plan.recording_policy_version)===FLOW_POLICY;
+  const flexible=policyVersion(plan.recording_policy_version)!==LEGACY_POLICY;
   let timer,aborted=false;const controller=new AbortController();
   const cancel=new Promise((_,reject)=>{
-    if(flexible)timer=setTimeout(()=>{aborted=true;controller.abort();reject(Error('Recording runtime timeout exceeded before flow completion'));},Math.max(0,plan.timeout_seconds-now())*1000);
+    if(flexible)timer=setTimeout(()=>{aborted=true;controller.abort();reject(Error('Recording runtime timeout exceeded before flow completion'));},Math.max(0,(policyVersion(plan.recording_policy_version)===BOUNDED_FLOW_POLICY?Math.min(300,plan.timeout_seconds):plan.timeout_seconds)-now())*1000);
   });
-  const check=()=>{if(aborted||(flexible&&now()>plan.timeout_seconds))throw Error('Recording runtime timeout exceeded before flow completion');};
+  const check=()=>{if(policyVersion(plan.recording_policy_version)===BOUNDED_FLOW_POLICY&&now()>300)throw Error('Meaningful recording flow exceeded 300 seconds; plan a concise complete flow without truncation');if(aborted||(flexible&&now()>plan.timeout_seconds))throw Error('Recording runtime timeout exceeded before flow completion');};
   const sleep=async seconds=>{check();await Promise.race([wait(seconds*1000,controller.signal),cancel]);check();};
   try {
     for(let i=0;i<plan.steps.length;i++) {
@@ -241,6 +243,11 @@ function verifyLease(lease,workspace,phase='capture',runtimePid=null) {
 }
 function isolatedBrowserOptions(tempRoot,downloads) {
   return {headless:true,downloadsPath:downloads,env:{...process.env,TEMP:tempRoot,TMP:tempRoot,TMPDIR:tempRoot}};
+}
+function approvedTempRoot(value) {
+  if(typeof value!=='string'||!path.win32.isAbsolute(value)||value.split(/[\\/]/).includes('..'))return null;
+  const normalized=path.win32.normalize(value);
+  return /^[de]:\\codex\+\\[^\\]/i.test(normalized)?normalized:null;
 }
 async function movePointer(page,mouse,point,remaining=()=>{}) {
   const start={...mouse},begin=performance.now();
@@ -361,10 +368,10 @@ function recordingSetup(workspace,planPath) {
   const storageState='storage_state' in plan?safeFile(workspace,plan.storage_state):undefined;
   const storageStateHash=storageState?sha(fs.readFileSync(storageState)):null;
   const deliveryPaths=frozenDeliveryPaths(workspace,run);
-  const constructionChecks='construction_check_policy_version' in run?
+  const constructionChecks=('construction_check_policy_version' in run||'delivery_requirements_version' in run)?
     JSON.parse(command(process.env.SCB_PRO_PYTHON,[path.join(__dirname,'proflow.py'),'check-build','--workspace',workspace,'--plan',planPath])):
     {required:false,status:'historical-contract'};
-  if('construction_check_policy_version' in run&&(constructionChecks.status!=='ready'||constructionChecks.required!==true))throw Error('Current construction self-check admission required');
+  if(('construction_check_policy_version' in run||'delivery_requirements_version' in run)&&(constructionChecks.status!=='ready'||constructionChecks.required!==true))throw Error('Current construction self-check admission required');
   return {workspace,run,plan,estimatedDuration,recordingPolicy,planSha:sha(planBytes),runSha:sha(runBytes),inputs,storageState,storageStateHash,constructionChecks,deliveryPaths};
 }
 async function healthIdentity(workspace,run,plan,request=null) {
@@ -437,11 +444,12 @@ async function recordPhase(workspace, planPath, phase='full',lease=null) {
   const final=setup.deliveryPaths.video;
   if(fs.existsSync(final)) throw Error('Final video already exists; preserve it before making a new version');
   const ffmpeg=process.env.SCB_PRO_FFMPEG, ffprobe=process.env.SCB_PRO_FFPROBE;
-  if(!ffmpeg || !ffprobe || !process.env.SCB_PRO_PLAYWRIGHT || !process.env.TEMP?.toLowerCase().startsWith('d:\\codex+\\')) throw Error('Load Enter-Environment.ps1 first');
+  const tempRoot=approvedTempRoot(process.env.TEMP);
+  if(!ffmpeg || !ffprobe || !process.env.SCB_PRO_PLAYWRIGHT || !tempRoot) throw Error('Load Enter-Environment.ps1 first; TEMP must be inside D:\\codex+ or E:\\codex+');
   let identity=await healthIdentity(workspace,run,plan),launchAdmission;
   const {chromium}=require(process.env.SCB_PRO_PLAYWRIGHT);
   const dir=path.join(workspace,'.product-v2','recordings',Date.now()+'-'+crypto.randomUUID());fs.mkdirSync(dir,{recursive:true});
-  const browserTemp=path.join(process.env.TEMP,'scb-pro-browser',crypto.randomUUID());fs.mkdirSync(browserTemp,{recursive:true});
+  const browserTemp=path.join(tempRoot,'scb-pro-browser',crypto.randomUUID());fs.mkdirSync(browserTemp,{recursive:true});
   const downloads=path.join(browserTemp,'downloads');fs.mkdirSync(downloads);
   save(path.join(workspace,'.product-v2/capture-pending.json'),{status:'capturing',path:path.join(dir,'capture.json'),sha256:null});
   const errors=[],events=[],texts=[];let browser,context,video,prelude,rawPath,capturedStartUtc,capturedEndUtc,requestGuard,failedStep;
@@ -535,14 +543,14 @@ function finishRecording(workspace,lease=null) {
   if(sha(fs.readFileSync(capturePath))!==pending.sha256) throw Error('Capture receipt changed');
   const c=load(capturePath),run=load(path.join(workspace,'.product-v2/run.json'));
   const deliveryPaths=frozenDeliveryPaths(workspace,run);
-  if(!fs.existsSync(c.final)&&'construction_check_policy_version' in run){
+  if(!fs.existsSync(c.final)&&('construction_check_policy_version' in run||'delivery_requirements_version' in run)){
     const current=JSON.parse(command(process.env.SCB_PRO_PYTHON,[path.join(__dirname,'proflow.py'),'check-build','--workspace',workspace,
       ...(c.plan_path?['--plan',c.plan_path]:[])]));
     if(current.status!=='ready'||current.required!==true||c.construction_checks?.status!=='ready'||c.construction_checks?.run_id!==run.run_id)throw Error('Current construction admission required before evidence');
   }
   const {final,dir,rawPath,prelude,duration,inputs,identity,events,texts}=c;
   if(c.status!=='captured'||c.workspace!==workspace||c.run_id!==run.run_id||final!==deliveryPaths.video||c.errors.length) throw Error('Capture belongs to a different or failed run');
-  if('construction_check_policy_version' in run&&(c.construction_checks?.status!=='ready'||c.construction_checks?.run_id!==run.run_id))throw Error('Original construction admission required');
+  if(('construction_check_policy_version' in run||'delivery_requirements_version' in run)&&(c.construction_checks?.status!=='ready'||c.construction_checks?.run_id!==run.run_id))throw Error('Original construction admission required');
   const checksPath=path.join(workspace,'.product-v2/build-checks.json');
   if(fs.existsSync(final)&&fs.existsSync(checksPath)&&load(checksPath).video_material_change)throw Error('Video requires replacement for recorded major system/operation change');
   if(sha(fs.readFileSync(safeFile(workspace,path.relative(workspace,rawPath))))!==c.raw_sha256) throw Error('Original capture changed');
@@ -572,8 +580,12 @@ function finishRecording(workspace,lease=null) {
       }
     }
   }
+  if(!fs.existsSync(final)&&c.recording_policy_version===BOUNDED_FLOW_POLICY) {
+    const raw=JSON.parse(command(ffprobe,['-v','error','-show_entries','stream=width,height','-of','json',rawPath])).streams?.[0];
+    if(raw?.width!==1920||raw?.height!==1080)throw Error('Native raw capture must be 1920x1080; upscaling is forbidden');
+  }
   const staged=path.join(dir,'final.mp4');
-  if(!fs.existsSync(final)) command(ffmpeg,['-y','-hide_banner','-loglevel','error','-threads','2','-filter_threads','2','-ss',String(prelude),'-i',rawPath,'-t',String(duration),'-an','-c:v','libx264','-threads','2','-preset','fast','-crf','20','-pix_fmt','yuv420p','-movflags','+faststart',staged]);
+  if(!fs.existsSync(final)) command(ffmpeg,['-y','-hide_banner','-loglevel','error','-threads','2','-filter_threads','2','-ss',String(prelude),'-i',rawPath,'-t',String(duration),'-an','-c:v','libx264','-threads','2','-preset','fast','-crf',c.recording_policy_version===BOUNDED_FLOW_POLICY?'18':'20','-pix_fmt','yuv420p','-movflags','+faststart',staged]);
   const encoded=fs.existsSync(final)?final:staged;
   const metadata=JSON.parse(command(ffprobe,['-v','error','-show_entries','format=duration:stream=width,height,codec_name','-of','json',encoded]));
   const seconds=Number(metadata.format.duration),stream=metadata.streams[0];
@@ -581,7 +593,7 @@ function finishRecording(workspace,lease=null) {
   if(stream.width!==1920||stream.height!==1080) throw Error('Video geometry check failed');
   fs.mkdirSync(path.dirname(final),{recursive:true});if(!fs.existsSync(final)) fs.copyFileSync(staged,final,fs.constants.COPYFILE_EXCL);
   const evidenceDir=path.join(workspace,'.product-v2','video-'+crypto.randomUUID()),frames=path.join(evidenceDir,'frames');
-  const report={passed:true,duration:seconds,width:1920,height:1080,sha256:sha(fs.readFileSync(final)),video:final,raw_video:rawPath,prelude_seconds:prelude,input_files:inputs,service_identity:identity,events,texts,frames,visual_review_required:true,capture_receipt_sha256:pending.sha256,encoding_threads:2,construction_checks:c.construction_checks,plan_path:c.plan_path,
+  const report={passed:true,duration:seconds,width:1920,height:1080,sha256:sha(fs.readFileSync(final)),video:final,raw_video:rawPath,prelude_seconds:prelude,input_files:inputs,service_identity:identity,events,texts,frames,visual_review_required:true,capture_receipt_sha256:pending.sha256,encoding_threads:2,...(c.recording_policy_version===BOUNDED_FLOW_POLICY?{capture_quality:{native_width:1920,native_height:1080,codec:'libx264',preset:'fast',crf:18,resized:false,transcodes_from_raw:1}}:{}),construction_checks:c.construction_checks,plan_path:c.plan_path,
     recording_policy_version:policyVersion(c.recording_policy_version),plan_sha256:c.plan_sha256,estimated_duration_seconds:c.estimated_duration_seconds,timeout_seconds:c.timeout_seconds,planned_step_count:c.planned_step_count,completed_step_count:c.completed_step_count,final_result_completion:c.final_result_completion};
   save(path.join(workspace,'.product-v2/recording.json'),report);
   // Fixed evidence wrapper produces the complete sampled timeline, mapped
@@ -614,4 +626,4 @@ if(require.main===module) {
     }catch(error){console.error(String(error));process.exitCode=2;}
   }
 }
-module.exports={frozenDeliveryPaths,validatePlan,checkReady,downloadRequestGuard,record,localUrl,auditUiText,finishRecording,leaseArgs,isolatedBrowserOptions,batchBinding,validateBatchPhase,executeTimeline,boundPolicy,validateMeasuredDuration,withActionableTarget,performRecordedAction,uniqueVisibleLocator,observeVisibleResult,movePointer,command,commandFailure};
+module.exports={approvedTempRoot,frozenDeliveryPaths,validatePlan,checkReady,downloadRequestGuard,record,localUrl,auditUiText,finishRecording,leaseArgs,isolatedBrowserOptions,batchBinding,validateBatchPhase,executeTimeline,boundPolicy,validateMeasuredDuration,withActionableTarget,performRecordedAction,uniqueVisibleLocator,observeVisibleResult,movePointer,command,commandFailure};

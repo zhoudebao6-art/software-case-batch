@@ -7,7 +7,7 @@ import hashlib
 import re
 from urllib.parse import urlsplit
 
-from common import digest, inside, no_links, read_json
+from common import digest, inside, no_links, read_json, delivery_requirements
 
 WEB_EXPERIENCE_POLICY = 'case-workflow-v1'
 
@@ -60,12 +60,25 @@ def _assertion(record, bound, label):
         bound(path)
 
 
-def validate_web_experience(workspace, run, spec):
+def native_delivery_png(path):
+    """Check native-size PNG bytes; the existing visual review judges readability."""
+    from PIL import Image
+    _image_identity(path)
+    with Image.open(path) as image:
+        if image.format != 'PNG' or image.width < 1920 or image.height < 1080:
+            raise ValueError('Delivery screenshot must be an actual PNG at least 1920x1080')
+        return {'width': image.width, 'height': image.height, 'sha256': digest(path)}
+
+
+def validate_web_experience(workspace, run, spec, *, check_delivery=True):
     """Validate the frozen opt-in policy using the existing browser dependency map.
 
     Missing policy preserves historical runs. No page-count quota, extra browser
     run, model call, human approval, or semantic certification is introduced.
     """
+    rich = delivery_requirements(run)
+    if rich and run.get('web_experience_policy') != WEB_EXPERIENCE_POLICY:
+        raise ValueError('Rich delivery requires its frozen Web experience policy')
     if 'web_experience_policy' not in run:
         return {'required': False, 'status': 'historical-contract'}
     if run['web_experience_policy'] != WEB_EXPERIENCE_POLICY:
@@ -176,11 +189,60 @@ def validate_web_experience(workspace, run, spec):
             raise ValueError('Web workflow has untested actions or page coverage')
     if used_assertions != set(assertions):
         raise ValueError('Web browser report has unmapped workflow assertions')
+    modules = {}
+    delivery_screen = None
+    if rich:
+        modules = _records(web.get('modules'), 'business module')
+        if len(modules) < 6:
+            raise ValueError('Rich delivery requires at least 6 independent business modules; no upper limit')
+        purposes, locations, module_assertions = set(), set(), set()
+        for module_id, module in modules.items():
+            purpose, locator = module.get('purpose'), module.get('ui_locator')
+            if not _text(purpose) or not _text(locator):
+                raise ValueError('Web module needs actual business purpose and page/section locator')
+            normalized_purpose = ' '.join(purpose.casefold().split())
+            page_ids = _texts(module.get('page_ids'), 'module page IDs')
+            workflow_ids = _texts(module.get('workflow_ids'), 'module workflow IDs')
+            assertion_ids = _texts(module.get('assertion_ids'), 'module action assertion IDs')
+            location = (tuple(sorted(page_ids)), locator.strip())
+            if (normalized_purpose in purposes or location in locations or
+                    not set(page_ids) <= set(pages) or not set(workflow_ids) <= set(workflows)):
+                raise ValueError('Duplicate or missing Web module purpose/location/page/workflow')
+            tested_pages, tested_workflows = set(), set()
+            for assertion_id in assertion_ids:
+                if assertion_id not in assertions or assertion_id in module_assertions:
+                    raise ValueError('Web modules require distinct actual action assertions')
+                assertion = assertions[assertion_id]
+                if (assertion['workflow_id'] not in workflow_ids or
+                        not set(assertion['page_ids']) <= set(page_ids)):
+                    raise ValueError('Web module assertion is not attached to its actual workflow/pages')
+                tested_pages.update(assertion['page_ids']); tested_workflows.add(assertion['workflow_id'])
+                module_assertions.add(assertion_id)
+            if tested_pages != set(page_ids) or tested_workflows != set(workflow_ids):
+                raise ValueError('Web module has empty or untested page/workflow attachment')
+            purposes.add(normalized_purpose); locations.add(location)
+        screen = web.get('delivery_screenshot', {})
+        page_id = screen.get('page_id') if isinstance(screen, dict) else None
+        if (page_id not in pages or screen.get('path') != pages[page_id]['screenshot']
+                or screen.get('resized') is not False):
+            raise ValueError('Choose one actual native core business page screenshot; resized copies are forbidden')
+        delivery_screen = native_delivery_png(bound(screen['path']))
+        if (type(screen.get('native_width')) is not int or type(screen.get('native_height')) is not int
+                or screen['native_width'] != delivery_screen['width'] or screen['native_height'] != delivery_screen['height']):
+            raise ValueError('Delivery screenshot dimensions must match the actual native browser capture')
+        delivery_screen.update(path=screen['path'], page_id=page_id)
+        if check_delivery and 'output' in run:
+            from common import delivery_paths
+            target = delivery_paths(run).get('screenshot')
+            if target and target.exists() and digest(target) != delivery_screen['sha256']:
+                raise ValueError('Delivered screenshot differs from bound actual browser PNG')
     if 'vision' in system_types:
         _validate_vision(report.get('vision'), bound, implementation, run, workflows)
     return {'required': True, 'status': 'ready', 'policy': WEB_EXPERIENCE_POLICY,
             'run_id': run['run_id'], 'source_docx_sha256': run['source_docx_sha256'],
             'system_types': system_types, 'page_ids': list(pages), 'workflow_ids': list(workflows),
+            **({'module_ids': list(modules), 'delivery_requirements_version': rich} if rich else {}),
+            **({'delivery_screenshot': delivery_screen} if delivery_screen else {}),
             'evidence_paths': sorted(evidence), 'evidence_hashes': evidence,
             'limitation': 'Structure and current bytes only; existing independent review must compare original paragraphs, source code, actual screenshots and execution logs. Image decoding does not authenticate real-world content, licensing, task completeness or inference correctness.'}
 

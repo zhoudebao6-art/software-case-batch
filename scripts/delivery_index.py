@@ -41,7 +41,9 @@ def present(path):
 def case_entry(path, group):
     items = children(path)
     words = [p for p in items if p.suffix.lower() == '.docx' and present(p)]
-    systems = [row for row in LAYOUTS if (path / row[0]).is_dir()]
+    systems = [(p.name, '源代码.zip', '操作视频.mp4') for p in items
+               if p.is_dir() and p.name.startswith('研发证明材料-')]
+    systems += [row for row in LAYOUTS if (path / row[0]).is_dir()]
     if not words and not systems:
         return None
     links = {'folder': str(path), 'words': [str(p) for p in words], 'source': '', 'video': '', 'data': ''}

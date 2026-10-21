@@ -17,14 +17,16 @@ def media_tool(name,tool_paths=None):
     if not found or not Path(found).is_file():raise RuntimeError(f'Missing {name}; update config.json runtime paths')
     return str(Path(found).resolve())
 
-def command(args,tool_paths=None):
+def command(args,tool_paths=None,timeout=300):
+    if not isinstance(timeout,(int,float)) or isinstance(timeout,bool) or not math.isfinite(timeout) or timeout<=0:
+        raise ValueError('Media command timeout must be finite and positive')
     if args[0] in {'ffmpeg','ffprobe'}:
         limits=['-threads','2','-filter_threads','2','-filter_complex_threads','2'] if args[0]=='ffmpeg' else []
         args=[media_tool(args[0],tool_paths),*limits,*args[1:]]
-    return subprocess.run(args,check=True,capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=300)
+    return subprocess.run(args,check=True,capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=timeout)
 
 def generate(video,output,sample_fps=5,min_seconds=8,max_seconds=12,tool_paths=None,interaction_events=None):
-    def run(args):return command(args,tool_paths)
+    def run(args,timeout=300):return command(args,tool_paths,timeout=timeout)
     video=Path(video).resolve(strict=True);output=Path(output).resolve()
     if sample_fps<1 or sample_fps>30:raise ValueError('sample_fps must be between 1 and 30')
     if min_seconds<=0 or (max_seconds is not None and max_seconds<min_seconds):raise ValueError('invalid duration range')
@@ -54,7 +56,7 @@ def generate(video,output,sample_fps=5,min_seconds=8,max_seconds=12,tool_paths=N
         '-filter_complex',filters,'-map','[checked]','-an','-fps_mode','passthrough','-f','null','-',
         '-map','[sampled]','-fps_mode','passthrough','-threads','2','-pix_fmt','yuvj420p','-q:v','2',str(frames_dir/'frame-%05d.jpg'),
         '-map','[selected]','-fps_mode','vfr','-threads','2','-pix_fmt','yuvj420p','-q:v','2',str(selected/'frame-%06d.jpg'),
-        '-progress','pipe:1'])
+        '-progress','pipe:1'],timeout=max(300,math.ceil(duration*4)+120))
     counts=[int(n) for n in re.findall(r'^frame=(\d+)\s*$',decode.stdout,re.M)]
     if 'progress=end' not in decode.stdout or not counts or counts[-1]<1:raise ValueError('Full original-frame decode did not complete')
     frame_count=counts[-1]

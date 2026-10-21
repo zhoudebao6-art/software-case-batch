@@ -1,6 +1,6 @@
 ## r19交付布局兼容
 
-新完整prepare冻结delivery_layout_version=system-materials-v2，本文新案示例均为系统材料/源代码.zip、操作视频.mp4、数据。历史run缺此字段按legacy-v1解释，原模拟系统/项目源码.zip、演示视频.mp4不迁移；合法document/package revision继承基案布局。路径统一由common.delivery_paths解析，未知布局或run路径别名漂移拒绝，不能混装新旧目录。旧独立证明、final/publish收据及其成员名不重写。
+新完整prepare冻结delivery_layout_version=research-materials-v3及delivery_requirements_version=rich-delivery-v1，材料目录为“研发证明材料-案件名称”，包括源代码.zip、操作视频.mp4、界面截图.png和数据。本文旧系统材料路径示例为v2历史兼容形状，新案以common.delivery_paths返回路径为准。历史run缺此字段按legacy-v1解释，原模拟系统/项目源码.zip、演示视频.mp4不迁移；合法document/package revision继承基案布局。路径统一由common.delivery_paths解析，未知布局或run路径别名漂移拒绝，不能混装新旧目录。旧独立证明、final/publish收据及其成员名不重写。
 
 # 工具和证据格式
 
@@ -18,7 +18,7 @@
 & $env:SCB_PRO_PYTHON '工具目录\proflow.py' scan --workspace '案件目录'
 ```
 
-`--source-docx` 必须指向一个明确原输入，检查Word包并冻结绝对路径、SHA256和完整basename（含中文、括号等）；不扫描多个Word任意选择。run schema 2的 `word_name`、`word` 是动态交付路径。成品根目录只允许该basename和 `系统材料`；系统内只允许 `源代码.zip`、`操作视频.mp4`、`数据`，数据目录直接存重要CSV。源码ZIP也排除使用/运行/安装/部署说明、制作过程、原件解析及数据构造/来源说明，不放揭示模拟性质的文案；启动脚本和必要许可证保留。run 1及旧收据保留，不能原地升级。
+`--source-docx` 必须指向一个明确原输入，检查Word包并冻结绝对路径、SHA256和完整basename（含中文、括号等）；不扫描多个Word任意选择。run schema 2的 `word_name`、`word` 是动态交付路径。成品根目录只允许该basename和 `研发证明材料-案件名称`；材料内只允许 `源代码.zip`、`操作视频.mp4`、`界面截图.png`、`数据`（旧v2仍仅原三项），数据目录直接存重要CSV。源码ZIP也排除使用/运行/安装/部署说明、制作过程、原件解析及数据构造/来源说明，不放揭示模拟性质的文案；启动脚本和必要许可证保留。run 1及旧收据保留，不能原地升级。
 
 清洗前须有本次 `process_guard.py stop` 的成功回执，清洗命令再次查询 OS，旧回执不能掩盖已重启后台。重要 CSV 清单（每项按本案实际替换，路径相对工作区）：
 
@@ -254,3 +254,9 @@ ZIP差异只允许移除明确排除的说明文档；业务members不得新增�
 ```
 
 入口默认使用同目录`native_math_worker.py`；显式更换worker必须给对应hash。仅在独立profile与本次Popen的PID、创建时间、进程树和loopback listener归属吻合后连接UNO，worker连接及终止前再次核对归属，收尾只处理身份未变的自有Office。原Word与worker受保护只读，影子Word逐hash相同；整对象明确`FF0000`的OMML仅在PDF导出时给原生Formula加颜色包裹，正文不改、不保存Word。混色、对象数/公式正文不符、hash改变或外来listener均拒绝，失败保留日志和影子副本。实际PDF、逐页PNG及生命周期事实在输出`controlled-render.json`，视觉状态保持待实际查看；这条兼容路径不证明Word/WPS GUI显示或业务验收通过。
+
+## 新完整案件丰富交付字段
+
+`prepare`冻结rich-delivery-v1、research-materials-v3及flow-complete-v2，历史run/局部修订不回填。CSV沿export_schema增加dataset_id/purpose；现check-data至少10份有效CSV、拒绝明显复制且无数量上限。Web沿web_experience增加至少6个modules，每项id/purpose/ui_locator/page_ids/workflow_ids/assertion_ids与原browser报告绑定，模块无上限。门禁不能代替业务语义和数据充分性核对。
+
+`web_experience.delivery_screenshot={"path":"evidence/workbench.png","page_id":"workbench","native_width":1920,"native_height":1080,"resized":false}`绑定同一pages.screenshot及原browser.input_files；`proflow.py export-screenshot --workspace '本案绝对工作区'`核原证据后原样复制成品单张界面截图.png，至少1920×1080真实PNG，不放大或有损转码。导出是原收尾文件写出，不新增模型或审核阶段。当前PNG损坏/哈希改变仅修受影响项。

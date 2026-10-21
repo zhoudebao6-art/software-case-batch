@@ -22,7 +22,16 @@ class DependencyFixture(unittest.TestCase):
         self.source=self.work/'原技术材料.docx'
         with zipfile.ZipFile(self.source,'w') as package:package.writestr('word/document.xml','<document/>')
         self.run=prepare(self.work,self.out,'运行管理',self.source)
-        self.run.pop('web_experience_policy',None)  # Frozen pre-r31 dependency fixture.
+        # Frozen pre-r31 dependency fixture, independent of future prepare defaults.
+        self.run.pop('web_experience_policy',None)
+        self.run.pop('delivery_requirements_version',None)
+        self.run.pop('screenshot',None)
+        self.run.pop('materials_case_name',None)
+        self.run['delivery_layout_version']='system-materials-v2'
+        self.run['recording_policy_version']='flow-complete-v1'
+        self.run.update(data_dir=str(self.out/'系统材料/数据'),
+                        source_zip=str(self.out/'系统材料/源代码.zip'),
+                        video=str(self.out/'系统材料/操作视频.mp4'))
         write_json(self.control/'run.json',self.run)
         self.file('app.py','engine');self.file('web/app.js','web');self.file('LICENSES/license.txt','license')
         self.file('data/input.csv','编号,值\n001,10\n')

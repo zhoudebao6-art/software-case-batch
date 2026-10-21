@@ -40,7 +40,7 @@ class DefaultPolicyTests(unittest.TestCase):
             with patch.dict(os.environ,{'SCB_PRO_OUTPUT_ROOT':r'D:\研发图表'}):run=proflow.prepare(work,output,'对象业务管理',source)
             self.assertEqual(run['output'],str(output));self.assertTrue(output.exists())
             self.assertEqual(run['chart_policy'],'analytical-v2')
-            self.assertEqual(run['recording_policy_version'],'flow-complete-v1')
+            self.assertEqual(run['recording_policy_version'],'flow-complete-v2')
             self.assertEqual(run['data_policy_version'],'neutral-expanded-v1')
             prompt=(work/'.product-v2/深化命令词.txt').read_text(encoding='utf8')
             self.assertIn(r'D:\研发图表',prompt);self.assertIn(str(output),prompt)

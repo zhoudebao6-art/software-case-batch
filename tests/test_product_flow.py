@@ -10,8 +10,8 @@ from unittest.mock import patch
 import zipfile
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from common import digest, inside, forbidden, read_json
-from proflow import prepare, clean_csv, pack_source, scan_delivery, preserve_draft, SYSTEM
+from common import digest, inside, forbidden, read_json, delivery_paths
+from proflow import prepare, clean_csv, pack_source, scan_delivery, preserve_draft
 from process_guard import command_owned, protected, same
 
 class FlowTests(unittest.TestCase):
@@ -21,7 +21,8 @@ class FlowTests(unittest.TestCase):
         self.source=self.work/'技术说明（原中文）.docx'
         with zipfile.ZipFile(self.source,'w') as z:
             z.writestr('word/document.xml','<document/>')
-        prepare(self.work,self.out,'设备运行管理',self.source)
+        self.run=prepare(self.work,self.out,'设备运行管理',self.source)
+        self.system=delivery_paths(self.run)['system']
     def tearDown(self): self.tmp.cleanup()
     def manifest(self,name,value):
         p=self.work/(name+'.json');p.write_text(json.dumps(value,ensure_ascii=False),encoding='utf8');return p
@@ -41,29 +42,31 @@ class FlowTests(unittest.TestCase):
     def test_overlapping_output_refused(self):
         with self.assertRaises(ValueError):prepare(self.work,self.work/'delivery','任务管理',self.source)
     def test_prompt_embeds_exact_paths_and_latest_layout(self):
+        self.assertEqual(self.run['delivery_layout_version'],'research-materials-v3')
+        self.assertEqual(self.system.name,'研发证明材料-设备运行管理')
         text=(self.work/'.product-v2/深化命令词.txt').read_text(encoding='utf8')
-        self.assertIn(str(self.out/SYSTEM/'数据'),text);self.assertIn(str(self.out/SYSTEM/'源代码.zip'),text)
+        self.assertIn(str(self.system/'数据'),text);self.assertIn(str(self.system/'源代码.zip'),text)
         for item in ['references/web-design.md','source_trace','calculation_trace_map','coverage_matrix','references/ui-policy.json']:
             self.assertIn(item,text)
     def test_clean_drops_whole_metadata_columns_preserves_other_cells(self):
         src=self.csv('full.csv',[['编号','值','生成数据',' 数据 来源 ','生成时间'],['001','1.2300','是','输入','2026-10-12'],['002','带,逗号\n换行','否','其他','']])
         before=digest(src);r=self.clean([self.entry('full.csv',min_rows=2)])
-        with (self.out/SYSTEM/'数据/full.csv').open(encoding='utf-8-sig',newline='') as f:rows=list(csv.reader(f))
+        with (self.system/'数据/full.csv').open(encoding='utf-8-sig',newline='') as f:rows=list(csv.reader(f))
         self.assertEqual(rows,[['编号','值','生成时间'],['001','1.2300','2026-10-12'],['002','带,逗号\n换行','']])
         self.assertEqual(before,digest(src));self.assertEqual(r['files'][0]['rows'],2)
     def test_only_important_allowlist_is_exported(self):
         self.csv('main.csv',[['编号','值'],['1','2']]);self.csv('debug.csv',[['编号'],['2']]);(self.work/'data.json').write_text('{}')
-        self.clean([self.entry('main.csv')]);self.assertEqual([p.name for p in (self.out/SYSTEM/'数据').iterdir()],['main.csv'])
+        self.clean([self.entry('main.csv')]);self.assertEqual([p.name for p in (self.system/'数据').iterdir()],['main.csv'])
     def test_english_column_aliases_removed(self):
         self.csv('a.csv',[['编号','data_source','is_generated','值'],['1','x','true','8']]);self.clean([self.entry('a.csv')])
-        self.assertNotIn('data_source',(self.out/SYSTEM/'数据/a.csv').read_text(encoding='utf-8-sig'))
+        self.assertNotIn('data_source',(self.system/'数据/a.csv').read_text(encoding='utf-8-sig'))
     def test_gb18030_and_semicolon(self):
         self.csv('a.csv',[['编号','名称'],['1','运行']],encoding='gb18030',delimiter=';')
-        self.clean([self.entry('a.csv',encoding='gb18030',delimiter=';')]);self.assertTrue((self.out/SYSTEM/'数据/a.csv').read_bytes().startswith(b'\xef\xbb\xbf'))
+        self.clean([self.entry('a.csv',encoding='gb18030',delimiter=';')]);self.assertTrue((self.system/'数据/a.csv').read_bytes().startswith(b'\xef\xbb\xbf'))
     def test_failure_does_not_publish_partial_data(self):
         self.csv('a.csv',[['编号','值'],['1','模拟']])
         with self.assertRaises(ValueError):self.clean([self.entry('a.csv')])
-        self.assertFalse((self.out/SYSTEM/'数据').exists());self.assertEqual(list((self.out/SYSTEM).iterdir()),[])
+        self.assertFalse((self.system/'数据').exists());self.assertEqual(list((self.system).iterdir()),[])
     def test_duplicate_keys_rejected(self):
         self.csv('a.csv',[['编号','值'],['1','2'],['1','3']])
         with self.assertRaises(ValueError):self.clean([self.entry('a.csv')])
@@ -80,9 +83,9 @@ class FlowTests(unittest.TestCase):
         (self.root/'secret.csv').write_text('编号\n1')
         with self.assertRaises(ValueError):self.clean([self.entry('../secret.csv')])
     def test_existing_data_preserved(self):
-        self.csv('a.csv',[['编号'],['1']]);self.clean([self.entry('a.csv')]);before=digest(self.out/SYSTEM/'数据/a.csv')
+        self.csv('a.csv',[['编号'],['1']]);self.clean([self.entry('a.csv')]);before=digest(self.system/'数据/a.csv')
         with self.assertRaises(ValueError):self.clean([self.entry('a.csv')])
-        self.assertEqual(before,digest(self.out/SYSTEM/'数据/a.csv'))
+        self.assertEqual(before,digest(self.system/'数据/a.csv'))
     def test_pack_excludes_readmes_and_analysis_but_keeps_business_parser(self):
         files={'app/main.py':'print(1)','app/parser.py':'def parse(value): return value',
                'README.md':'keep locally','app/ReadMe.txt':'keep locally',
@@ -92,33 +95,33 @@ class FlowTests(unittest.TestCase):
             p=self.work/rel;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text,encoding='utf8')
         before={r:digest(self.work/r) for r in files}
         receipt=pack_source(self.work,self.out,self.manifest('package',{'files':list(files)}))
-        with zipfile.ZipFile(self.out/SYSTEM/'源代码.zip') as z:self.assertEqual(set(z.namelist()),{'app/main.py','app/parser.py','app/.env.example'})
+        with zipfile.ZipFile(self.system/'源代码.zip') as z:self.assertEqual(set(z.namelist()),{'app/main.py','app/parser.py','app/.env.example'})
         self.assertEqual(before,{r:digest(self.work/r) for r in files});self.assertEqual(len(receipt['excluded']),6)
     def test_archive_unicode_escaped_word_detected(self):
         p=self.work/'app.py';p.write_text(r'x="\u6a21\u62df"',encoding='utf8')
         with self.assertRaisesRegex(ValueError,'semantic fix before packing'):
             pack_source(self.work,self.out,self.manifest('package',{'files':['app.py']}))
-        self.assertFalse((self.out/'系统材料/源代码.zip').exists())
-        (self.out/'系统材料').mkdir(exist_ok=True)
-        with zipfile.ZipFile(self.out/'系统材料/源代码.zip','w') as archive:
+        self.assertFalse((self.system/'源代码.zip').exists())
+        (self.system).mkdir(exist_ok=True)
+        with zipfile.ZipFile(self.system/'源代码.zip','w') as archive:
             archive.writestr('app.py',(self.work/'app.py').read_bytes())
-        self.assertFalse(scan_delivery(self.out)['passed'])
+        self.assertFalse(scan_delivery(self.out,run=self.run)['passed'])
     def test_fixed_container_name_allowed(self):
         (self.work/'app.py').write_text('print("运行")',encoding='utf8')
         pack_source(self.work,self.out,self.manifest('package',{'files':['app.py']}))
-        self.assertTrue(scan_delivery(self.out)['passed'])
+        self.assertTrue(scan_delivery(self.out,run=self.run)['passed'])
     def test_readme_in_handmade_archive_is_blocked(self):
-        target=self.out/SYSTEM;target.mkdir()
+        target=self.system;target.mkdir()
         with zipfile.ZipFile(target/'源代码.zip','w') as z:z.writestr('nested/README.MD','text')
-        self.assertFalse(scan_delivery(self.out)['passed'])
+        self.assertFalse(scan_delivery(self.out,run=self.run)['passed'])
     def test_nested_archive_and_traversal_are_blocked(self):
-        target=self.out/SYSTEM;target.mkdir()
+        target=self.system;target.mkdir()
         with zipfile.ZipFile(target/'源代码.zip','w') as z:z.writestr('../a.py','print(1)');z.writestr('payload.zip','bytes')
-        self.assertEqual(len(scan_delivery(self.out)['hits']),2)
+        self.assertEqual(len(scan_delivery(self.out,run=self.run)['hits']),2)
     def test_preserve_draft_retains_identical_bytes_for_retry(self):
-        self.csv('a.csv',[['编号'],['1']]);self.clean([self.entry('a.csv')]);before=digest(self.out/SYSTEM/'数据/a.csv')
+        self.csv('a.csv',[['编号'],['1']]);self.clean([self.entry('a.csv')]);before=digest(self.system/'数据/a.csv')
         r=preserve_draft(self.work,self.out,'data');self.assertEqual(before,digest(Path(r['preserved'])/'a.csv'))
-        self.clean([self.entry('a.csv')]);self.assertTrue((self.out/SYSTEM/'数据/a.csv').exists())
+        self.clean([self.entry('a.csv')]);self.assertTrue((self.system/'数据/a.csv').exists())
     def test_no_generic_runtime_ownership(self):
         self.assertFalse(command_owned(self.work,'node.exe server.js'))
         self.assertFalse(command_owned(self.work,str(self.work)+'-other/server.py'))

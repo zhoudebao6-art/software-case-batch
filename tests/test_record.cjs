@@ -1,6 +1,13 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {validatePlan,downloadRequestGuard,localUrl,auditUiText,record,leaseArgs,isolatedBrowserOptions,validateBatchPhase,finishRecording,executeTimeline,boundPolicy,validateMeasuredDuration,performRecordedAction,uniqueVisibleLocator,observeVisibleResult,movePointer}=require('../scripts/record.cjs');
+test('browser TEMP accepts only normalized D or E codex descendants and isolates supplied E root',()=>{
+ const {approvedTempRoot}=require('../scripts/record.cjs');
+ for(const value of [String.raw`D:\codex+\temp`,String.raw`E:\codex+\temp`,'e:/codex+/temp/browser'])assert(approvedTempRoot(value));
+ for(const value of [String.raw`C:\codex+\temp`,String.raw`F:\codex+\temp`,String.raw`E:\codex+evil\temp`,String.raw`E:\codex+\..\other`,String.raw`E:\codex+\temp\..\temp`,String.raw`E:codex+\temp`,String.raw`\\host\E$\codex+\temp`,String.raw`E:\codex+`,undefined])assert.equal(approvedTempRoot(value),null);
+ const root=approvedTempRoot('E:/codex+/temp/lane1');const options=isolatedBrowserOptions(root,root+'\\downloads');
+ assert.equal(options.env.TEMP,String.raw`E:\codex+\temp\lane1`);assert.equal(options.env.TMP,root);assert.equal(options.env.TMPDIR,root);
+});
 function valid(){return {url:'http://127.0.0.1:8123',ready:'#ready',health_path:'/api/health',version:'v1',input_files:['app.py'],steps:[
   {at:1,action:'fill',value:'x',selector:'#search',expect:'#search'},
   {at:10,action:'click',selector:'#query',expect:'#table'},
@@ -267,6 +274,16 @@ test('current-run readiness and direct capture share the construction gate befor
   assert.deepEqual(f.snapshot(),before);assert.equal(f.state.browserLoads,0);
   f.state.constructionResult={required:false,status:'historical-contract'};
   await assert.rejects(f.api.checkReady(f.root,f.planPath),/self-check admission required/);
+ }finally{f.close();}
+});
+test('rich readiness cannot drop the construction policy to bypass Web admission',async()=>{
+ const f=readinessFixture();
+ try{
+  f.run.delivery_requirements_version='rich-delivery-v1';delete f.run.construction_check_policy_version;f.save(f.runPath,f.run);
+  f.state.constructionError='Rich delivery requires its frozen construction check policy';const before=f.snapshot();
+  await assert.rejects(f.api.checkReady(f.root,f.planPath),/frozen construction/);
+  await assert.rejects(f.api.record(f.root,f.planPath,'capture'),/frozen construction/);
+  assert.deepEqual(f.snapshot(),before);assert.equal(f.state.requests.length,0);assert.equal(f.state.browserLoads,0);
  }finally{f.close();}
 });
 test('read-only readiness returns current neutral hashes and listener facts without acquiring a lock or exposing session contents',async()=>{
@@ -622,4 +639,48 @@ test('evidence completion preserves exact creation ticks from a legacy numeric c
   assert.equal(hash(capture),captureHash);assert.equal(JSON.parse(fs.readFileSync(path.join(control,'recording.json'),'utf8')).service_identity.created_ticks,ticks);
   assert.deepEqual(commands.map(x=>x.exe),['fixture-encoder','fixture-probe','fixture-validator']);
  }finally{assert.equal(path.dirname(fs.realpathSync(root)),fs.realpathSync(os.tmpdir()));fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('new bounded flow keeps complete operations, accepts 300 and rejects over300 without trimming',async()=>{
+ const plan={...flexible(),recording_policy_version:'flow-complete-v2',timeout_seconds:400};
+ assert.equal(validatePlan({...plan,estimated_duration_seconds:300}),300);
+ assert.throws(()=>validatePlan({...plan,estimated_duration_seconds:300.01}),/300 seconds/);
+ assert.throws(()=>boundPolicy(plan,{recording_policy_version:'flow-complete-v1'}),/frozen run/);
+ for(const target of [300,301]){
+  let seconds=0;const events=[];
+  const actionSeconds=(target-plan.final_result.reading_seconds)/6;
+  const run=()=>executeTimeline(plan,async step=>{const event={action:step.action,started:seconds};seconds+=actionSeconds;event.completed=seconds;events.push(event);return event;},async()=>{},
+   {now:()=>seconds,wait:async ms=>{seconds+=ms/1000;}});
+  if(target===301){await assert.rejects(run(),/exceeded 300/);assert.equal(seconds,301);}
+  else{const result=await run();assert.equal(validateMeasuredDuration({...result,events,recording_policy_version:'flow-complete-v2',estimated_duration_seconds:82,timeout_seconds:400,planned_step_count:6,completed_step_count:6}),300);}
+ }
+});
+
+test('new evidence probes native raw1080 then encodes once at CRF18 with no scale (mock media commands)',()=>{
+ const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto'),vm=require('node:vm');
+ for(const nativeWidth of [1280,1920]){
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'scb-native-evidence-')),control=path.join(root,'.product-v2');fs.mkdirSync(control);
+  const hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'),save=(p,v)=>fs.writeFileSync(p,JSON.stringify(v)),commands=[];
+  const script=path.resolve(__dirname,'../scripts/record.cjs');
+  const mediaRequire=name=>name==='node:child_process'?{spawnSync:(exe,args)=>{
+   commands.push({exe,args});
+   if(exe==='fixture-encoder'){assert.equal(args[args.indexOf('-crf')+1],'18');assert(!args.some(x=>String(x).includes('scale')));fs.writeFileSync(args.at(-1),'TEST fixture encoded bytes');return {status:0,stdout:''};}
+   if(exe==='fixture-probe')return {status:0,stdout:JSON.stringify({format:{duration:'84'},streams:[{width:args.at(-1).endsWith('.webm')?nativeWidth:1920,height:1080}]})};
+   assert.equal(exe,'fixture-validator');return {status:0,stdout:'{}'};
+  }}:require(name);
+  const sandbox={require:mediaRequire,module:{exports:{}},__dirname:path.dirname(script),process:{pid:process.pid,env:{...process.env,SCB_PRO_PYTHON:'fixture-validator',SCB_PRO_FFMPEG:'fixture-encoder',SCB_PRO_FFPROBE:'fixture-probe'}},console,setTimeout,clearTimeout,AbortController};
+  vm.runInNewContext(fs.readFileSync(script,'utf8'),sandbox,{filename:script});
+  try{
+   const raw=path.join(root,'raw.webm'),input=path.join(root,'app.js'),final=path.join(root,'final.mp4'),capture=path.join(root,'capture.json');
+   fs.writeFileSync(raw,'TEST fixture raw');fs.writeFileSync(input,'TEST fixture input');save(path.join(control,'run.json'),{workspace:root,run_id:'fixture',video:final,recording_policy_version:'flow-complete-v2'});
+   const actions=['fill','click','select','press','download','click'];
+   const facts={status:'captured',workspace:root,run_id:'fixture',final,dir:root,rawPath:raw,raw_sha256:hash(raw),errors:[],inputs:{'app.js':hash(input)},prelude:0,duration:84,
+    events:actions.map((action,index)=>({action,started:index*10+1,completed:index*10+2})),texts:[],identity:{},
+    recording_policy_version:'flow-complete-v2',estimated_duration_seconds:82,timeout_seconds:180,planned_step_count:6,completed_step_count:6,
+    final_result_completion:{completed:true,selector:'#result',observed_at:77,completed_at:84,reading_seconds:7,reading_reason:'TEST result reading'}};
+   save(capture,facts);save(path.join(control,'capture-pending.json'),{path:capture,sha256:hash(capture)});
+   if(nativeWidth===1280){assert.throws(()=>sandbox.module.exports.finishRecording(root),/upscaling is forbidden/);assert.equal(commands.length,1);assert(!fs.existsSync(final));}
+   else{sandbox.module.exports.finishRecording(root);assert.equal(commands.filter(c=>c.exe==='fixture-encoder').length,1);const receipt=JSON.parse(fs.readFileSync(path.join(control,'recording.json')));assert.equal(receipt.capture_quality.crf,18);assert.equal(receipt.capture_quality.transcodes_from_raw,1);}
+  }finally{assert.equal(path.dirname(fs.realpathSync(root)),fs.realpathSync(os.tmpdir()));fs.rmSync(root,{recursive:true,force:true});}
+ }
 });

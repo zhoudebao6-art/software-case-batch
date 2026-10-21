@@ -3,6 +3,7 @@ import argparse
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -98,8 +99,32 @@ def execute(workspace,phase,lease,plan,log,timeout):
         except subprocess.TimeoutExpired:return 124
 
 
-def drive(root,batch_id,pid,case_id,plan=None,timeout=1800,retry_capture=False):
-    if type(timeout) is not int or not 30<=timeout<=3600:raise ValueError('Media invocation timeout must be 30..3600 seconds')
+def invocation_budget(workspace,phase,plan=None,timeout=None):
+    """Finite per-invocation safety budget, never a final-video duration cap."""
+    if timeout is not None:
+        if type(timeout) is not int or timeout<30:raise ValueError('Media invocation timeout must be an integer >=30 seconds')
+        return timeout
+    def positive(value):
+        return isinstance(value,(int,float)) and not isinstance(value,bool) and math.isfinite(value) and value>0
+    if phase=='capture' and plan and Path(plan).is_file():
+        seconds=read_json(plan).get('timeout_seconds')
+        if seconds is not None:
+            if not positive(seconds):raise ValueError('Recording plan requires finite positive timeout_seconds')
+            return max(1800,math.ceil(seconds)+180)
+    if phase=='evidence':
+        pending=workspace/'.product-v2/capture-pending.json'
+        if pending.is_file():
+            pointer=read_json(pending);receipt=no_links(pointer['path'])
+            if workspace not in receipt.parents or digest(receipt)!=pointer.get('sha256'):raise ValueError('Capture budget receipt changed')
+            seconds=read_json(receipt).get('duration')
+            if seconds is not None:
+                if not positive(seconds):raise ValueError('Capture duration must be finite and positive')
+                return max(1800,math.ceil(seconds*4)+300)
+    return 1800
+
+
+def drive(root,batch_id,pid,case_id,plan=None,timeout=None,retry_capture=False):
+    if timeout is not None:invocation_budget(None,None,timeout=timeout)
     root=no_links(root);target,manifest=batch.batch(root,batch_id);batch.owner_check(target,pid)
     case=next((c for c in manifest['cases'] if c['case_id']==case_id),None)
     if not case:raise ValueError('Progress is restricted to this registered case')
@@ -201,7 +226,7 @@ def drive(root,batch_id,pid,case_id,plan=None,timeout=1800,retry_capture=False):
             save('running',ticket=entry,phase=phase,capture=capture,log=str(log))
             lease={'root':str(root),'batchId':batch_id,'caseId':case_id,'ownerPid':pid,'token':entry['token']}
             code=None;failure=None
-            try:code=execute(workspace,phase,lease,plan,log,timeout)
+            try:code=execute(workspace,phase,lease,plan,log,invocation_budget(workspace,phase,plan,timeout))
             except (ValueError,OSError) as error:failure=str(error)
             finally:
                 # Existing release verifies Job members, runtime identity and
@@ -221,13 +246,13 @@ def drive(root,batch_id,pid,case_id,plan=None,timeout=1800,retry_capture=False):
         raise ValueError('Bounded media continuation exhausted without a result')
 
 
-def drive_ready(root,batch_id,pid,plans=None,timeout=1800):
+def drive_ready(root,batch_id,pid,plans=None,timeout=None):
     """Drain only the original owner's already queued media, on completion events.
 
     No daemon, sleep/retry loop, new case registration or automatic capture retry.
     The ordinary drive/acquire/Job path remains the sole execution authority.
     """
-    if type(timeout) is not int or not 30<=timeout<=3600:raise ValueError('Media invocation timeout must be 30..3600 seconds')
+    if timeout is not None:invocation_budget(None,None,timeout=timeout)
     root=no_links(root);target,manifest=batch.batch(root,batch_id)
     cases={c['case_id']:c for c in manifest['cases']}
     identity=batch.identity(pid)
@@ -316,7 +341,7 @@ def main():
     selection=parser.add_mutually_exclusive_group(required=True)
     selection.add_argument('--case-id');selection.add_argument('--ready',action='store_true')
     parser.add_argument('--plans',help='Optional existing JSON mapping owned case IDs to their custom plan paths')
-    parser.add_argument('--plan');parser.add_argument('--timeout',type=int,default=1800)
+    parser.add_argument('--plan');parser.add_argument('--timeout',type=int,help='Finite per-phase safety budget >=30 seconds, no upper limit; default adapts to plan timeout/capture duration')
     parser.add_argument('--retry-capture',action='store_true',help='Explicit retry only after repairing a failed/unfinished capture; valid captures always reused')
     args=parser.parse_args()
     try:

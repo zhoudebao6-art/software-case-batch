@@ -1,6 +1,7 @@
 """Deterministic media-policy tests and an opt-in small encoded fixture."""
 import copy
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -62,32 +63,36 @@ class DecodePipelineTests(unittest.TestCase):
     def test_one_full_decode_covers_sampling_signals_and_duplicate_event_targets(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);video=root/'fixture.mp4';video.write_bytes(b'encoded-fixture-placeholder')
-            calls=[];duration=8.4;fps=25
-            def run(args,tools=None):
+            # Exercise the duration-dependent budget above its 300-second floor.
+            calls=[];timeouts=[];duration=80.4;fps=25
+            def run(args,tools=None,timeout=300):
                 calls.append(args)
+                timeouts.append(timeout)
                 if args[0]=='ffprobe':
                     return subprocess.CompletedProcess(args,0,json.dumps({'format':{'duration':str(duration)},'streams':[
                         {'codec_type':'video','avg_frame_rate':'25/1','width':160,'height':90,'codec_name':'h264','pix_fmt':'yuv420p'}]}),'')
                 if '-filter_complex' in args:
                     target=root/'evidence';frames=target/'frames';selected=target/'interaction-selected'
-                    for i in range(42):Image.new('RGB',(16,9),(i,20,40)).save(frames/f'frame-{i+1:05d}.jpg')
+                    for i in range(402):Image.new('RGB',(16,9),(i%256,20,40)).save(frames/f'frame-{i+1:05d}.jpg')
                     import re
                     expression=args[args.index('-filter_complex')+1]
                     numbers=sorted({int(n) for n in re.findall(r'eq\(n\\,(\d+)\)',expression)})
                     for i,n in enumerate(numbers):Image.new('RGB',(16,9),(n%256,30,50)).save(selected/f'frame-{i+1:06d}.jpg')
-                    return subprocess.CompletedProcess(args,0,'frame=210\nprogress=end\n','[blackdetect] black_start:0 black_end:0.1\n')
+                    return subprocess.CompletedProcess(args,0,'frame=2010\nprogress=end\n','[blackdetect] black_start:0 black_end:0.1\n')
                 Image.new('RGB',(16,9),(90,20,30)).save(root/'evidence/frames/last.jpg')
                 return subprocess.CompletedProcess(args,0,'','')
             events=[{'action':'click','started':1,'completed':2},{'action':'select','started':1,'completed':2}]
             with patch.object(core,'command',side_effect=run):
                 report=core.generate(video,root/'evidence',tool_paths={'ffmpeg':'fixture','ffprobe':'fixture'},interaction_events=events)
-            self.assertEqual(report['source_frame_count'],210);self.assertEqual(report['full_decode_passes'],1)
-            self.assertEqual(len(report['frames']),44);self.assertEqual(len(report['interaction_frames']),4)
+            self.assertEqual(report['source_frame_count'],2010);self.assertEqual(report['full_decode_passes'],1)
+            self.assertEqual(len(report['frames']),404);self.assertEqual(len(report['interaction_frames']),4)
             self.assertEqual(report['interaction_frames'][0]['sha256'],report['interaction_frames'][2]['sha256'])
             self.assertNotEqual(report['interaction_frames'][0]['file'],report['interaction_frames'][2]['file'])
             self.assertTrue(report['automatic_signals']);self.assertTrue(report['decode_ok'])
             self.assertEqual(sum('-filter_complex' in c for c in calls),1)
             self.assertEqual(len(calls),3);self.assertNotIn('-count_frames',calls[0])
+            self.assertTrue(all(math.isfinite(value) and value>0 for value in timeouts))
+            self.assertEqual(timeouts,[300,442,300])
             self.assertIn('-sseof',calls[-1]);self.assertEqual(calls[-1][calls[-1].index('-sseof')+1],'-0.5')
             self.assertEqual([p for c in report['contact_sheets'] for p in c['frame_files']],[f['file'] for f in report['frames']])
     def test_decode_failure_never_produces_a_successful_timeline(self):

@@ -9,6 +9,7 @@ from _video_evidence_core import generate as core_generate
 
 LEGACY_POLICY='legacy-fixed-v1'
 FLOW_POLICY='flow-complete-v1'
+BOUNDED_FLOW_POLICY='flow-complete-v2'
 
 
 def frozen_video(workspace,video):
@@ -27,20 +28,21 @@ def validate_recording_duration(proof,run_policy=None,duration=None):
     their frozen policy to prevent a legacy receipt satisfying a new contract.
     """
     version=proof.get('recording_policy_version',LEGACY_POLICY)
-    if version not in {LEGACY_POLICY,FLOW_POLICY}:raise ValueError('Unknown recording policy')
+    if version not in {LEGACY_POLICY,FLOW_POLICY,BOUNDED_FLOW_POLICY}:raise ValueError('Unknown recording policy')
     if run_policy is not None:
-        if run_policy not in {LEGACY_POLICY,FLOW_POLICY} or version!=run_policy:raise ValueError('Recording policy differs from frozen run')
+        if run_policy not in {LEGACY_POLICY,FLOW_POLICY,BOUNDED_FLOW_POLICY} or version!=run_policy:raise ValueError('Recording policy differs from frozen run')
     def finite(value):return isinstance(value,(int,float)) and not isinstance(value,bool) and math.isfinite(value)
     seconds=proof.get('duration') if duration is None else duration
-    if not finite(seconds) or (not 55<=seconds<=75 if version==LEGACY_POLICY else seconds<=60):
+    if (not finite(seconds) or (not 55<=seconds<=75 if version==LEGACY_POLICY else seconds<=60)
+            or (version==BOUNDED_FLOW_POLICY and seconds>300)):
         raise ValueError('Video duration violates frozen recording policy')
     if duration is not None and (not finite(proof.get('duration')) or abs(seconds-proof['duration'])>.12):
         raise ValueError('Measured timeline duration differs from operation receipt')
-    if version==FLOW_POLICY:
+    if version!=LEGACY_POLICY:
         estimate=proof.get('estimated_duration_seconds');timeout=proof.get('timeout_seconds')
         events=proof.get('events',[]);end=proof.get('final_result_completion',{})
         count=proof.get('planned_step_count')
-        if (not finite(estimate) or estimate<=60 or not finite(timeout) or timeout<=estimate or seconds>timeout+.12 or
+        if (not finite(estimate) or estimate<=60 or (version==BOUNDED_FLOW_POLICY and estimate>300) or not finite(timeout) or timeout<=estimate or seconds>timeout+.12 or
             not isinstance(count,int) or isinstance(count,bool) or count<6 or proof.get('completed_step_count')!=count or len(events)!=count or
             len({e.get('action') for e in events})<3):raise ValueError('Complete varied operation flow and separate runtime timeout required')
         last=0
@@ -60,7 +62,17 @@ def validate_recording_duration(proof,run_policy=None,duration=None):
             not finite(read) or read<=0 or finish-begin<read-.12 or abs(finish-seconds)>.12 or
             not isinstance(end.get('reading_reason'),str) or not end['reading_reason'].strip()):
             raise ValueError('Completed final business result and meaningful reading evidence required')
-    return {'recording_policy_version':version,'duration':seconds,'flow_complete':version==FLOW_POLICY}
+    return {'recording_policy_version':version,'duration':seconds,'flow_complete':version!=LEGACY_POLICY}
+
+
+def validate_recording_quality(proof):
+    if proof.get('recording_policy_version') != BOUNDED_FLOW_POLICY:
+        return
+    quality = proof.get('capture_quality', {})
+    if (proof.get('width') != 1920 or proof.get('height') != 1080 or
+            quality != {'native_width':1920, 'native_height':1080, 'codec':'libx264',
+                        'preset':'fast', 'crf':18, 'resized':False, 'transcodes_from_raw':1}):
+        raise ValueError('New recording requires native 1080p and one CRF18 encode from raw capture')
 
 def generate(workspace,video,recording,output,media_token=None,owner_pid=None,runtime_pid=None):
     workspace=no_links(workspace);video=no_links(video);recording=no_links(recording);output=no_links(output)
@@ -77,10 +89,11 @@ def generate(workspace,video,recording,output,media_token=None,owner_pid=None,ru
     proof=read_json(recording)
     if proof.get('sha256')!=digest(video) or proof.get('passed') is not True:raise ValueError('Current successful recording hash required')
     policy=validate_recording_duration(proof)
+    validate_recording_quality(proof)
     tools={name:os.environ.get('SCB_PRO_'+name.upper()) for name in ('ffmpeg','ffprobe')}
     if not all(tools.values()):raise ValueError('Load Enter-Environment.ps1 first')
-    flexible=policy['recording_policy_version']==FLOW_POLICY
-    report=core_generate(video,output,sample_fps=5,min_seconds=60 if flexible else 55,max_seconds=None if flexible else 75,
+    flexible=policy['recording_policy_version']!=LEGACY_POLICY
+    report=core_generate(video,output,sample_fps=5,min_seconds=60 if flexible else 55,max_seconds=300 if policy['recording_policy_version']==BOUNDED_FLOW_POLICY else (None if flexible else 75),
                          tool_paths=tools,interaction_events=proof.get('events',[]))
     validate_recording_duration(proof,duration=report['duration'])
     frames=report.get('interaction_frames',[])
@@ -123,6 +136,7 @@ def validate(workspace,timeline_path,video,recording_path=None):
     if recording_path is not None and receipt!=no_links(recording_path):raise ValueError('Timeline must bind the actual current or explicitly inherited operation receipt')
     if not receipt.is_file() or digest(receipt)!=binding.get('sha256'):raise ValueError('Original operation recording receipt hash changed')
     actual=read_json(receipt);events=actual.get('events',[])
+    validate_recording_quality(actual)
     validate_recording_duration(actual,run_policy=report.get('recording_policy_version',LEGACY_POLICY),duration=report.get('duration'))
     if ('width' in actual or 'height' in actual) and (actual.get('width')!=1920 or actual.get('height')!=1080 or
             report.get('width')!=actual['width'] or report.get('height')!=actual['height']):

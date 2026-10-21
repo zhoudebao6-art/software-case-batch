@@ -155,6 +155,11 @@ def audit_csv_exports(paths, schema, known_names=(), allowed_terms=(), name_revi
         for column in columns:
             check_names(name, column, location='header', column=column)
         row_signatures, effective_signatures, primary_values = set(), set(), set()
+        # Same audit pass: ignore surrogate/entity ID changes, column names and
+        # row order when finding obvious renamed copies. Identifier-only valid
+        # dimensions have no such fingerprint; their purpose needs actual review.
+        content_columns = [column for column, rule in columns.items() if rule['kind'] != 'id']
+        content_signatures = set()
         objects = {column: set() for column in object_columns}
         events, unknown_text = {}, set()
         time_min = time_max = None
@@ -174,6 +179,9 @@ def audit_csv_exports(paths, schema, known_names=(), allowed_terms=(), name_revi
                 row_signatures.add(signature)
                 business = tuple(row[column] for column in effective)
                 effective_signatures.add(business)
+                if content_columns:
+                    payload = sorted((column, columns[column]['kind'], row[column]) for column in content_columns)
+                    content_signatures.add(hashlib.sha256(repr(payload).encode('utf-8')).digest())
                 key = tuple(row[column] for column in primary)
                 if not all(key) or key in primary_values:
                     issue(name, 'invalid-primary-key', row=rows+1)
@@ -239,7 +247,9 @@ def audit_csv_exports(paths, schema, known_names=(), allowed_terms=(), name_revi
                        'independent_objects': {column: len(values) for column, values in objects.items()},
                        'time_start': time_min.isoformat() if time_min is not None else None,
                        'time_end': time_max.isoformat() if time_max is not None else None,
-                       'events': events, 'free_text_columns': sorted(unknown_text)}
+                       'events': events, 'free_text_columns': sorted(unknown_text),
+                       'dataset_id': spec.get('dataset_id'), 'purpose': spec.get('purpose'),
+                       'content_sha256': hashlib.sha256(b''.join(sorted(content_signatures))).hexdigest() if content_columns else None}
         review = (name_review or {}).get(name, {})
         if (review.get('sha256') != start_hash or review.get('filename_checked') is not True
                 or review.get('columns_checked') is not True or review.get('text_checked') is not True
@@ -258,6 +268,40 @@ def audit_csv_exports(paths, schema, known_names=(), allowed_terms=(), name_revi
             'name_review_required': reviews_needed,
             'name_method': 'schema, known source names, exact business allowlist, hash-bound actual review',
             'general_name_recognition': False, 'source_files_modified': False}
+
+
+def validate_delivery_datasets(audit):
+    """Require ten useful declarations bound to audited bytes, with no upper cap.
+
+    Obvious content copies are rejected; domain meaning and arbitrary partition
+    tricks still require the original selfcheck/first independent review.
+    """
+    files = audit.get('files') if isinstance(audit, dict) else None
+    if not isinstance(files, dict) or len(files) < 10:
+        raise ValueError('Rich delivery requires at least 10 actual CSV datasets; no upper limit')
+    identities, purposes, hashes, contents = set(), set(), set(), set()
+    for name, item in files.items():
+        if (not isinstance(item, dict) or not isinstance(item.get('rows'), int)
+                or isinstance(item['rows'], bool) or item['rows'] < 1
+                or not isinstance(item.get('effective_rows'), int) or item['effective_rows'] < 1
+                or not isinstance(item.get('sha256'), str) or not re.fullmatch('[0-9a-f]{64}', item['sha256'])):
+            raise ValueError('Rich delivery requires nonempty audited CSV content: '+name)
+        identity, purpose = item.get('dataset_id'), item.get('purpose')
+        if (not isinstance(identity, str) or not re.fullmatch('[a-z][a-z0-9_-]*', identity)
+                or not isinstance(purpose, str) or not purpose.strip()):
+            raise ValueError('Each rich delivery CSV needs dataset_id and actual business purpose: '+name)
+        normalized_purpose = _text(purpose).strip()
+        if identity in identities or normalized_purpose in purposes or item['sha256'] in hashes:
+            raise ValueError('Duplicate rich delivery dataset identity/purpose/file: '+name)
+        content = item.get('content_sha256')
+        if content is not None:
+            if not isinstance(content, str) or not re.fullmatch('[0-9a-f]{64}', content):
+                raise ValueError('Invalid audited CSV business content fingerprint: '+name)
+            if content in contents:
+                raise ValueError('Obvious copied CSV business content does not count as a dataset: '+name)
+            contents.add(content)
+        identities.add(identity); purposes.add(normalized_purpose); hashes.add(item['sha256'])
+    return {'dataset_count': len(files), 'domain_semantics_automatically_verified': False}
 
 
 def check_expansion(baseline, current, plan):

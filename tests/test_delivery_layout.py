@@ -26,8 +26,9 @@ from media_evidence import frozen_video
 LAYOUTS = {
     'legacy-v1': ('模拟系统', '项目源码.zip', '演示视频.mp4'),
     'system-materials-v2': ('系统材料', '源代码.zip', '操作视频.mp4'),
+    'research-materials-v3': ('研发证明材料-设备业务管理', '源代码.zip', '操作视频.mp4'),
 }
-NEW = 'system-materials-v2'
+NEW = 'research-materials-v3'
 HISTORICAL = None  # Existing run.json without a delivery_layout_version field.
 
 
@@ -49,7 +50,8 @@ class DeliveryFixture(unittest.TestCase):
 
     def expected(self, output, version=HISTORICAL):
         system, source, video = LAYOUTS[version or 'legacy-v1']
-        return {'word': output / self.source.name, 'system': output / system,
+        return {**({'screenshot': output / system / '界面截图.png'} if version == NEW else {}),
+                'word': output / self.source.name, 'system': output / system,
                 'source_zip': output / system / source,
                 'video': output / system / video, 'data_dir': output / system / '数据'}
 
@@ -71,6 +73,9 @@ class DeliveryFixture(unittest.TestCase):
         with zipfile.ZipFile(paths['source_zip'], 'w') as package:
             package.writestr('app.py', 'print("运行")\n')
         paths['video'].write_bytes(b'fixture-video-not-real-media')
+        if version == NEW:
+            from PIL import Image
+            Image.new('RGB', (1920,1080), 'gray').save(paths['screenshot'])
         (paths['data_dir'] / '明细.csv').write_text('编号,值\n001,2\n', encoding='utf-8-sig')
         return paths
 
@@ -90,7 +95,7 @@ class DeliveryFixture(unittest.TestCase):
 
 class FrozenResolverTests(DeliveryFixture):
     def test_declared_layout_and_historical_missing_field_have_exact_paths(self):
-        for version in (HISTORICAL, 'legacy-v1', NEW):
+        for version in (HISTORICAL, 'legacy-v1', 'system-materials-v2', NEW):
             with self.subTest(version=version):
                 output = self.root / (version or 'unmarked')
                 run = self.run_record(self.root / 'work', output, version)
@@ -180,6 +185,8 @@ class PrepareLayoutTests(DeliveryFixture):
         output = self.root / 'historical-delivery'
         run = proflow.prepare(work, output, '设备业务管理', self.source)
         run.pop('delivery_layout_version')
+        run.pop('delivery_requirements_version', None)
+        run.pop('screenshot', None)
         run.update({key: str(value) for key, value in self.expected(output).items() if key != 'system'})
         write_json(work / '.product-v2/run.json', run)
         prompt = work / '.product-v2/深化命令词.txt'
@@ -288,7 +295,7 @@ class PublicationLayoutTests(DeliveryFixture):
                 self.assertEqual(final.read_bytes(), frozen_receipt)
 
     def test_publish_relocates_accepted_optional_system_alias_for_each_layout(self):
-        for version in (HISTORICAL, 'legacy-v1', NEW):
+        for version in (HISTORICAL, 'legacy-v1', 'system-materials-v2', NEW):
             with self.subTest(version=version):
                 work,candidate,final=self.publish_fixture('system-alias-'+str(version),version)
                 run_path=work/'.product-v2/run.json';run=read_json(run_path)
@@ -312,7 +319,7 @@ class PublicationLayoutTests(DeliveryFixture):
                 self.assertEqual(run_path.read_bytes(),frozen_run)
 
     def test_optional_system_alias_recovers_before_and_after_run_update(self):
-        for version in (HISTORICAL, 'legacy-v1', NEW):
+        for version in (HISTORICAL, 'legacy-v1', 'system-materials-v2', NEW):
             for boundary in ('run.json','publish-receipt.json'):
                 with self.subTest(version=version,boundary=boundary):
                     name='system-recovery-'+str(version)+'-'+boundary
@@ -593,11 +600,20 @@ class NewLayoutArchiveTests(unittest.TestCase):
     tearDown = archive_fixtures.ArchiveTests.tearDown
 
     def test_archive_and_state_locate_new_layout_without_rewriting_frozen_paths_or_receipts(self):
+        self.archive_layout('system-materials-v2', '系统材料')
+
+    def test_archive_v3_dynamic_materials_and_png_without_rewriting_frozen_receipts(self):
+        self.archive_layout(NEW, '研发证明材料-设备业务管理')
+
+    def archive_layout(self, version, system_name):
         system = self.source / '模拟系统'
-        system.rename(self.source / '系统材料')
-        system = self.source / '系统材料'
+        system.rename(self.source / system_name)
+        system = self.source / system_name
         (system / '项目源码.zip').rename(system / '源代码.zip')
         (system / '演示视频.mp4').rename(system / '操作视频.mp4')
+        if version == NEW:
+            from PIL import Image
+            Image.new('RGB',(1920,1080),'gray').save(system/'界面截图.png')
         self.files = file_map(self.source)
         proof = read_json(self.proof)
         proof.update({'fixture_only': True, 'reviewed_files': self.files})
@@ -610,7 +626,7 @@ class NewLayoutArchiveTests(unittest.TestCase):
         write_json(self.publish, published)
         run_path = self.work / '.product-v2/run.json'
         run = read_json(run_path)
-        run.update({'schema_version': 2, 'delivery_layout_version': NEW, 'word_name': '原名.docx',
+        run.update({'schema_version': 2, 'title':'设备业务管理', 'delivery_layout_version': version, 'word_name': '原名.docx',
                     'word': str(self.source / '原名.docx'), 'source_zip': str(system / '源代码.zip'),
                     'video': str(system / '操作视频.mp4'), 'data_dir': str(system / '数据')})
         write_json(run_path, run)
@@ -626,8 +642,8 @@ class NewLayoutArchiveTests(unittest.TestCase):
             self.assertEqual(output, self.destination)
             self.assertEqual(archived_run, run)
             paths = delivery_paths(archived_run, output)
-            self.assertEqual(paths['source_zip'], self.destination / '系统材料/源代码.zip')
-            self.assertEqual(paths['video'], self.destination / '系统材料/操作视频.mp4')
+            self.assertEqual(paths['source_zip'], self.destination / system_name / '源代码.zip')
+            self.assertEqual(paths['video'], self.destination / system_name / '操作视频.mp4')
         self.assertEqual({path: path.read_bytes() for path in frozen}, frozen)
 
 

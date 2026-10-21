@@ -20,10 +20,24 @@ TEXT_SUFFIXES = {'.py','.js','.cjs','.mjs','.jsx','.ts','.tsx','.html','.htm','.
                  '.ipynb','.r','.example','.sample','.template'}
 
 LEGACY_DELIVERY_LAYOUT = 'legacy-v1'
-DEFAULT_DELIVERY_LAYOUT = 'system-materials-v2'
+DEFAULT_DELIVERY_LAYOUT = 'research-materials-v3'
+DELIVERY_REQUIREMENTS_VERSION = 'rich-delivery-v1'
+
+
+def delivery_requirements(run):
+    """Missing is a frozen historical contract; present must be a known version."""
+    if 'delivery_requirements_version' not in run:
+        return None
+    version = run['delivery_requirements_version']
+    if not isinstance(version, str) or version != DELIVERY_REQUIREMENTS_VERSION:
+        raise ValueError('Unknown frozen delivery requirements version')
+    return version
+
+
 _DELIVERY_LAYOUTS = {
     LEGACY_DELIVERY_LAYOUT: ('模拟系统', '项目源码.zip', '演示视频.mp4'),
-    DEFAULT_DELIVERY_LAYOUT: ('系统材料', '源代码.zip', '操作视频.mp4'),
+    'system-materials-v2': ('系统材料', '源代码.zip', '操作视频.mp4'),
+    DEFAULT_DELIVERY_LAYOUT: (None, '源代码.zip', '操作视频.mp4'),
 }
 
 
@@ -33,16 +47,26 @@ def delivery_paths(run, output=None):
     Stored absolute aliases belong to the original output, even when an archive
     locator supplies a different current output. They may never override layout.
     """
+    delivery_requirements(run)
     version = run.get('delivery_layout_version', LEGACY_DELIVERY_LAYOUT)
     if not isinstance(version, str) or version not in _DELIVERY_LAYOUTS:
         raise ValueError(f'Unknown frozen delivery layout: {version!r}')
     system, source, video = _DELIVERY_LAYOUTS[version]
+    if version == DEFAULT_DELIVERY_LAYOUT:
+        title = run.get('materials_case_name', run.get('title'))
+        if (not isinstance(title, str) or not title.strip() or title != title.strip()
+                or title.endswith('.') or any(char in title for char in '<>:"/\\|?*')
+                or any(ord(char) < 32 for char in title)):
+            raise ValueError('Research materials layout requires a safe frozen case title')
+        system = '研发证明材料-' + title
     if not isinstance(run.get('output'),str) or not Path(run['output']).is_absolute():
         raise ValueError('Frozen delivery output must be an explicit absolute path')
     original = no_links(run['output'])
     root = no_links(output) if output is not None else original
     relative = {'system': system, 'source_zip': system+'/'+source,
                 'video': system+'/'+video, 'data_dir': system+'/数据'}
+    if version == DEFAULT_DELIVERY_LAYOUT:
+        relative['screenshot'] = system+'/界面截图.png'
     if 'word_name' in run:
         name = run['word_name']
         if (not isinstance(name, str) or not name or name in {'.', '..'}

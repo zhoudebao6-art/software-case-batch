@@ -95,3 +95,9 @@ try {
 ## 上游设计材料
 
 2026-10-21 维护时补充吸收 Anthropic、Impeccable 与 Vercel 的原文，具体来源和取舍见[页面质感与文案取舍](web-presentation.md#来源与适用边界)。这是面向中文技术系统的归纳，不整包安装、不执行上游命令，不逐案重搜。原技术、授权、模型分工及历史冻结边界优先。
+
+## 2026-10-21 新完整案件真实模块下限
+
+rich-delivery-v1至少6个真实模块，数量不设上限，8—12为可调整规划起点但不得低于6。模块可以是独立导航页，也可以是同页有明确入口/定位与业务目的的功能区；空页、关于、统计卡、同表改名或重复动作不能计数。沿原web_experience.modules记录`id/purpose/ui_locator/page_ids/workflow_ids/assertion_ids`，绑定原browser报告真实动作断言；每个模块有独立动作，不重复借用同一断言。门禁只核结构和字节，原自检/首次审查仍对照技术材料实际核主体功能完整。
+
+沿原browser自检保存全部页面证据，从中选一张代表核心业务的原生PNG交付；`delivery_screenshot={path,page_id,native_width,native_height,resized:false}`引用对应pages.screenshot及原browser.input_files。至少1920×1080，可更高，正常字号可读，不放大。用`export-screenshot`逐字节导出，原check-build和首次独立审查核当前绑定；不新增每页交付PNG要求或整案审核循环。

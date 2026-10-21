@@ -32,6 +32,8 @@ class ContractTests(unittest.TestCase):
         # This suite's two-chart/60-second fixtures represent frozen r9 runs.
         # New r10 construction behavior has separate behavioral coverage.
         self.run.pop('delivery_layout_version',None)
+        self.run.pop('delivery_requirements_version',None)
+        self.run.pop('screenshot',None)
         self.run.update(data_dir=str(self.out/'模拟系统/数据'),source_zip=str(self.out/'模拟系统/项目源码.zip'),video=str(self.out/'模拟系统/演示视频.mp4'))
         self.run['chart_policy']='analytical-v1'
         self.run.pop('recording_policy_version',None)
