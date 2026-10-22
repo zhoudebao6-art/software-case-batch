@@ -49,6 +49,8 @@ def _coverage_records(workspace, records, current, hash_file=None):
 
 def _required_review_paths(workspace, run, scope, checks, artifacts, current=True, inherited=None, hashes=None):
     """Declared dependencies only; no directory scan, render or viewed claim."""
+    from web_contract import web_module_policy
+    module_policy = web_module_policy(run)
     if not isinstance(scope, dict):
         raise ValueError('Declare complete Word pages and source mappings in review_scope')
     required, technical = set(), set()
@@ -94,6 +96,16 @@ def _required_review_paths(workspace, run, scope, checks, artifacts, current=Tru
                     not isinstance(web.get('evidence_hashes'), dict) or not web['evidence_hashes'] or
                     not web.get('page_ids') or not web.get('workflow_ids')):
                 raise ValueError('Frozen review must preserve complete Web workflow evidence')
+            if module_policy:
+                modules,entries,screens=web.get('module_ids'),web.get('module_entry_assertions'),web.get('module_screenshots')
+                if (web.get('web_module_policy')!=module_policy or web.get('minimum_business_modules')!=10
+                        or not isinstance(modules,list) or len(modules)<10 or len(set(modules))!=len(modules)
+                        or not isinstance(entries,dict) or set(entries)!=set(modules)
+                        or not all(isinstance(v,str) and v.strip() for v in entries.values())
+                        or len(set(entries.values()))!=len(entries)
+                        or not isinstance(screens,dict) or set(screens)!=set(modules)
+                        or not all(isinstance(v,str) and v in web['evidence_hashes'] for v in screens.values())):
+                    raise ValueError('Frozen review must preserve all ten-policy modules and their visible-entry assertion bindings')
             add('.product-v2/build-checks.json')
             for path in web['evidence_hashes']: add(path)
         if not package_revision and not document_revision:
@@ -163,6 +175,10 @@ def _required_review_paths(workspace, run, scope, checks, artifacts, current=Tru
                 web = validate_web_experience(workspace, run, value)
                 scope['web'] = {key: web[key] for key in
                                 ('policy', 'system_types', 'page_ids', 'workflow_ids', 'evidence_hashes')}
+                if module_policy:
+                    scope['web'].update({key:web[key] for key in
+                        ('module_ids','web_module_policy','minimum_business_modules',
+                         'module_entry_assertions','module_screenshots')})
                 for path in web['evidence_paths']: add(path)
             for check in value.get('checks', {}).values():
                 add(check.get('log'))
@@ -500,6 +516,15 @@ def review_input(workspace,index,destination,compact=False):
         facts['web_review_requirements'] = {
             'policy': web['policy'], 'page_ids': web['page_ids'], 'workflow_ids': web['workflow_ids'],
             'instruction': 'Read every business page screenshot and actual task assertion with its original-source mapping and implementation. Check complete case-specific tasks, navigation, input-to-backend-to-result/persistence/export and suitable system form. For vision, inspect real input images, licensing/provenance and actual backend results; reject decoration, prepainted labels or fixed outputs masquerading as recognition. A declared task list, page count, hashes and structural success do not establish semantic completeness. Include all material findings in the existing independent review, no extra design review stage.'}
+        if run.get('web_module_policy'):
+            from web_contract import web_module_policy
+            facts['web_review_requirements'].update(
+                web_module_policy=web_module_policy(run),
+                minimum_business_modules=10,
+                module_ids=web['module_ids'],
+                module_entry_assertions=web['module_entry_assertions'],
+                module_screenshots=web['module_screenshots'],
+                module_instruction='In the same first review inspect all declared modules, at least ten with no upper limit: each has an actual visible entry, independent business purpose and real tested action. Reject empty pages, statistical cards and renamed/repeated pages/actions used as modules. Read all module screenshots and assertions even when the continuous core-workflow video does not visit every module; preserve the original video duration and quality contract, without a new review stage.')
         navigation['web'] = [reference(path, sha) for path, sha in web['evidence_hashes'].items()
                              if Path(path).suffix.lower() in {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tif', '.tiff'}]
     facts['visual_navigation']=navigation

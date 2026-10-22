@@ -10,6 +10,16 @@ from urllib.parse import urlsplit
 from common import digest, inside, no_links, read_json, delivery_requirements
 
 WEB_EXPERIENCE_POLICY = 'case-workflow-v1'
+WEB_MODULE_POLICY = 'ten-modules-v1'
+
+
+def web_module_policy(run):
+    """An absent field keeps the old module contract; unknown versions fail closed."""
+    if 'web_module_policy' not in run:
+        return None
+    if run['web_module_policy'] != WEB_MODULE_POLICY:
+        raise ValueError('Unknown Web module policy')
+    return WEB_MODULE_POLICY
 
 
 def _text(value):
@@ -73,10 +83,13 @@ def native_delivery_png(path):
 def validate_web_experience(workspace, run, spec, *, check_delivery=True):
     """Validate the frozen opt-in policy using the existing browser dependency map.
 
-    Missing policy preserves historical runs. No page-count quota, extra browser
+    Missing policy preserves historical runs. No extra browser
     run, model call, human approval, or semantic certification is introduced.
     """
     rich = delivery_requirements(run)
+    module_policy = web_module_policy(run)
+    if module_policy and not rich:
+        raise ValueError('Ten-module Web validation requires its complete rich-delivery contract')
     if rich and run.get('web_experience_policy') != WEB_EXPERIENCE_POLICY:
         raise ValueError('Rich delivery requires its frozen Web experience policy')
     if 'web_experience_policy' not in run:
@@ -193,8 +206,9 @@ def validate_web_experience(workspace, run, spec, *, check_delivery=True):
     delivery_screen = None
     if rich:
         modules = _records(web.get('modules'), 'business module')
-        if len(modules) < 6:
-            raise ValueError('Rich delivery requires at least 6 independent business modules; no upper limit')
+        minimum_modules = 10 if module_policy else 6
+        if len(modules) < minimum_modules:
+            raise ValueError('Web requires at least '+str(minimum_modules)+' independent business modules; no upper limit')
         purposes, locations, module_assertions = set(), set(), set()
         for module_id, module in modules.items():
             purpose, locator = module.get('purpose'), module.get('ui_locator')
@@ -220,6 +234,17 @@ def validate_web_experience(workspace, run, spec, *, check_delivery=True):
                 module_assertions.add(assertion_id)
             if tested_pages != set(page_ids) or tested_workflows != set(workflow_ids):
                 raise ValueError('Web module has empty or untested page/workflow attachment')
+            if module_policy:
+                entry_id = module.get('entry_assertion_id')
+                entry = assertions.get(entry_id) if isinstance(entry_id, str) else None
+                if (entry_id not in assertion_ids or not isinstance(entry, dict)
+                        or entry.get('entry_visible') is not True
+                        or entry.get('ui_locator') != locator):
+                    raise ValueError('Each ten-policy module requires its own actual visible entry/action assertion and matching locator')
+                screenshot=module.get('screenshot')
+                if not _text(screenshot) or screenshot not in entry['evidence_paths']:
+                    raise ValueError('Each ten-policy module needs its actual interface screenshot in the entry/action evidence')
+                _image_identity(bound(screenshot))
             purposes.add(normalized_purpose); locations.add(location)
         screen = web.get('delivery_screenshot', {})
         page_id = screen.get('page_id') if isinstance(screen, dict) else None
@@ -242,6 +267,10 @@ def validate_web_experience(workspace, run, spec, *, check_delivery=True):
             'run_id': run['run_id'], 'source_docx_sha256': run['source_docx_sha256'],
             'system_types': system_types, 'page_ids': list(pages), 'workflow_ids': list(workflows),
             **({'module_ids': list(modules), 'delivery_requirements_version': rich} if rich else {}),
+            **({'web_module_policy': module_policy, 'minimum_business_modules': 10,
+                'module_entry_assertions': {key: module['entry_assertion_id'] for key,module in modules.items()},
+                'module_screenshots': {key: module['screenshot'] for key,module in modules.items()}}
+               if module_policy else {}),
             **({'delivery_screenshot': delivery_screen} if delivery_screen else {}),
             'evidence_paths': sorted(evidence), 'evidence_hashes': evidence,
             'limitation': 'Structure and current bytes only; existing independent review must compare original paragraphs, source code, actual screenshots and execution logs. Image decoding does not authenticate real-world content, licensing, task completeness or inference correctness.'}

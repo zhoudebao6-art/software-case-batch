@@ -96,6 +96,8 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
         base_paths=delivery_paths(base_run,base_output)
         layout_version=base_paths['version']
         chart_policy(base_run)
+        from web_contract import web_module_policy
+        web_module_policy(base_run)
         base_receipt=inside(base_workspace,'.product-v2/final-receipt.json')
         prior=read_json(base_receipt)
         frozen_source=prior.get('source_docx_sha256') or base_run.get('source_docx_sha256')
@@ -113,6 +115,8 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
         previous = read_json(record)
         delivery_paths(previous)
         chart_policy(previous)
+        from web_contract import web_module_policy
+        web_module_policy(previous)
         if previous.get('schema_version') != 2:
             raise ValueError('Legacy run is frozen; prepare a separate revision workspace and output')
         if (previous['output'] == str(output) and previous['title'] == title
@@ -164,6 +168,8 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
     if base:
         for policy_key in ('recording_policy_version','data_policy_version'):
             if policy_key in base_run:run[policy_key]=base_run[policy_key]
+        if 'web_module_policy' in base_run:
+            run['web_module_policy']=base_run['web_module_policy']
     else:
         from common import DELIVERY_REQUIREMENTS_VERSION
         run['delivery_requirements_version']=DELIVERY_REQUIREMENTS_VERSION
@@ -171,8 +177,9 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
         run['data_policy_version']='neutral-expanded-v1'
         from contracts import CONSTRUCTION_POLICY
         run['construction_check_policy_version']=CONSTRUCTION_POLICY
-        from web_contract import WEB_EXPERIENCE_POLICY
+        from web_contract import WEB_EXPERIENCE_POLICY, WEB_MODULE_POLICY
         run['web_experience_policy']=WEB_EXPERIENCE_POLICY
+        run['web_module_policy']=WEB_MODULE_POLICY
     # Historical finalized revisions keep their frozen numbering contract.
     if not base or base_run.get('chart_numbering_policy') == 'source-sequential-v1':
         run['chart_numbering_policy'] = 'source-sequential-v1'
@@ -252,8 +259,8 @@ PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据
     if not base:
         prompt+='\n建设开始实际读取references/web-design.md和references/system-data.md：从本案原材料形成角色、核心任务、主工作区、关键交互的短设计画像，按业务主对象设计页面结构，不仅换颜色；沿已有source_trace、calculation_trace_map、coverage_matrix绑定原段/原式→实际函数→真实边界测试，不新增第二张台账。同一次high browser自检实际主页面、关键详情、空状态和错误提示的可见文字，调用现有record.cjs.auditUiText（共用references/ui-policy.json），在录制前修齐，不新增preflight模型；不展示“经计算生成数据”等制作过程说明，保留真实“生成报告/计算结果/预测结果”，不伪称实测或已上线，不自动改写原文或源码。建设自检在原有映射与六类检查中记录原定义→具体接受/拒绝断言→最终同引擎派生结果重算；先用最小业务闭环和关键反例调用真实最终函数，按源机制核验执行边界、集合门槛、真实输出误差和输入传递；同一次high内以当前部署入口实跑启动、健康身份、核心接口、必要持久化和停止/端口释放，通过后再扩量及制作依赖图文和录制；只前移便宜必要自检，不要求先完成全部后端，已有合格数据、计算和图文按原同hash规则复用，业务失败立即停止依赖生成、保留未变成果和独立验收，不以结构校验或成功状态代替业务正确，不新增台账或模型阶段。\n'
     if not base:
-        prompt+='''\n本次新完整案件冻结delivery_requirements_version=rich-delivery-v1及research-materials-v3：至少10份有独立业务用途、实际数据且跨表一致的CSV，至少6个真实业务模块，两项均不设数量上限；默认8—12模块只是规划起点，不能因特殊小案说明而低于6。CSV在现export_schema逐份写dataset_id/purpose，原check-data拒绝不足、空表、直接复制内容或改名凑表。模块在现web_experience.modules逐项绑定purpose/ui_locator/page_ids/workflow_ids/assertion_ids，真实动作断言不可重复凑数，同页的明确业务功能区可以独立计数。技术含义、充分规模及覆盖仍在原自检和首次独立检查核，不另增审核循环。参考规模按本案实体、时序、场景和关联充分覆盖，10只是最低线，不机械统一行数。\n视频新合同flow-complete-v2：实测大于60秒且最多300秒，有效流程通常规划2—4分钟留余量；超时保护独立，不加速、不截断操作或结果、不补静止尾段。原生viewport和recordVideo均1920×1080，原片尺寸实核后仅一次CRF18编码，不放大；不能靠缩小浏览器文字装下全部模块，沿原browser/首次审查实读正常字号。CRF只能减少新增损失，不能恢复原WebM细节。\n同一次browser自检保存至少一张代表核心业务的原生高清PNG（至少1920×1080，可更高），沿web_experience.delivery_screenshot绑定原pages.screenshot、page_id、native_width/native_height和resized=false。用proflow.py export-screenshot --workspace 本案工作区将原PNG逐字节导出为新材料目录/界面截图.png；不放大、不重编码冒充高清。其余页面内部截图与首次完整业务检查保留，不强制每页交付截图。\n'''
-        prompt+='\n本案Web按references/web-design.md默认以8—12个有独立业务目的的模块作为可调整规划起点，可为导航页或明确功能分区；不能把三页作为固定模板或上限。按源技术/生命周期适配对象、批次、采集输入、配置、处理、诊断分析、处置复核、历史比较、报表导出等适用功能。不用同表换名、关于页、空页、统计卡或重复面板凑数；小案/特殊领域可调整，在现source_trace、coverage_matrix或建设计划一句说明，不另建台账/审批，不全领域强加。工作台有真实任务/对象处理及结果去向；视觉识别接入合法真实图片，输入真正进入后端方法，展示原图/实际结果与适用复核，不用装饰图、预画框、标签或固定JSON冒充。监测、控制、调度、工艺和评估分别按原文业务类型组织主视图与交互。所有页面在原browser自检里运行，沿现有build-checks.json的web_experience绑定原技术映射、页面截图、实际动作断言及输入结果文件；新run冻结case-workflow-v1，缺业务覆盖证据在录制前拒绝。必要运行图像/权重/许可纳入源码白名单，实际解包检查可加载，不能被制作附图清理规则误删。既有独立审核实看全部业务页并对照源技术，不新建审核阶段或重做历史成果。\n'
+        prompt+='''\n本次新完整案件冻结delivery_requirements_version=rich-delivery-v1及research-materials-v3：至少10份有独立业务用途、实际数据且跨表一致的CSV，至少10个真实业务模块，两项均不设数量上限；新完整run独立冻结web_module_policy=ten-modules-v1，不能因特殊小案说明而低于10。历史rich-delivery-v1未标此字段仍按原6模块合同，文档或源码包修订继承父策略，不追改在制案。CSV在现export_schema逐份写dataset_id/purpose，原check-data拒绝不足、空表、直接复制内容或改名凑表。模块在现web_experience.modules逐项绑定purpose/ui_locator/page_ids/workflow_ids/assertion_ids及entry_assertion_id/screenshot，后者绑定原browser已有实际模块界面截图，入口断言引用该截图并记录entry_visible=true及匹配ui_locator的实际可见入口；同一真实截图可支持多个同时可见模块，不要求10张不同截图或新截图阶段，真实动作断言不可重复凑数，同页的明确业务功能区可以独立计数。技术含义、充分规模及覆盖仍在原自检和首次独立检查核，不另增审核循环。参考规模按本案实体、时序、场景和关联充分覆盖，10只是最低线，不机械统一行数。\n视频展示完整核心业务流程，不必逐一录完所有10个及更多模块；全部模块仍须原browser自检和首次独立读图。视频新合同flow-complete-v2：实测大于60秒且最多300秒，有效流程通常规划2—4分钟留余量；超时保护独立，不加速、不截断操作或结果、不补静止尾段。原生viewport和recordVideo均1920×1080，原片尺寸实核后仅一次CRF18编码，不放大；不能靠缩小浏览器文字装下全部模块，沿原browser/首次审查实读正常字号。CRF只能减少新增损失，不能恢复原WebM细节。\n同一次browser自检保存至少一张代表核心业务的原生高清PNG（至少1920×1080，可更高），沿web_experience.delivery_screenshot绑定原pages.screenshot、page_id、native_width/native_height和resized=false。用proflow.py export-screenshot --workspace 本案工作区将原PNG逐字节导出为新材料目录/界面截图.png；不放大、不重编码冒充高清。其余页面内部截图与首次完整业务检查保留，不强制每页交付截图。\n'''
+        prompt+='\n本案Web按references/web-design.md至少建设10个有实际可见入口、独立业务用途和真实动作的模块，数量无上限，可为导航页或明确功能分区；不能把三页作为固定模板或上限。按源技术/生命周期适配对象、批次、采集输入、配置、处理、诊断分析、处置复核、历史比较、报表导出等适用功能。不用同表换名、关于页、空页、统计卡或重复面板凑数；按源领域适配功能但不降低10模块门槛，在现source_trace、coverage_matrix或建设计划一句说明，不另建台账/审批，不全领域强加。工作台有真实任务/对象处理及结果去向；视觉识别接入合法真实图片，输入真正进入后端方法，展示原图/实际结果与适用复核，不用装饰图、预画框、标签或固定JSON冒充。监测、控制、调度、工艺和评估分别按原文业务类型组织主视图与交互。所有页面在原browser自检里运行，沿现有build-checks.json的web_experience绑定原技术映射、页面截图、实际动作断言及输入结果文件；新run冻结case-workflow-v1，缺业务覆盖证据在录制前拒绝。必要运行图像/权重/许可纳入源码白名单，实际解包检查可加载，不能被制作附图清理规则误删。既有独立审核实看全部业务页并对照源技术，不新建审核阶段或重做历史成果。\n'
     if not base or revision_scope=='package':
         prompt+='''\n建设自检及最终源码ZIP解压验证沿既有检查核验部署生命周期：PowerShell输出CIM/JSON前在子进程内明确[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false)，Python读取明确encoding='utf-8',errors='strict'并检查returncode；编码异常或非零退出如实失败，保留stdout/stderr，不用替换解码或吞错。启动返回后先保有Popen、PID、创建时间和本案entry归属再做探查，finally中失败也精确清退已核归属子树，无法核准时记录cleanup_pending，保留Codex/MCP及其他项目，不放宽process_guard边界。启动/停止使用同一真实entry，按当前部署目录解析绝对路径，入口变更时同步；建设内实际跑启动→停止→端口释放并核PID退出，最终ZIP解压后核对同一入口及清退效果、绑定ZIP哈希。命令、日志和哈希沿原有检查保存，不新增模型阶段、审批或全量重复测试。\n'''
     if not base:

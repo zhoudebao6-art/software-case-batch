@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r35-figure-explanation-20261021",
+  "release": "r36-ten-modules-20261022",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -29,13 +29,13 @@
     },
     {
       "relative_path": "README.md",
-      "sha256": "f168b0865264417304060eb0272d7333cc75fe5d235cff0d796344c32ed29711",
-      "size": 10065
+      "sha256": "77e82b2d75fc629260dd14ffa786a4b46b84a491591ebf71e619a65e9102a2fe",
+      "size": 10089
     },
     {
       "relative_path": "SKILL.md",
-      "sha256": "679571211709cde30cd4532f52b46ab49a6ef7853f33f73fa98cfec2ee8a12c3",
-      "size": 15473
+      "sha256": "413497732d32d46bb5d08b7b8e9ef584b63121b391b6ec7255e9dc96b94fdb2e",
+      "size": 15642
     },
     {
       "relative_path": "agents/openai.yaml",
@@ -94,8 +94,8 @@
     },
     {
       "relative_path": "references/closure.md",
-      "sha256": "e430f199d1eeecd31c124f7e22e6b64b92044adcf40ba7701e74664510887fd6",
-      "size": 14759
+      "sha256": "5291d88fb5619e81689e0a77a5153bb09b7deb378c41e2d10bb933653484897a",
+      "size": 14788
     },
     {
       "relative_path": "references/dispatch-evidence.md",
@@ -134,8 +134,8 @@
     },
     {
       "relative_path": "references/inheritance.md",
-      "sha256": "708c20d487ea51f4f2e1dd226dff3f9c1531537d686dfbcdb8619ddbb8bd9097",
-      "size": 11723
+      "sha256": "6df3f7a22e08756469ff3b4fb8dce568ed2ca9de53ebc2e03ed6aa7f83d6d01a",
+      "size": 11860
     },
     {
       "relative_path": "references/original-discovery-mapping.json",
@@ -299,8 +299,8 @@
     },
     {
       "relative_path": "references/recording.md",
-      "sha256": "a6a65cf9ddea55dea1aad8f5d9326492b44c497478b7c2f2ac6a31b81d793384",
-      "size": 15334
+      "sha256": "4fa2bdee04e0d7ee56f24696da6d49d2dfda34c556f93ae6b19c1e790aaf0bfc",
+      "size": 15502
     },
     {
       "relative_path": "references/scheduler-policy.md",
@@ -314,8 +314,8 @@
     },
     {
       "relative_path": "references/tools.md",
-      "sha256": "533271e6865e32fb1cd6cb258600bd6d03e89d9103b9f8ce4a3a867bffb82c6b",
-      "size": 46443
+      "sha256": "1bb07c7057d0e3edc479077a15d7d72b1f6b5c380346ad49623850e19d4930f8",
+      "size": 46434
     },
     {
       "relative_path": "references/ui-policy.json",
@@ -324,8 +324,8 @@
     },
     {
       "relative_path": "references/web-design.md",
-      "sha256": "fd248e677373e642983974ae491f1f317c526acbf1a24258266fb0d08c74e613",
-      "size": 15995
+      "sha256": "cad1cd94d0410c17f74e0d531cb53644e1ec014e693404f6ca427b0cab3467af",
+      "size": 17196
     },
     {
       "relative_path": "references/web-evidence-example.json",
@@ -404,8 +404,8 @@
     },
     {
       "relative_path": "scripts/evidence_index.py",
-      "sha256": "7d6cf4bd57f73eab97d4deb4b0ba0ad5b26417916b3b39c1eaa7e9771c9ceb2a",
-      "size": 38100
+      "sha256": "1f048c6ea19967cd4a96cad49ef0a5c01389af1d79c6e56725a03a2288ad3772",
+      "size": 40346
     },
     {
       "relative_path": "scripts/figure_preflight.py",
@@ -444,8 +444,8 @@
     },
     {
       "relative_path": "scripts/proflow.py",
-      "sha256": "76cf9a86d2973767b8c9bfdea48db09614177b82e19f4f61eb1095d6ba233cab",
-      "size": 121065
+      "sha256": "cb9b0000944a17160a7dbd5fd3b21d557ea0a0aef4b8e0a842cbae3371c891e6",
+      "size": 122044
     },
     {
       "relative_path": "scripts/progress_driver.py",
@@ -489,8 +489,8 @@
     },
     {
       "relative_path": "scripts/web_contract.py",
-      "sha256": "31d27fe2103c7fd2027e59ed838b6f57bc39429f179a8ab4111165884dc1624e",
-      "size": 18228
+      "sha256": "c12cf9b8c9f3beccc76d94a1a20024210a37278abebfbf2f2d2e4e67ae4d3096",
+      "size": 20006
     },
     {
       "relative_path": "skill/SKILL.compatibility.txt",
@@ -554,8 +554,8 @@
     },
     {
       "relative_path": "tests/test_contracts.py",
-      "sha256": "c4379288c1b31a1f893019f46c2effce4e6b07c90e9eda4b81b253a32fced7df",
-      "size": 47471
+      "sha256": "d1f161c35c817d8d322e5d83c6782c996fd8936497167cb672db08d8da05e808",
+      "size": 47519
     },
     {
       "relative_path": "tests/test_control_decisions.py",
@@ -791,6 +791,11 @@
       "relative_path": "tests/test_source_integrity.py",
       "sha256": "8426caa9bca5e60876848f08e67c1b62a8f239c8cf78ad0f2b9ac63a6a06efcd",
       "size": 15217
+    },
+    {
+      "relative_path": "tests/test_ten_modules.py",
+      "sha256": "12982631fcee413406d10537f9d483d443f695ec7b368a13465484e071b36ab3",
+      "size": 13579
     },
     {
       "relative_path": "tests/test_visual_read_consistency.py",

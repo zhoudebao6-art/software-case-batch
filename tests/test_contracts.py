@@ -44,6 +44,7 @@ class ContractTests(unittest.TestCase):
         self.run.pop('source_integrity_policy',None)
         self.run.pop('review_coverage_policy',None)
         self.run.pop('web_experience_policy',None)
+        self.run.pop('web_module_policy',None)
         write_json(self.work/'.product-v2/run.json',self.run)
         self.system=self.out/'模拟系统';(self.system/'数据').mkdir(parents=True)
         (self.system/'数据/记录.csv').write_text('编号,值\n1,3\n',encoding='utf-8-sig')

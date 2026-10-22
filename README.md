@@ -100,4 +100,4 @@ Copy-Item -LiteralPath (Join-Path $TaskRepo 'skill\openai.compatibility.txt') -D
 
 Python/Node回归使用隔离夹具，不调用付费模型。独立验收和实际Actions结果分别记录；测试通过不等于真实生产速度已经测量，也不等于所有领域场景均已验证。
 
-2026-10-21新完整run使用rich-delivery-v1/research-materials-v3：至少10份有效CSV、6个真实业务模块，均无数量上限；视频实测>60秒且≤300秒，原生1080一次CRF18编码，交付一张实际原生高清界面PNG。旧合同/路径及已合格媒体冻结，首次审查与小修简化规则保持。详情见references/recording.md及tools.md。
+新完整run使用rich-delivery-v1/research-materials-v3并独立冻结web_module_policy=ten-modules-v1：至少10份有效CSV和10个真实业务模块，均无数量上限；未标新字段的历史rich-delivery-v1保留原6模块门槛，修订继承父策略。视频实测>60秒且≤300秒，原生1080一次CRF18编码，交付一张实际原生高清界面PNG。旧合同/路径及已合格媒体冻结，首次审查与小修简化规则保持。详情见references/recording.md及tools.md。

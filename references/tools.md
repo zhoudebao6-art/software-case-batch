@@ -269,6 +269,6 @@ ZIP差异只允许移除明确排除的说明文档；业务members不得新增�
 
 ## 新完整案件丰富交付字段
 
-`prepare`冻结rich-delivery-v1、research-materials-v3及flow-complete-v2，历史run/局部修订不回填。CSV沿export_schema增加dataset_id/purpose；现check-data至少10份有效CSV、拒绝明显复制且无数量上限。Web沿web_experience增加至少6个modules，每项id/purpose/ui_locator/page_ids/workflow_ids/assertion_ids与原browser报告绑定，模块无上限。门禁不能代替业务语义和数据充分性核对。
+`prepare`冻结rich-delivery-v1、research-materials-v3及flow-complete-v2，历史run/局部修订不回填。CSV沿export_schema增加dataset_id/purpose；现check-data至少10份有效CSV、拒绝明显复制且无数量上限。新完整run另冻结web_module_policy=ten-modules-v1，Web沿web_experience至少10个modules，数量无上限；历史rich-delivery-v1未标新字段仍保留原6模块合同，修订继承父策略。每项id/purpose/ui_locator/page_ids/workflow_ids/assertion_ids沿原browser报告绑定，新策略的可见入口/共享截图字段见web-design.md；视频只需完整核心流程，不要求展示全部模块。门禁不能代替业务语义和数据充分性核对。
 
 `web_experience.delivery_screenshot={"path":"evidence/workbench.png","page_id":"workbench","native_width":1920,"native_height":1080,"resized":false}`绑定同一pages.screenshot及原browser.input_files；`proflow.py export-screenshot --workspace '本案绝对工作区'`核原证据后原样复制成品单张界面截图.png，至少1920×1080真实PNG，不放大或有损转码。导出是原收尾文件写出，不新增模型或审核阶段。当前PNG损坏/哈希改变仅修受影响项。
