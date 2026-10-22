@@ -216,14 +216,15 @@ def controller_commands(command):
 
 
 def _desktop_root_without_thread_source(meta):
-    """Recognize only the observed Desktop 0.160.1 root metadata omission.
+    """Recognize only observed Desktop root metadata omissions.
 
     This is not identity proof: session_proof still checks the authoritative
     path/UUID, platform capacity and successful batch/root/owner command. An
     explicit thread_source (including null) never enters this compatibility path.
     """
     return ('thread_source' not in meta and meta.get('source') == 'vscode' and
-            meta.get('originator') == 'Codex Desktop' and meta.get('cli_version') == '0.160.1' and
+            meta.get('originator') == 'Codex Desktop' and
+            meta.get('cli_version') in ('0.160.1', '0.163.0-alpha.10.2') and
             not any(key in meta for key in ('parent_thread_id', 'parent_session_id', 'parent_id',
                                            'parent', 'subagent', 'thread_spawn', 'agent_path', 'agent_id')))
 

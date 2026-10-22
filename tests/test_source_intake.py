@@ -51,6 +51,9 @@ class SourceIntakeTests(unittest.TestCase):
         self.run = prepare(self.work, self.output, '设备联动诊断', self.source)
         # Preserve r9 numbering/source-protection fixtures independently of r10 mix checks.
         self.run['chart_policy']='analytical-v1'
+        # These pre-key-facts fixtures exercise frozen numbering/source contracts.
+        # New-run fact requirements are covered by test_explanation_facts.
+        self.run.pop('explanation_fact_policy',None)
         self.run.pop('recording_policy_version',None)
         self.run.pop('data_policy_version',None)
         write_json(self.work/'.product-v2/run.json',self.run)
