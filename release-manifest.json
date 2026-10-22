@@ -549,8 +549,8 @@
     },
     {
       "relative_path": "tests/test_construction_progress.py",
-      "sha256": "9f578503357ea7c5fc955a975b432e5ae07523f30bd52a88cb6e68c6f3665f2d",
-      "size": 24965
+      "sha256": "cdc49cffe2c0b3743a9eb5eabe7c3e0aaf5484adfeb936995323ffafef173ee3",
+      "size": 25012
     },
     {
       "relative_path": "tests/test_contracts.py",

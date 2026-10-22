@@ -24,6 +24,7 @@ class DependencyFixture(unittest.TestCase):
         self.run=prepare(self.work,self.out,'运行管理',self.source)
         # Frozen pre-r31 dependency fixture, independent of future prepare defaults.
         self.run.pop('web_experience_policy',None)
+        self.run.pop('web_module_policy',None)
         self.run.pop('delivery_requirements_version',None)
         self.run.pop('screenshot',None)
         self.run.pop('materials_case_name',None)
