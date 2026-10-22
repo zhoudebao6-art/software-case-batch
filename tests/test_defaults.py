@@ -76,6 +76,8 @@ class DefaultPolicyTests(unittest.TestCase):
         self.assertEqual(observed['pro'],r'D:\研发图表');self.assertEqual(observed['legacy'],r'D:\研发图表')
         self.assertEqual(observed['temp'],r'D:\codex+\temp');self.assertEqual(observed['tmp'],observed['temp']);self.assertEqual(observed['cache'],r'D:\codex+\cache\pip')
     def test_original_snapshot_and_r1_record_stay_unchanged(self):
+        if (Path(__file__).resolve().parents[1]/'public-source-policy.json').is_file():
+            self.skipTest('Private normative documentation is verified on the installed host, not shipped in public source')
         result=validate_audit();self.assertEqual(result['sources'],26)
         prior=read_json(ROOT/'tests/fixtures/original-snapshot-baseline.json')
         migration=read_json(ROOT/'references/original-discovery-mapping.json')

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "r36-ten-modules-20261022",
+  "release": "public-source-local-docs-20261022",
   "files": [
     {
       "relative_path": ".gitattributes",
@@ -14,13 +14,8 @@
     },
     {
       "relative_path": ".gitignore",
-      "sha256": "6cd4ec292c6861643bf5937fa4d2949dee8dcedce40661acc17ba7c960de5443",
-      "size": 89
-    },
-    {
-      "relative_path": "CI说明.md",
-      "sha256": "891e4a5fba1f275aadb2c405da573a6a9167af5b898d6db2f20477f27f3a8342",
-      "size": 1620
+      "sha256": "1e7dff89deb6a40cfab95f1d840fd16cca1d834737ff035071b7c4496612e64e",
+      "size": 2112
     },
     {
       "relative_path": "Enter-Environment.ps1",
@@ -29,18 +24,8 @@
     },
     {
       "relative_path": "README.md",
-      "sha256": "77e82b2d75fc629260dd14ffa786a4b46b84a491591ebf71e619a65e9102a2fe",
-      "size": 10089
-    },
-    {
-      "relative_path": "SKILL.md",
-      "sha256": "413497732d32d46bb5d08b7b8e9ef584b63121b391b6ec7255e9dc96b94fdb2e",
-      "size": 15642
-    },
-    {
-      "relative_path": "agents/openai.yaml",
-      "sha256": "5daf2c920e449adc206674afbefdb23ef1e22e420e3c4dd46c30af882cbde9cd",
-      "size": 507
+      "sha256": "9d2906eb5fe80311655a461b5189d57cda23e52ab66f0158a0e72e594f842e89",
+      "size": 78
     },
     {
       "relative_path": "assets/figure-baselines/body-sweep.png",
@@ -88,254 +73,14 @@
       "size": 186
     },
     {
-      "relative_path": "references/archive.md",
-      "sha256": "00b5f3b74e8d9002c1772cad6eaffb3460ed08f58ed03b1cd2c28f72f7fd247a",
-      "size": 10496
-    },
-    {
-      "relative_path": "references/closure.md",
-      "sha256": "5291d88fb5619e81689e0a77a5153bb09b7deb378c41e2d10bb933653484897a",
-      "size": 14788
-    },
-    {
-      "relative_path": "references/dispatch-evidence.md",
-      "sha256": "244c1c588cbb82f55fa259ae284b1402da0324548daae1c47ca9f8236a1fb6c7",
-      "size": 3620
-    },
-    {
-      "relative_path": "references/domain-boundaries.md",
-      "sha256": "bd0daf21a5078a8a5fa4c3e5fb279f20a1596edfad9603803888069824a524b6",
-      "size": 6024
-    },
-    {
-      "relative_path": "references/execution.md",
-      "sha256": "d89b4ae25342367266a1f3db6d5529d44615b05860e40f8dcef0f6d4d252671b",
-      "size": 34412
-    },
-    {
-      "relative_path": "references/expedited-routing.md",
-      "sha256": "efeb44eb226ddd9ed2107fe6c001fbf44dd7e570f397af11e73cd2ca06dbd65b",
-      "size": 11569
-    },
-    {
-      "relative_path": "references/figure-design.md",
-      "sha256": "c0d6ec44dfafd43b30a159089ab8b37e4cc36c405e58737fd566270ae03bce24",
-      "size": 9311
-    },
-    {
-      "relative_path": "references/inheritance-coverage.json",
-      "sha256": "55be5d488f04552dde443bc581ccb8576686bf76d9f00796efa06c8e436dc1fa",
-      "size": 983051
-    },
-    {
-      "relative_path": "references/inheritance-decisions.json",
-      "sha256": "f22b450ab60d6abcdb93159dbb06030beaaf8014bc34f129647b4f8fc886aea0",
-      "size": 94557
-    },
-    {
-      "relative_path": "references/inheritance.md",
-      "sha256": "6df3f7a22e08756469ff3b4fb8dce568ed2ca9de53ebc2e03ed6aa7f83d6d01a",
-      "size": 11860
-    },
-    {
-      "relative_path": "references/original-discovery-mapping.json",
-      "sha256": "1ffa355ec7fc20a0831ce0090e57b39f78c0373fb2ba3bfe97488b2a9c3840cf",
-      "size": 544
-    },
-    {
-      "relative_path": "references/original-sources.json",
-      "sha256": "b75f08b50e50b089f9c830cd928bcc02ac14289a85ed41f8b0b1cd6c03620372",
-      "size": 5923
-    },
-    {
-      "relative_path": "references/original/AGENTS.snapshot.txt",
-      "sha256": "799126b1c21ac7fb1500fdf874f4f761dd20ca8d7733c489214a92fab4cba578",
-      "size": 20606
-    },
-    {
-      "relative_path": "references/original/config.json",
-      "sha256": "4ccbd7b170d60e9cd82409a9148a718e5541b7b69defd89228aeedc5c61591ce",
-      "size": 3401
-    },
-    {
-      "relative_path": "references/original/docs/architecture.md",
-      "sha256": "252d8a2783df8eb3a127bce0b7f256cb2c699d252f85605d4be6d0dc92605711",
-      "size": 2117
-    },
-    {
-      "relative_path": "references/original/docs/artifact-contract.md",
-      "sha256": "7c89c94bd01b1ea39d349a4d6b9cf52520211f00b056fe8d16b2c888e3f026bc",
-      "size": 16275
-    },
-    {
-      "relative_path": "references/original/docs/capture-plan.md",
-      "sha256": "62eddf9a7d83888652c189c2ce59d00cb60091ed955b8606e8f7680bcb14d861",
-      "size": 5519
-    },
-    {
-      "relative_path": "references/original/docs/发布核验.md",
-      "sha256": "1c2403bd15a3dd11330df98ae03d1e3271c7eea4a27d4a678274836ab230c396",
-      "size": 7505
-    },
-    {
-      "relative_path": "references/original/docs/新电脑使用.md",
-      "sha256": "73ecff0131a5e2340f2b82ad80ba3c0e659ae6384395a5d5ec2a15ec9ee8f04e",
-      "size": 4424
-    },
-    {
-      "relative_path": "references/original/rules/case-design.md",
-      "sha256": "12617c41d86d01e3bfa93baf37521fd8b0a38b9086eed0c16390f396b3fc853d",
-      "size": 2125
-    },
-    {
-      "relative_path": "references/original/rules/chart-acceptance.md",
-      "sha256": "7d4c0208b7fd143cf3b0f27ae59367ab1d471d1ed002ba168dc7b72144232bca",
-      "size": 7465
-    },
-    {
-      "relative_path": "references/original/rules/chart-legend-scope.json",
-      "sha256": "d732be80d2f91102a1e1beeca007d214b18ffec2648cd4ee62910e0c1b56dc19",
-      "size": 426
-    },
-    {
-      "relative_path": "references/original/rules/chart-legend.md",
-      "sha256": "e634dc207aa74a05e89689b316269885b743814b1fbdf297e52f5ea8a75dc01f",
-      "size": 6023
-    },
-    {
-      "relative_path": "references/original/rules/chart-professional-scope.json",
-      "sha256": "013d020174c89f50418f3b45d7310a58bbf94e0aabf8eb7eb9789b46f7a3e954",
-      "size": 336
-    },
-    {
-      "relative_path": "references/original/rules/chart-professional.md",
-      "sha256": "f08d645f531560fe57742734cd5eb0ff061f714761553ec11f0b9132dd8d6a06",
-      "size": 4358
-    },
-    {
-      "relative_path": "references/original/rules/chart-quality.md",
-      "sha256": "7f1d55b02f28ba103613698ed42ab201e7562b174d4f208817015acab9205221",
-      "size": 8406
-    },
-    {
-      "relative_path": "references/original/rules/deliverable-first.md",
-      "sha256": "26d252c75901cb13ddcb512a64300682a9ffd6bd4fa0512e2d24d00ba426c8de",
-      "size": 10652
-    },
-    {
-      "relative_path": "references/original/rules/efficient-pipeline.md",
-      "sha256": "5a82f626f9d597e1d09f3aaf7db7be86a6b7649f29ae0bc64e6c83071ba953af",
-      "size": 3348
-    },
-    {
-      "relative_path": "references/original/rules/execution-efficiency.md",
-      "sha256": "b45d573232773ad5a31b72d1903410666a662b9317e19ce1750429d594620210",
-      "size": 12041
-    },
-    {
-      "relative_path": "references/original/rules/expedited-review.md",
-      "sha256": "9adf77f88281773a34a5445b6afc80700599cc99c61d7c37ebc035879d0a3677",
-      "size": 2131
-    },
-    {
-      "relative_path": "references/original/rules/material-sourcing.md",
-      "sha256": "d1ce34c60acd54a1ce657e8a61b27b689b595027f6f674fc69cdb5e8c639439b",
-      "size": 5834
-    },
-    {
-      "relative_path": "references/original/rules/rejected-chart-versions.json",
-      "sha256": "4768b2197bce554c0042100d19360a7a430201753845bfbcf55df02db2c343d3",
-      "size": 6833
-    },
-    {
-      "relative_path": "references/original/rules/requirements.md",
-      "sha256": "9ae3d000bcc509e346915655c8169b293adbd00a71a647a90bd5b5b3dd8c74c2",
-      "size": 18324
-    },
-    {
-      "relative_path": "references/original/rules/web-visible-copy.md",
-      "sha256": "a4f82a82d51c6ac67fde16157f3a725d11d908150767ec207fcf9758127270fa",
-      "size": 3095
-    },
-    {
-      "relative_path": "references/original/rules/worker-environment.md",
-      "sha256": "ec895e82ee46a2fc4acf08a11ef24da894408960be2c1ffe0d130822db37079e",
-      "size": 19158
-    },
-    {
-      "relative_path": "references/original/skill/SKILL.snapshot.txt",
-      "sha256": "2c537f5d02bbdad345d36f36c02560ff3220ca908329a1976a9646ab3cb068df",
-      "size": 12869
-    },
-    {
-      "relative_path": "references/original/开始使用.md",
-      "sha256": "68666afcdc135a9a4a1cdb06e00265d9ce931a474c399dfba8a38e771e085772",
-      "size": 11283
-    },
-    {
-      "relative_path": "references/original/本机接手说明.md",
-      "sha256": "cbc41dae5a51aee84cb926ca06b5d639620ba8a738318fe0ba442cfff125b52e",
-      "size": 5657
-    },
-    {
-      "relative_path": "references/processes.md",
-      "sha256": "b25d1eb739b294d96ddf2dd65e90e0d32251f406348c79704e8111d306dfa06c",
-      "size": 1619
-    },
-    {
-      "relative_path": "references/progress.md",
-      "sha256": "7ba541bd5a5da8345bc499e5bf91f4dd389bde2125d88a1ed33248e911844711",
-      "size": 8035
-    },
-    {
-      "relative_path": "references/quality.md",
-      "sha256": "603fc648cba07b01d6337a17e2109bcbbaa506385f6b15f5151b016eda0ac36a",
-      "size": 16063
-    },
-    {
-      "relative_path": "references/recording-concurrency.md",
-      "sha256": "01cbbd0cfdb676104d1600dd70e718e691e26c9b6bac8668ac1e043d5bdbc5e1",
-      "size": 6975
-    },
-    {
-      "relative_path": "references/recording.md",
-      "sha256": "4fa2bdee04e0d7ee56f24696da6d49d2dfda34c556f93ae6b19c1e790aaf0bfc",
-      "size": 15502
-    },
-    {
-      "relative_path": "references/scheduler-policy.md",
-      "sha256": "6372148905870e7163806552316c6645a92f5174efd250d41ad1111e64f13894",
-      "size": 11349
-    },
-    {
-      "relative_path": "references/system-data.md",
-      "sha256": "038666a4f612e382650347693c10df009594212749891a1664e38535e69a2803",
-      "size": 23250
-    },
-    {
-      "relative_path": "references/tools.md",
-      "sha256": "1bb07c7057d0e3edc479077a15d7d72b1f6b5c380346ad49623850e19d4930f8",
-      "size": 46434
+      "relative_path": "public-source-policy.json",
+      "sha256": "176af3b447c3371e6e28d3ade9075c57561449f2daa620ef211c62d1a59bd029",
+      "size": 93
     },
     {
       "relative_path": "references/ui-policy.json",
       "sha256": "2cb0bad3aeaf535cb744284ed0058ce4a45beda29f4f16ac8c135532ff29ee26",
       "size": 1288
-    },
-    {
-      "relative_path": "references/web-design.md",
-      "sha256": "cad1cd94d0410c17f74e0d531cb53644e1ec014e693404f6ca427b0cab3467af",
-      "size": 17196
-    },
-    {
-      "relative_path": "references/web-evidence-example.json",
-      "sha256": "11d798bf82276a883cac37372a6e6999e823319775520585d8382e247f3d56ae",
-      "size": 6478
-    },
-    {
-      "relative_path": "references/web-presentation.md",
-      "sha256": "f44ee12a0d65199194ebbb37fcec53abccd5dffd2749c884944f9fd0a69d1594",
-      "size": 8755
     },
     {
       "relative_path": "requirements-ci.txt",
@@ -493,16 +238,6 @@
       "size": 20006
     },
     {
-      "relative_path": "skill/SKILL.compatibility.txt",
-      "sha256": "cf5a0e944fd8c307033b2e2b08a86c6766e16c4f7a5167044b7461ba9f8e2db0",
-      "size": 1606
-    },
-    {
-      "relative_path": "skill/openai.compatibility.txt",
-      "sha256": "6ab7cb60b2e5265c6eae2c45e8e82f75f3ffafb4b712c2ecb90754f31b3fbbf4",
-      "size": 386
-    },
-    {
       "relative_path": "tests/archive_smoke_helper.py",
       "sha256": "4799a57776243e4e27069634492e1a1f85df314f0e62da60c3bb9c2de5502617",
       "size": 4891
@@ -584,8 +319,8 @@
     },
     {
       "relative_path": "tests/test_defaults.py",
-      "sha256": "397c707accd94427c11bcc2a42611415c33acdfa2530acf405316c66ce8533cb",
-      "size": 7466
+      "sha256": "fedd91a1fdbb5997fb5326d3859cafa8aef19fa24cd7eb77ec3066417fd517d3",
+      "size": 7587
     },
     {
       "relative_path": "tests/test_delivery_index.py",
@@ -779,8 +514,8 @@
     },
     {
       "relative_path": "tests/test_simplified_closure.py",
-      "sha256": "a9d9dca955d6efc1cc3ca4e1e015450a962dbb7879c85ebbd6b112d2a593d371",
-      "size": 40080
+      "sha256": "ad5dfd574ce011835219b94ddbd81bd1296bab140134318a86b45fb16274ce97",
+      "size": 40004
     },
     {
       "relative_path": "tests/test_source_intake.py",
@@ -819,8 +554,8 @@
     },
     {
       "relative_path": "tests/test_workflow.py",
-      "sha256": "6e87b8e534eff4979c0ad0328c2056d2d0e87e7c72d7dba0c88fbd445c7be22a",
-      "size": 29299
+      "sha256": "f1712c8edd1a9d5070be25dd14829af075b1f94ba5c63b58300f59e9b472d856",
+      "size": 29195
     }
   ]
 }

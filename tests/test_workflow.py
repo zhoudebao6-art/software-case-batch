@@ -311,6 +311,8 @@ class WorkflowTests(unittest.TestCase):
             self.assertFalse(fixture.source.exists())
         finally:fixture.tearDown()
     def test_full_source_index_and_effective_requirements_are_present(self):
+        if (Path(__file__).resolve().parents[1]/'public-source-policy.json').is_file():
+            self.skipTest('Private normative documentation is verified on the installed host, not shipped in public source')
         result=validate_audit();self.assertEqual(result['sources'],26);self.assertGreater(result['clauses'],900)
         self.assertGreater(len(DECISIONS),70)
 

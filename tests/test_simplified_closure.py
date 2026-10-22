@@ -218,9 +218,8 @@ class SimplifiedClosureTests(unittest.TestCase):
         self.proof['authorization']['user_message_sha256']=hashlib.sha256(message.encode()).hexdigest();self.save()
         self.assertEqual(self.close()['status'],'delivered')
 
-    def test_whole_actual_readme_new_chat_command_authorizes_general_small_fix_policy(self):
-        readme=Path(__file__).resolve().parents[1]/'README.md'
-        command=next(line for line in readme.read_text(encoding='utf8').splitlines() if line.startswith('使用 $software-case-batch-pro，批次材料目录：'))
+    def test_general_user_small_fix_authorization_without_public_usage_guide(self):
+        command='以后所有案件的小问题在首次审核后由原修复者最小修补、自检受影响项后直接打包，不再另排整案复验。'
         self.assertTrue(closure.authorized_instruction(command,self.f.work,'case_01'))
 
     def test_output_path_does_not_override_other_case_scope_or_review_denial(self):

@@ -1,6 +1,0 @@
-interface:
-  display_name: "软通完整交付·原名称"
-  short_description: "原名称调用新版完整流程：中文业务系统、重要CSV、源码和一分多钟操作视频"
-  default_prompt: "使用 $software-case-batch，先读取已安装pro的新版完整SKILL，按我明确授权的案件清单完成制作和独立验收。"
-policy:
-  allow_implicit_invocation: false
