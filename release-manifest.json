@@ -8,44 +8,19 @@
       "size": 51
     },
     {
+      "relative_path": ".github/workflows/tests.yml",
+      "sha256": "e2f889a6fe9b9963857793294b6a52897eb513eb0bf44f5fb22e15a9f9ea918c",
+      "size": 3652
+    },
+    {
       "relative_path": ".gitignore",
       "sha256": "6cd4ec292c6861643bf5937fa4d2949dee8dcedce40661acc17ba7c960de5443",
       "size": 89
     },
     {
-      "relative_path": "local.config.example.json",
-      "sha256": "9a2c5a3923362c24d3100db6812b7034a7f49906580750264e0e6d88edbc9020",
-      "size": 668
-    },
-    {
-      "relative_path": "proflow.ps1",
-      "sha256": "791f164393ce834bef5501902f62fcdbf1bbb9da82efab17f789814af2a754c7",
-      "size": 186
-    },
-    {
-      "relative_path": "public-source-policy.json",
-      "sha256": "7818fe82b3c56b57829bcf5b8dfddbbdf37aacf36c10824d1948d246108e6f92",
-      "size": 328
-    },
-    {
-      "relative_path": "README.md",
-      "sha256": "6cf7060a460a4ec53674b51f018676f32419ce8fd817d7e63a4b18807d16eb46",
-      "size": 193
-    },
-    {
-      "relative_path": "requirements-ci.txt",
-      "sha256": "468e36419979a44230328ae8cc745dc86321bf4eb2716613db582a7ab70e2909",
-      "size": 198
-    },
-    {
-      "relative_path": ".github/workflows/tests.yml",
-      "sha256": "7932e7e6fc101eb6461826523a4ade45f42f8c934a0c7b699a37875003ab8a67",
-      "size": 3380
-    },
-    {
       "relative_path": "agents/openai.yaml",
-      "sha256": "5daf2c920e449adc206674afbefdb23ef1e22e420e3c4dd46c30af882cbde9cd",
-      "size": 507
+      "sha256": "d1d2e27fb2dcb8bcec2f3830f125c65c2cc28442a78bc19290bb8cfcdb9886b7",
+      "size": 315
     },
     {
       "relative_path": "assets/figure-baselines/body-sweep.png",
@@ -146,6 +121,31 @@
       "relative_path": "assets/web/request_scope.mjs",
       "sha256": "af185b215aab1a3515ec482a0b4947b76620444094aac2027ba36df545a80c1b",
       "size": 1595
+    },
+    {
+      "relative_path": "local.config.example.json",
+      "sha256": "9a2c5a3923362c24d3100db6812b7034a7f49906580750264e0e6d88edbc9020",
+      "size": 668
+    },
+    {
+      "relative_path": "proflow.ps1",
+      "sha256": "791f164393ce834bef5501902f62fcdbf1bbb9da82efab17f789814af2a754c7",
+      "size": 186
+    },
+    {
+      "relative_path": "public-source-policy.json",
+      "sha256": "7818fe82b3c56b57829bcf5b8dfddbbdf37aacf36c10824d1948d246108e6f92",
+      "size": 328
+    },
+    {
+      "relative_path": "README.md",
+      "sha256": "6cf7060a460a4ec53674b51f018676f32419ce8fd817d7e63a4b18807d16eb46",
+      "size": 193
+    },
+    {
+      "relative_path": "requirements-ci.txt",
+      "sha256": "468e36419979a44230328ae8cc745dc86321bf4eb2716613db582a7ab70e2909",
+      "size": 198
     },
     {
       "relative_path": "scripts/_video_evidence_core.py",
@@ -356,6 +356,11 @@
       "relative_path": "tests/fixture_server.py",
       "sha256": "07f1e6013050d3af507d79b6441c13847964750e64895a4116da42330f674403",
       "size": 4573
+    },
+    {
+      "relative_path": "tests/fixtures/original-snapshot-baseline.json",
+      "sha256": "9e4d36a41fa9a551b4b1f8baf430559d5ecd75ac40af41e550b3af84affa2e7b",
+      "size": 3511
     },
     {
       "relative_path": "tests/live_smoke.py",
@@ -736,11 +741,6 @@
       "relative_path": "tests/test_workflow.py",
       "sha256": "6e87b8e534eff4979c0ad0328c2056d2d0e87e7c72d7dba0c88fbd445c7be22a",
       "size": 29299
-    },
-    {
-      "relative_path": "tests/fixtures/original-snapshot-baseline.json",
-      "sha256": "9e4d36a41fa9a551b4b1f8baf430559d5ecd75ac40af41e550b3af84affa2e7b",
-      "size": 3511
     }
   ],
   "source_only": true

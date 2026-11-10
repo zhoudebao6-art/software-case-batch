@@ -61,11 +61,15 @@ jobs:
           $TaskSettings | ConvertTo-Json | Set-Content -LiteralPath '.\local.config.json' -Encoding utf8
       - name: Python public contracts including Windows Job lifetime
         run: |
-          . '.\Enter-Environment.ps1'
+          $env:SCB_PRO_PYTHON = (Get-Command python.exe).Source
+          $env:SCB_PRO_NODE = (Get-Command node.exe).Source
+          $env:SCB_PRO_OUTPUT_ROOT = (Join-Path $env:GITHUB_WORKSPACE 'ci-output')
+          New-Item -ItemType Directory -Path $env:SCB_PRO_OUTPUT_ROOT -Force | Out-Null
           & $env:SCB_PRO_PYTHON -X utf8 -m unittest discover -s tests -p 'test_*.py' -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Node recording contracts
         run: |
-          . '.\Enter-Environment.ps1'
+          $env:SCB_PRO_NODE = (Get-Command node.exe).Source
           & $env:SCB_PRO_NODE --test '.\tests\test_record.cjs' '.\tests\test_request_scope.cjs' '.\tests\test_business_motion.cjs'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
