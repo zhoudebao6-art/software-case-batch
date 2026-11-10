@@ -21,6 +21,8 @@ TEXT_SUFFIXES = {'.py','.js','.cjs','.mjs','.jsx','.ts','.tsx','.html','.htm','.
 
 LEGACY_DELIVERY_LAYOUT = 'legacy-v1'
 DEFAULT_DELIVERY_LAYOUT = 'research-materials-v3'
+SYSTEM_CODE_LAYOUT = 'system-code-v4'
+SOURCE_DIRECTORY_LAYOUT = 'system-code-directory-v5'
 DELIVERY_REQUIREMENTS_VERSION = 'rich-delivery-v1'
 
 
@@ -38,6 +40,8 @@ _DELIVERY_LAYOUTS = {
     LEGACY_DELIVERY_LAYOUT: ('模拟系统', '项目源码.zip', '演示视频.mp4'),
     'system-materials-v2': ('系统材料', '源代码.zip', '操作视频.mp4'),
     DEFAULT_DELIVERY_LAYOUT: (None, '源代码.zip', '操作视频.mp4'),
+    SYSTEM_CODE_LAYOUT: ('系统代码', '源代码.zip', '操作视频.mp4'),
+    SOURCE_DIRECTORY_LAYOUT: ('系统代码', '主要代码', '操作视频.mp4'),
 }
 
 
@@ -65,8 +69,11 @@ def delivery_paths(run, output=None):
     root = no_links(output) if output is not None else original
     relative = {'system': system, 'source_zip': system+'/'+source,
                 'video': system+'/'+video, 'data_dir': system+'/数据'}
-    if version == DEFAULT_DELIVERY_LAYOUT:
+    if version in {DEFAULT_DELIVERY_LAYOUT, SYSTEM_CODE_LAYOUT, SOURCE_DIRECTORY_LAYOUT}:
         relative['screenshot'] = system+'/界面截图.png'
+    from source_delivery import directory_delivery
+    if directory_delivery(run) != (version == SOURCE_DIRECTORY_LAYOUT):
+        raise ValueError('Source policy differs from frozen delivery layout')
     if 'word_name' in run:
         name = run['word_name']
         if (not isinstance(name, str) or not name or name in {'.', '..'}

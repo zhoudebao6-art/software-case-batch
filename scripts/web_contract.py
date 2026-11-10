@@ -11,15 +11,16 @@ from common import digest, inside, no_links, read_json, delivery_requirements
 
 WEB_EXPERIENCE_POLICY = 'case-workflow-v1'
 WEB_MODULE_POLICY = 'ten-modules-v1'
+from case_representation import POLICY as SOURCE_FORM_POLICY, validate_representation
 
 
 def web_module_policy(run):
     """An absent field keeps the old module contract; unknown versions fail closed."""
     if 'web_module_policy' not in run:
         return None
-    if run['web_module_policy'] != WEB_MODULE_POLICY:
+    if run['web_module_policy'] not in (WEB_MODULE_POLICY,SOURCE_FORM_POLICY):
         raise ValueError('Unknown Web module policy')
-    return WEB_MODULE_POLICY
+    return run['web_module_policy']
 
 
 def _text(value):
@@ -70,22 +71,31 @@ def _assertion(record, bound, label):
         bound(path)
 
 
-def native_delivery_png(path):
+def native_delivery_png(path, *, hasher=None, allow_portrait=False):
+    file_digest = hasher or digest
     """Check native-size PNG bytes; the existing visual review judges readability."""
     from PIL import Image
     _image_identity(path)
     with Image.open(path) as image:
-        if image.format != 'PNG' or image.width < 1920 or image.height < 1080:
-            raise ValueError('Delivery screenshot must be an actual PNG at least 1920x1080')
-        return {'width': image.width, 'height': image.height, 'sha256': digest(path)}
+        landscape=image.width>=1920 and image.height>=1080
+        portrait=allow_portrait and image.width>=1080 and image.height>=1920
+        if image.format != 'PNG' or not (landscape or portrait):
+            raise ValueError('Delivery screenshot must be an actual PNG at least 1920x1080'+
+                             (' or native portrait 1080x1920' if allow_portrait else ''))
+        return {'width': image.width, 'height': image.height, 'sha256': file_digest(path)}
 
 
-def validate_web_experience(workspace, run, spec, *, check_delivery=True):
+def validate_web_experience(workspace, run, spec, *, check_delivery=True, hasher=None):
     """Validate the frozen opt-in policy using the existing browser dependency map.
 
     Missing policy preserves historical runs. No extra browser
     run, model call, human approval, or semantic certification is introduced.
     """
+    file_digest = hasher or digest
+    from observed_outcomes import outcome_policy
+    outcomes = outcome_policy(run)
+    if outcomes and not run.get('web_experience_policy'):
+        raise ValueError('Web outcome policy requires its existing Web evidence contract')
     rich = delivery_requirements(run)
     module_policy = web_module_policy(run)
     if module_policy and not rich:
@@ -101,7 +111,7 @@ def validate_web_experience(workspace, run, spec, *, check_delivery=True):
             not _text(run.get('run_id')) or not _text(run.get('source_docx_sha256')) or
             spec.get('source_docx_sha256') != run['source_docx_sha256']):
         raise ValueError('Web evidence belongs to a different run or source')
-    if digest(no_links(run['source_docx'])) != run['source_docx_sha256']:
+    if file_digest(no_links(run['source_docx'])) != run['source_docx_sha256']:
         raise ValueError('Web original Word source changed')
     checks = spec.get('checks', {})
     browser = checks.get('browser', {}) if isinstance(checks, dict) else {}
@@ -124,7 +134,7 @@ def validate_web_experience(workspace, run, spec, *, check_delivery=True):
         path = inside(workspace, relative)
         key = path.relative_to(workspace).as_posix()
         record = canonical.get(key.casefold())
-        if record is None or record[0] != key or digest(path) != record[1]:
+        if record is None or record[0] != key or file_digest(path) != record[1]:
             raise ValueError('Web evidence missing from browser inputs or changed: ' + key)
         if not path.stat().st_size:
             raise ValueError('Empty Web evidence: ' + key)
@@ -148,6 +158,9 @@ def validate_web_experience(workspace, run, spec, *, check_delivery=True):
             report.get('source_docx_sha256') != run['source_docx_sha256']):
         raise ValueError('Web browser report belongs to a different run or source')
     assertions = _records(report.get('assertions'), 'assertion')
+    representation = (validate_representation(web,report,run,mappings,bound,
+                      spec.get('implementation_hashes',{}),assertions,hasher=file_digest)
+                      if module_policy==SOURCE_FORM_POLICY else None)
     used_assertions = set()
     routes = set()
     for page_id, page in pages.items():
@@ -181,7 +194,7 @@ def validate_web_experience(workspace, run, spec, *, check_delivery=True):
                 raise ValueError('Web source paragraph locator must reference a bound mapping')
         for relative in _texts(workflow.get('implementation_paths'), 'workflow implementation paths'):
             path = bound(relative)
-            if not isinstance(implementation, dict) or implementation.get(relative) != digest(path):
+            if not isinstance(implementation, dict) or implementation.get(relative) != file_digest(path):
                 raise ValueError('Web workflow implementation is absent from current source snapshot')
         actions = _texts(workflow.get('actions'), 'workflow actions')
         assertion_ids = _texts(workflow.get('assertion_ids'), 'workflow assertion IDs')
@@ -206,7 +219,7 @@ def validate_web_experience(workspace, run, spec, *, check_delivery=True):
     delivery_screen = None
     if rich:
         modules = _records(web.get('modules'), 'business module')
-        minimum_modules = 10 if module_policy else 6
+        minimum_modules = representation['minimum_modules'] if representation else (10 if module_policy else 6)
         if len(modules) < minimum_modules:
             raise ValueError('Web requires at least '+str(minimum_modules)+' independent business modules; no upper limit')
         purposes, locations, module_assertions = set(), set(), set()
@@ -251,7 +264,11 @@ def validate_web_experience(workspace, run, spec, *, check_delivery=True):
         if (page_id not in pages or screen.get('path') != pages[page_id]['screenshot']
                 or screen.get('resized') is not False):
             raise ValueError('Choose one actual native core business page screenshot; resized copies are forbidden')
-        delivery_screen = native_delivery_png(bound(screen['path']))
+        delivery_screen = native_delivery_png(bound(screen['path']),hasher=file_digest,
+            allow_portrait=bool(representation and
+                (representation['form'] in {'mobile_web','mobile_app','mini_program','game_mini_program'} or
+                 (representation['form']=='game_native' and
+                  representation['runtime_validation']['runtime'] in {'android','ios'}))))
         if (type(screen.get('native_width')) is not int or type(screen.get('native_height')) is not int
                 or screen['native_width'] != delivery_screen['width'] or screen['native_height'] != delivery_screen['height']):
             raise ValueError('Delivery screenshot dimensions must match the actual native browser capture')
@@ -259,24 +276,29 @@ def validate_web_experience(workspace, run, spec, *, check_delivery=True):
         if check_delivery and 'output' in run:
             from common import delivery_paths
             target = delivery_paths(run).get('screenshot')
-            if target and target.exists() and digest(target) != delivery_screen['sha256']:
+            if target and target.exists() and file_digest(target) != delivery_screen['sha256']:
                 raise ValueError('Delivered screenshot differs from bound actual browser PNG')
+    from observed_outcomes import validate_observed_outcomes
+    observed = validate_observed_outcomes(run, report, assertions)
     if 'vision' in system_types:
-        _validate_vision(report.get('vision'), bound, implementation, run, workflows)
+        _validate_vision(report.get('vision'), bound, implementation, run, workflows,hasher=file_digest)
     return {'required': True, 'status': 'ready', 'policy': WEB_EXPERIENCE_POLICY,
             'run_id': run['run_id'], 'source_docx_sha256': run['source_docx_sha256'],
+            **({'representation': representation} if representation else {}),
             'system_types': system_types, 'page_ids': list(pages), 'workflow_ids': list(workflows),
             **({'module_ids': list(modules), 'delivery_requirements_version': rich} if rich else {}),
-            **({'web_module_policy': module_policy, 'minimum_business_modules': 10,
+            **({'web_module_policy': module_policy, 'minimum_business_modules': minimum_modules,
                 'module_entry_assertions': {key: module['entry_assertion_id'] for key,module in modules.items()},
                 'module_screenshots': {key: module['screenshot'] for key,module in modules.items()}}
                if module_policy else {}),
             **({'delivery_screenshot': delivery_screen} if delivery_screen else {}),
+            **observed,
             'evidence_paths': sorted(evidence), 'evidence_hashes': evidence,
             'limitation': 'Structure and current bytes only; existing independent review must compare original paragraphs, source code, actual screenshots and execution logs. Image decoding does not authenticate real-world content, licensing, task completeness or inference correctness.'}
 
 
-def _validate_vision(vision, bound, implementation, run, workflows):
+def _validate_vision(vision, bound, implementation, run, workflows, *, hasher=None):
+    file_digest = hasher or digest
     if (not isinstance(vision, dict) or not _text(vision.get('task_type')) or
             vision.get('workflow_id') not in workflows):
         raise ValueError('Vision requires a source-specific task type and actual execution evidence')
@@ -284,7 +306,7 @@ def _validate_vision(vision, bound, implementation, run, workflows):
     identities, requests = set(), set()
     for sample_id, sample in samples.items():
         image = bound(sample.get('input_path'))
-        if sample.get('input_kind') != 'real_image' or sample.get('input_sha256') != digest(image):
+        if sample.get('input_kind') != 'real_image' or sample.get('input_sha256') != file_digest(image):
             raise ValueError('Vision requires declared real image inputs with current hashes')
         identities.add(_image_identity(image))
         provenance = sample.get('provenance', {})
@@ -301,7 +323,7 @@ def _validate_vision(vision, bound, implementation, run, workflows):
             raise ValueError('Vision requires distinct actual processing request identities')
         requests.add(backend['request_id'])
         entry = bound(backend['entry_path'])
-        if implementation.get(backend['entry_path']) != digest(entry):
+        if implementation.get(backend['entry_path']) != file_digest(entry):
             raise ValueError('Vision backend entry is not in current implementation')
         output = sample.get('output', {})
         if (not isinstance(output, dict) or not _text(output.get('summary')) or
@@ -309,7 +331,7 @@ def _validate_vision(vision, bound, implementation, run, workflows):
                 output.get('request_id') != backend['request_id']):
             raise ValueError('Vision input/output identity and readable result required')
         actual_output = bound(output.get('path'))
-        if output.get('sha256') != digest(actual_output):
+        if output.get('sha256') != file_digest(actual_output):
             raise ValueError('Vision output changed')
         receipt = read_json(actual_output)
         no_target = (isinstance(receipt, dict) and receipt.get('status') == 'no_target'

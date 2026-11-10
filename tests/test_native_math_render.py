@@ -8,6 +8,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import os
 import unittest
 from unittest.mock import Mock, patch
 import zipfile
@@ -38,7 +39,7 @@ def row(pid, parent, ticks, profile, ports=(), name='soffice.bin'):
 
 class NativeMathRenderTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix='native-math-unit-', dir=r'D:\codex+\temp')
+        self.temp = tempfile.TemporaryDirectory(prefix='native-math-unit-', dir=os.environ['TEMP'])
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.source = docx(self.root / 'source.docx')

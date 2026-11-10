@@ -17,11 +17,16 @@ from audit_inheritance import validate as validate_audit
 ROOT=Path(__file__).resolve().parents[1]
 
 class DefaultPolicyTests(unittest.TestCase):
-    def test_d_root_is_exact_in_code_local_and_example_config(self):
+    def test_legacy_fallback_is_preserved_and_new_example_selects_E_explicitly(self):
         self.assertEqual(proflow.DEFAULT_OUTPUT_ROOT,r'D:\研发图表')
-        for name in ('local.config.json','local.config.example.json'):
-            self.assertEqual(read_json(ROOT/name)['output_root'],r'D:\研发图表')
-        with patch.dict(os.environ,{},clear=True):self.assertEqual(str(proflow.default_output_root()),r'D:\研发图表')
+        example=read_json(ROOT/'local.config.example.json')
+        self.assertEqual(example['output_root'],r'E:\研发图表')
+        self.assertEqual(example['cache_root'],r'E:\codex+')
+        with tempfile.TemporaryDirectory() as tmp, patch.object(proflow,'ROOT',Path(tmp)), patch.dict(os.environ,{},clear=True):
+            self.assertEqual(str(proflow.default_output_root()),r'D:\研发图表')
+            for explicit in (r'D:\研发图表',r'E:\研发图表'):
+                write_json(Path(tmp)/'local.config.json',{'output_root':explicit})
+                self.assertEqual(str(proflow.default_output_root()),explicit)
     def test_explicit_configured_root_is_honored_and_invalid_root_does_not_fallback(self):
         with tempfile.TemporaryDirectory() as tmp:
             target=Path(tmp)/'explicit-user-output'
@@ -62,22 +67,26 @@ class DefaultPolicyTests(unittest.TestCase):
                          '先保有Popen、PID、创建时间和本案entry归属', 'finally中失败也精确清退',
                          '启动/停止使用同一真实entry', '建设内实际跑启动→停止→端口释放'):
                 self.assertIn(rule,prompt)
-            for rule in ('以后每个授权案件','列表、详情、统计、摘要和日志','筛选','分页','迟到异步请求','不硬编码','用户明确指定其他目录时优先遵循','缓存仍D:'):
-                if rule=='缓存仍D:':self.assertIn(r'工具缓存仍D:\codex+',prompt)
-                else:self.assertIn(rule,prompt)
-    def test_environment_sets_only_process_roots_and_keeps_d_temp(self):
+            for rule in ('以后每个授权案件','列表、详情、统计、摘要和日志','筛选','分页','迟到异步请求','不硬编码','用户明确指定其他目录时优先遵循'):
+                self.assertIn(rule,prompt)
+    def test_environment_preserves_explicit_legacy_output_and_only_changes_child_process(self):
         if os.name!='nt':self.skipTest('Windows environment loader')
         shell=shutil.which('pwsh.exe') or shutil.which('pwsh')
-        if not shell:raise ValueError('The configured PowerShell 7 launcher must be available; do not bypass Windows PowerShell 5.1 policy')
-        script="[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); $env:SCB_OUTPUT_ROOT='D:\\old-root'; . '"+str(ROOT/'Enter-Environment.ps1')+"'; [pscustomobject]@{pro=$env:SCB_PRO_OUTPUT_ROOT;legacy=$env:SCB_OUTPUT_ROOT;temp=$env:TEMP;tmp=$env:TMP;cache=$env:PIP_CACHE_DIR} | ConvertTo-Json -Compress"
-        result=subprocess.run([shell,'-NoProfile','-NonInteractive','-Command',script],capture_output=True,text=True,encoding='utf-8',check=True)
-        if result.stderr.strip():self.fail('Environment loader reported an execution error: '+result.stderr)
-        observed=json.loads(result.stdout.lstrip('\ufeff'))
-        self.assertEqual(observed['pro'],r'D:\研发图表');self.assertEqual(observed['legacy'],r'D:\研发图表')
-        self.assertEqual(observed['temp'],r'D:\codex+\temp');self.assertEqual(observed['tmp'],observed['temp']);self.assertEqual(observed['cache'],r'D:\codex+\cache\pip')
+        if not shell:raise ValueError('The configured PowerShell 7 launcher must be available')
+        parent_temp=os.environ.get('TEMP')
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);entry=root/'Enter-Environment.ps1';shutil.copy2(ROOT/'Enter-Environment.ps1',entry)
+            settings={'output_root':r'D:\研发图表','cache_root':str(root/'cache'),'python':'retained-python','node':'retained-node','playwright_module':'retained-playwright','ffmpeg':'retained-ffmpeg','ffprobe':'retained-ffprobe'}
+            config=root/'local.config.json';write_json(config,settings);before=config.read_bytes()
+            script="[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); . '"+str(entry).replace("'","''")+"'; [pscustomobject]@{pro=$env:SCB_PRO_OUTPUT_ROOT;legacy=$env:SCB_OUTPUT_ROOT;temp=$env:TEMP;tmp=$env:TMP;cache=$env:PIP_CACHE_DIR} | ConvertTo-Json -Compress"
+            env=os.environ.copy();env.pop('SCB_PRO_CACHE_ROOT',None)
+            result=subprocess.run([shell,'-NoProfile','-NonInteractive','-Command',script],env=env,capture_output=True,text=True,encoding='utf-8',check=True)
+            if result.stderr.strip():self.fail(result.stderr)
+            observed=json.loads(result.stdout.lstrip('\ufeff'))
+            self.assertEqual(observed['pro'],settings['output_root']);self.assertEqual(observed['legacy'],observed['pro'])
+            self.assertEqual(observed['temp'],str(root/'cache/temp'));self.assertEqual(observed['tmp'],observed['temp']);self.assertEqual(observed['cache'],str(root/'cache/cache/pip'))
+            self.assertEqual(config.read_bytes(),before);self.assertEqual(os.environ.get('TEMP'),parent_temp)
     def test_original_snapshot_and_r1_record_stay_unchanged(self):
-        if (Path(__file__).resolve().parents[1]/'public-source-policy.json').is_file():
-            self.skipTest('Private normative documentation is verified on the installed host, not shipped in public source')
         result=validate_audit();self.assertEqual(result['sources'],26)
         prior=read_json(ROOT/'tests/fixtures/original-snapshot-baseline.json')
         migration=read_json(ROOT/'references/original-discovery-mapping.json')

@@ -1,7 +1,9 @@
 {
-  "output_root": "D:\\研发图表",
+  "output_root": "E:\\研发图表",
+  "cache_root": "E:\\codex+",
+  "playwright_browsers_path": "D:\\codex+\\cache\\ms-playwright",
   "archive_root": "F:\\研发图表",
-  "archive_state_root": "D:\\自动化2.0\\archive-state",
+  "archive_state_root": "E:\\自动化2.0\\archive-state",
   "python": "D:\\codex+\\dependencies\\software-case-batch\\.venv\\Scripts\\python.exe",
   "node": "D:\\codex+\\cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe",
   "playwright_module": "D:\\codex+\\cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\node_modules\\playwright",

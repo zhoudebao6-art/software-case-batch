@@ -29,6 +29,8 @@ LAYOUTS = {
     'research-materials-v3': ('研发证明材料-设备业务管理', '源代码.zip', '操作视频.mp4'),
 }
 NEW = 'research-materials-v3'
+LATEST = 'system-code-v4'
+LAYOUTS[LATEST] = ('系统代码', '源代码.zip', '操作视频.mp4')
 HISTORICAL = None  # Existing run.json without a delivery_layout_version field.
 
 
@@ -50,7 +52,7 @@ class DeliveryFixture(unittest.TestCase):
 
     def expected(self, output, version=HISTORICAL):
         system, source, video = LAYOUTS[version or 'legacy-v1']
-        return {**({'screenshot': output / system / '界面截图.png'} if version == NEW else {}),
+        return {**({'screenshot': output / system / '界面截图.png'} if version in {NEW,LATEST} else {}),
                 'word': output / self.source.name, 'system': output / system,
                 'source_zip': output / system / source,
                 'video': output / system / video, 'data_dir': output / system / '数据'}
@@ -73,9 +75,11 @@ class DeliveryFixture(unittest.TestCase):
         with zipfile.ZipFile(paths['source_zip'], 'w') as package:
             package.writestr('app.py', 'print("运行")\n')
         paths['video'].write_bytes(b'fixture-video-not-real-media')
-        if version == NEW:
+        if version in {NEW,LATEST}:
             from PIL import Image
             Image.new('RGB', (1920,1080), 'gray').save(paths['screenshot'])
+            if version==LATEST:
+                for name in ('设计图.png','时序图.png'):Image.new('RGB',(900,400),'white').save(paths['system']/name)
         (paths['data_dir'] / '明细.csv').write_text('编号,值\n001,2\n', encoding='utf-8-sig')
         return paths
 
@@ -95,7 +99,7 @@ class DeliveryFixture(unittest.TestCase):
 
 class FrozenResolverTests(DeliveryFixture):
     def test_declared_layout_and_historical_missing_field_have_exact_paths(self):
-        for version in (HISTORICAL, 'legacy-v1', 'system-materials-v2', NEW):
+        for version in (HISTORICAL, 'legacy-v1', 'system-materials-v2', NEW, LATEST):
             with self.subTest(version=version):
                 output = self.root / (version or 'unmarked')
                 run = self.run_record(self.root / 'work', output, version)
@@ -107,7 +111,7 @@ class FrozenResolverTests(DeliveryFixture):
                 self.assertEqual(run, before)
 
     def test_read_location_override_resolves_current_tree_without_rewriting_original_aliases(self):
-        for version in (HISTORICAL, NEW):
+        for version in (HISTORICAL, NEW, LATEST):
             with self.subTest(version=version):
                 original = self.root / 'daily'
                 target = self.root / 'weekly'
@@ -126,7 +130,7 @@ class FrozenResolverTests(DeliveryFixture):
                     delivery_paths(run)
 
     def test_every_stored_path_alias_is_validated_even_during_relocation(self):
-        for version in (HISTORICAL, NEW):
+        for version in (HISTORICAL, NEW, LATEST):
             output = self.root / 'original'
             for key in ('word', 'system', 'source_zip', 'video', 'data_dir'):
                 for value in (str(self.root / 'wrong-alias'), 7):
@@ -139,7 +143,7 @@ class FrozenResolverTests(DeliveryFixture):
 
 class ExactLayoutTests(DeliveryFixture):
     def test_complete_layout_accepts_each_frozen_contract(self):
-        for version in (HISTORICAL, NEW):
+        for version in (HISTORICAL, NEW, LATEST):
             with self.subTest(version=version):
                 output = self.root / (version or 'legacy')
                 self.fill_delivery(output, version)
@@ -147,7 +151,7 @@ class ExactLayoutTests(DeliveryFixture):
                                  output / self.source.name)
 
     def test_unexpected_files_and_empty_directories_are_rejected_at_both_levels(self):
-        for version in (HISTORICAL, NEW):
+        for version in (HISTORICAL, NEW, LATEST):
             for level in ('root', 'system'):
                 for directory in (False, True):
                     with self.subTest(version=version, level=level, directory=directory):
@@ -172,12 +176,13 @@ class PrepareLayoutTests(DeliveryFixture):
         work = self.workspace('new-work')
         output = self.root / 'new-delivery'
         run = proflow.prepare(work, output, '设备业务管理', self.source)
-        self.assertEqual(run['delivery_layout_version'], NEW)
+        self.assertEqual(run['delivery_layout_version'], 'system-code-directory-v5')
+        expected=self.expected(output,LATEST);expected['source_zip']=output/'系统代码/主要代码'
         for key in ('word', 'source_zip', 'video', 'data_dir'):
-            self.assertEqual(run[key], str(self.expected(output, NEW)[key]))
+            self.assertEqual(run[key], str(expected[key]))
         prompt = (work / '.product-v2/深化命令词.txt').read_text(encoding='utf-8')
         for key in ('source_zip', 'video', 'data_dir'):
-            self.assertIn(str(self.expected(output, NEW)[key]), prompt)
+            self.assertIn(str(expected[key]), prompt)
         self.assertNotIn('模拟系统', prompt)
 
     def test_existing_unmarked_prepare_is_idempotent_without_migration_or_prompt_rewrite(self):
@@ -185,6 +190,7 @@ class PrepareLayoutTests(DeliveryFixture):
         output = self.root / 'historical-delivery'
         run = proflow.prepare(work, output, '设备业务管理', self.source)
         run.pop('delivery_layout_version')
+        run.pop('source_delivery_policy', None)
         run.pop('delivery_requirements_version', None)
         run.pop('screenshot', None)
         run.update({key: str(value) for key, value in self.expected(output).items() if key != 'system'})
@@ -198,7 +204,7 @@ class PrepareLayoutTests(DeliveryFixture):
         self.assertNotIn('delivery_layout_version', read_json(work / '.product-v2/run.json'))
 
     def test_document_and_package_revisions_inherit_parent_layout_without_parent_writes(self):
-        for version in (HISTORICAL, NEW):
+        for version in (HISTORICAL, NEW, LATEST):
             base, base_output, _, receipt = self.finalized_parent('parent-' + str(version), version)
             frozen = file_map(base), file_map(base_output), digest(receipt)
             for scope in ('document', 'package'):
@@ -216,7 +222,7 @@ class PrepareLayoutTests(DeliveryFixture):
             self.assertEqual((file_map(base), file_map(base_output), digest(receipt)), frozen)
 
     def test_adopt_draft_supports_both_layouts_and_only_package_scope_may_change_zip(self):
-        for version in (HISTORICAL, NEW):
+        for version in (HISTORICAL, NEW, LATEST):
             base, base_output, _, _ = self.finalized_parent('adopt-parent-' + str(version), version)
             for scope in ('document', 'package'):
                 with self.subTest(version=version, scope=scope):
@@ -237,7 +243,7 @@ class PrepareLayoutTests(DeliveryFixture):
                     self.assertEqual(file_map(output), before)
 
     def test_adopt_draft_rejects_changed_video_and_csv_in_either_scope(self):
-        for version in (HISTORICAL, NEW):
+        for version in (HISTORICAL, NEW, LATEST):
             base, base_output, _, _ = self.finalized_parent('drift-parent-' + str(version), version)
             for scope in ('document', 'package'):
                 for artifact in ('video', 'csv'):
@@ -270,7 +276,7 @@ class PublicationLayoutTests(DeliveryFixture):
         return work, candidate, final
 
     def test_publish_updates_aliases_preserves_layout_and_never_rewrites_acceptance(self):
-        for version in (HISTORICAL, NEW):
+        for version in (HISTORICAL, NEW, LATEST):
             with self.subTest(version=version):
                 work, candidate, final = self.publish_fixture('publish-' + str(version), version)
                 destination = self.root / ('published-' + str(version))
@@ -295,7 +301,7 @@ class PublicationLayoutTests(DeliveryFixture):
                 self.assertEqual(final.read_bytes(), frozen_receipt)
 
     def test_publish_relocates_accepted_optional_system_alias_for_each_layout(self):
-        for version in (HISTORICAL, 'legacy-v1', 'system-materials-v2', NEW):
+        for version in (HISTORICAL, 'legacy-v1', 'system-materials-v2', NEW, LATEST):
             with self.subTest(version=version):
                 work,candidate,final=self.publish_fixture('system-alias-'+str(version),version)
                 run_path=work/'.product-v2/run.json';run=read_json(run_path)
@@ -319,7 +325,7 @@ class PublicationLayoutTests(DeliveryFixture):
                 self.assertEqual(run_path.read_bytes(),frozen_run)
 
     def test_optional_system_alias_recovers_before_and_after_run_update(self):
-        for version in (HISTORICAL, 'legacy-v1', 'system-materials-v2', NEW):
+        for version in (HISTORICAL, 'legacy-v1', 'system-materials-v2', NEW, LATEST):
             for boundary in ('run.json','publish-receipt.json'):
                 with self.subTest(version=version,boundary=boundary):
                     name='system-recovery-'+str(version)+'-'+boundary
@@ -385,7 +391,7 @@ class PublicationLayoutTests(DeliveryFixture):
                 self.assertEqual({path:path.read_bytes() for path in frozen_parent},frozen_parent)
 
     def test_publish_resumes_after_directory_rename_with_same_layout_and_frozen_receipt(self):
-        for version in (HISTORICAL, NEW):
+        for version in (HISTORICAL, NEW, LATEST):
             with self.subTest(version=version):
                 work, candidate, final = self.publish_fixture('recover-' + str(version), version)
                 destination = self.root / ('recovered-' + str(version))
@@ -446,7 +452,7 @@ class PublicationLayoutTests(DeliveryFixture):
 
 class ScanLayoutTests(DeliveryFixture):
     def test_original_word_and_exact_legacy_container_are_narrow_exemptions(self):
-        for version in (HISTORICAL, NEW):
+        for version in (HISTORICAL, NEW, LATEST):
             with self.subTest(version=version):
                 output = self.root / (version or 'legacy')
                 self.fill_delivery(output, version)
@@ -456,7 +462,7 @@ class ScanLayoutTests(DeliveryFixture):
                     proflow.scan_delivery(output, '替换正文.docx', run)
 
     def test_a_second_word_with_similar_name_is_not_exempt(self):
-        for version in (HISTORICAL, NEW):
+        for version in (HISTORICAL, NEW, LATEST):
             with self.subTest(version=version):
                 output = self.root / (version or 'legacy')
                 self.fill_delivery(output, version)
@@ -468,7 +474,7 @@ class ScanLayoutTests(DeliveryFixture):
                 self.assertTrue(any(hit['path'] == second.name for hit in result['hits']))
 
     def test_container_exception_never_hides_code_csv_or_nested_restricted_names(self):
-        for version in (HISTORICAL, NEW):
+        for version in (HISTORICAL, NEW, LATEST):
             with self.subTest(version=version):
                 output = self.root / (version or 'legacy')
                 paths = self.fill_delivery(output, version)
@@ -497,7 +503,7 @@ class ScanLayoutTests(DeliveryFixture):
         self.assertTrue(any(hit['path'] == '模拟系统/main.py' for hit in result['hits']))
 
     def test_similar_container_and_restricted_csv_filenames_are_not_exempt(self):
-        for version in (HISTORICAL, NEW):
+        for version in (HISTORICAL, NEW, LATEST):
             with self.subTest(version=version):
                 output = self.root / (version or 'legacy')
                 paths = self.fill_delivery(output, version)
@@ -528,7 +534,7 @@ class WriteAndMediaLayoutTests(DeliveryFixture):
         return work, output, run, package, data
 
     def test_pack_and_clean_refuse_wrong_output_before_creating_any_artifact(self):
-        for version in (HISTORICAL, NEW):
+        for version in (HISTORICAL, NEW, LATEST):
             for name, operation in (('pack', proflow.pack_source), ('clean', proflow.clean_csv)):
                 with self.subTest(version=version, operation=name):
                     work, output, _, package, data = self.writer_fixture(f'wrong-{version}-{name}', version)
@@ -552,7 +558,7 @@ class WriteAndMediaLayoutTests(DeliveryFixture):
                 self.assertEqual(list(output.iterdir()), [])
 
     def test_media_uses_the_frozen_video_path_in_both_layouts(self):
-        for version in (HISTORICAL, NEW):
+        for version in (HISTORICAL, NEW, LATEST):
             with self.subTest(version=version):
                 work, output, _, _, _ = self.writer_fixture('media-' + str(version), version)
                 expected = self.expected(output, version)['video']
@@ -571,7 +577,7 @@ class WriteAndMediaLayoutTests(DeliveryFixture):
                   "const run=JSON.parse(fs.readFileSync(workspace+'/.product-v2/run.json','utf8'));"
                   "process.stdout.write(JSON.stringify(recorder.frozenDeliveryPaths(workspace,run)));")
         env = dict(os.environ, SCB_PRO_PYTHON=sys.executable)
-        for version in (HISTORICAL, NEW):
+        for version in (HISTORICAL, NEW, LATEST):
             with self.subTest(version=version):
                 work, output, _, _, _ = self.writer_fixture('node-' + str(version), version)
                 before = file_map(work), file_map(output)
@@ -611,7 +617,7 @@ class NewLayoutArchiveTests(unittest.TestCase):
         system = self.source / system_name
         (system / '项目源码.zip').rename(system / '源代码.zip')
         (system / '演示视频.mp4').rename(system / '操作视频.mp4')
-        if version == NEW:
+        if version in {NEW,LATEST}:
             from PIL import Image
             Image.new('RGB',(1920,1080),'gray').save(system/'界面截图.png')
         self.files = file_map(self.source)

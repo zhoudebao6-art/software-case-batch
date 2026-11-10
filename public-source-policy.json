@@ -1,5 +1,7 @@
 {
   "schema": 1,
   "distribution": "source-only",
-  "operatingDocumentation": "local-only"
+  "operatingDocumentation": "local-only",
+  "generatedFrom": "product-runtime-cache-20261109",
+  "excluded": ["SKILL.md", "本机完整说明.md", "CI说明.md", "local.config.json", "references/original", "cases", "credentials", "sessions", "databases", "runtime evidence"]
 }

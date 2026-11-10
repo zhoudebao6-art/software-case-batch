@@ -1,0 +1,581 @@
+{
+  "scope": "演示与解析计算样张，非案件数据或实测；仅参考表达，不复制数值",
+  "items": [
+    {
+      "id": 1,
+      "name": "动态响应曲线",
+      "purpose": "读出变化速度、稳定值与阈值到达时刻",
+      "method": "y=1-exp(-t/τ)，τ分别为2.0与4.0；阈值0.9",
+      "provenance": "computed",
+      "palette_name": "靛蓝与琥珀",
+      "colors": [
+        "#354f92",
+        "#c78316",
+        "#607d8b",
+        "#9372a0",
+        "#555f6a"
+      ],
+      "colormap": "YlGnBu",
+      "sheet": "sheet-01.png",
+      "panel": 1
+    },
+    {
+      "id": 2,
+      "name": "阶梯与事件标记",
+      "purpose": "表达设定值切换及离散控制动作",
+      "method": "预定义分段常值：0–3s为20，3–7s为45，7–10s为30，10–12s为50",
+      "provenance": "computed",
+      "palette_name": "紫罗兰与青绿",
+      "colors": [
+        "#76518f",
+        "#287e80",
+        "#c98b52",
+        "#596f9f",
+        "#6b6871"
+      ],
+      "colormap": "PuBuGn",
+      "sheet": "sheet-01.png",
+      "panel": 2
+    },
+    {
+      "id": 3,
+      "name": "散点与拟合残差",
+      "purpose": "表达两个连续量的关系及偏离程度",
+      "method": "固定seed=7生成y=0.72x+8+正态扰动，最小二乘拟合；非实测",
+      "provenance": "illustrative",
+      "palette_name": "赭石与石墨",
+      "colors": [
+        "#af5f32",
+        "#46525e",
+        "#859e60",
+        "#9f7890",
+        "#6b7075"
+      ],
+      "colormap": "YlOrBr",
+      "sheet": "sheet-01.png",
+      "panel": 3
+    },
+    {
+      "id": 4,
+      "name": "小提琴与箱线分布",
+      "purpose": "比较集中位置、离散性与分布形态",
+      "method": "seed=8；三组各160次合成试算：N(42,4)、N(35,6)、N(30,3)；小提琴为核密度",
+      "provenance": "illustrative",
+      "palette_name": "深绿与金色",
+      "colors": [
+        "#28725c",
+        "#b68a27",
+        "#537da0",
+        "#a66c7e",
+        "#65736a"
+      ],
+      "colormap": "YlGn",
+      "sheet": "sheet-01.png",
+      "panel": 4
+    },
+    {
+      "id": 5,
+      "name": "配对哑铃图",
+      "purpose": "直接比较同一对象调整前后的差异",
+      "method": "五个工况的演示前后值，连线只表示同一工况配对",
+      "provenance": "illustrative",
+      "palette_name": "酒红与蓝灰",
+      "colors": [
+        "#9b405a",
+        "#4f7f96",
+        "#be8b56",
+        "#81749d",
+        "#70636a"
+      ],
+      "colormap": "PuRd",
+      "sheet": "sheet-02.png",
+      "panel": 1
+    },
+    {
+      "id": 6,
+      "name": "点估计与区间图",
+      "purpose": "区分平均表现和估计不确定性",
+      "method": "seed=9，各方案40个正态合成试算值；均值及均值±1.96×样本标准差/√40，仅正态近似区间",
+      "provenance": "illustrative",
+      "palette_name": "海军蓝与珊瑚",
+      "colors": [
+        "#284b68",
+        "#c06a51",
+        "#4b948b",
+        "#aa9444",
+        "#6b7480"
+      ],
+      "colormap": "Blues",
+      "sheet": "sheet-02.png",
+      "panel": 2
+    },
+    {
+      "id": 7,
+      "name": "经验累积分布",
+      "purpose": "回答多少比例的样本落在给定阈值以内",
+      "method": "seed=10，两个对数正态合成时延样本各240个；ECDF=i/n",
+      "provenance": "illustrative",
+      "palette_name": "梅紫与橄榄",
+      "colors": [
+        "#855576",
+        "#7b8539",
+        "#3b8392",
+        "#be8659",
+        "#69616e"
+      ],
+      "colormap": "cividis",
+      "sheet": "sheet-02.png",
+      "panel": 3
+    },
+    {
+      "id": 8,
+      "name": "增减贡献瀑布图",
+      "purpose": "表达净结果如何由各增减项构成",
+      "method": "初始100；输入+24、回收+12、损耗-18、输出-30；末值88；守恒演示",
+      "provenance": "computed",
+      "palette_name": "黑灰与铜色",
+      "colors": [
+        "#343b43",
+        "#a96c3c",
+        "#6e8790",
+        "#8d7b98",
+        "#686d72"
+      ],
+      "colormap": "Greys",
+      "sheet": "sheet-02.png",
+      "panel": 4
+    },
+    {
+      "id": 9,
+      "name": "事件区间与资源占用",
+      "purpose": "比较任务起止、重叠及资源使用",
+      "method": "演示排程记录；水平条长度仅由明确起止时刻计算",
+      "provenance": "illustrative",
+      "palette_name": "靛蓝与琥珀",
+      "colors": [
+        "#354f92",
+        "#c78316",
+        "#607d8b",
+        "#9372a0",
+        "#555f6a"
+      ],
+      "colormap": "YlGnBu",
+      "sheet": "sheet-03.png",
+      "panel": 1
+    },
+    {
+      "id": 10,
+      "name": "稀疏成员点阵",
+      "purpose": "只突出实际存在的成员关系，替代大面积0/1色块",
+      "method": "四个融合组对应六个原始事件；点=实际关联，空位=未关联；无连续强度",
+      "provenance": "schematic",
+      "palette_name": "紫罗兰与青绿",
+      "colors": [
+        "#76518f",
+        "#287e80",
+        "#c98b52",
+        "#596f9f",
+        "#6b6871"
+      ],
+      "colormap": "PuBuGn",
+      "sheet": "sheet-03.png",
+      "panel": 2
+    },
+    {
+      "id": 11,
+      "name": "二部来源关系图",
+      "purpose": "跟踪原始来源如何关联到融合结果",
+      "method": "来源节点到结果节点的显式成员关系；位置与边宽不表示数值",
+      "provenance": "schematic",
+      "palette_name": "赭石与石墨",
+      "colors": [
+        "#af5f32",
+        "#46525e",
+        "#859e60",
+        "#9f7890",
+        "#6b7075"
+      ],
+      "colormap": "YlOrBr",
+      "sheet": "sheet-03.png",
+      "panel": 3
+    },
+    {
+      "id": 12,
+      "name": "状态迁移环图",
+      "purpose": "表达状态间允许的转移与失败回路",
+      "method": "演示状态机；箭头表示允许转移，不表示概率、数量或时间",
+      "provenance": "schematic",
+      "palette_name": "深绿与金色",
+      "colors": [
+        "#28725c",
+        "#b68a27",
+        "#537da0",
+        "#a66c7e",
+        "#65736a"
+      ],
+      "colormap": "YlGn",
+      "sheet": "sheet-03.png",
+      "panel": 4
+    },
+    {
+      "id": 13,
+      "name": "等值线与可行域",
+      "purpose": "同时识别连续响应场和约束边界",
+      "method": "响应f=(x-1)^2+0.6(y+0.4)^2；可行域x+y≤1.8且x≥-1",
+      "provenance": "computed",
+      "palette_name": "酒红与蓝灰",
+      "colors": [
+        "#9b405a",
+        "#4f7f96",
+        "#be8b56",
+        "#81749d",
+        "#70636a"
+      ],
+      "colormap": "PuRd",
+      "sheet": "sheet-04.png",
+      "panel": 1
+    },
+    {
+      "id": 14,
+      "name": "三维观测几何",
+      "purpose": "表达真实空间位置、轨迹与观测射线",
+      "method": "半径100mm圆弧；角度-60至60度，观测点z=20mm，目标(0,0,100)mm",
+      "provenance": "computed",
+      "palette_name": "海军蓝与珊瑚",
+      "colors": [
+        "#284b68",
+        "#c06a51",
+        "#4b948b",
+        "#aa9444",
+        "#6b7480"
+      ],
+      "colormap": "Blues",
+      "sheet": "sheet-04.png",
+      "panel": 2
+    },
+    {
+      "id": 15,
+      "name": "流线与矢量场",
+      "purpose": "表达方向、局部速度及运动路径",
+      "method": "二维解析旋转场u=-y、v=x；速度sqrt(x²+y²)，非流体求解或实测",
+      "provenance": "computed",
+      "palette_name": "梅紫与橄榄",
+      "colors": [
+        "#855576",
+        "#7b8539",
+        "#3b8392",
+        "#be8659",
+        "#69616e"
+      ],
+      "colormap": "cividis",
+      "sheet": "sheet-04.png",
+      "panel": 3
+    },
+    {
+      "id": 16,
+      "name": "联合概率矩阵",
+      "purpose": "保留真正需要两维交叉读取的矩阵",
+      "method": "四项联合概率分别0.59、0.05、0.33、0.03，总和1；不等于条件概率",
+      "provenance": "illustrative",
+      "palette_name": "黑灰与铜色",
+      "colors": [
+        "#343b43",
+        "#a96c3c",
+        "#6e8790",
+        "#8d7b98",
+        "#686d72"
+      ],
+      "colormap": "Greys",
+      "sheet": "sheet-04.png",
+      "panel": 4
+    },
+    {
+      "id": 17,
+      "name": "单边幅值频谱",
+      "purpose": "识别信号的主频与谐波",
+      "method": "fs=500Hz，2秒，s=sin(2π30t)+0.35sin(2π85t)；整周期无窗FFT，单边幅值2|FFT|/N",
+      "provenance": "computed",
+      "palette_name": "靛蓝与琥珀",
+      "colors": [
+        "#354f92",
+        "#c78316",
+        "#607d8b",
+        "#9372a0",
+        "#555f6a"
+      ],
+      "colormap": "YlGnBu",
+      "sheet": "sheet-05.png",
+      "panel": 1
+    },
+    {
+      "id": 18,
+      "name": "时频谱",
+      "purpose": "定位频率随时间的变化过程",
+      "method": "fs=400Hz，6秒；sin[2π(20t+5t²)]线性扫频；Hann窗256点、重叠224点；功率谱密度",
+      "provenance": "computed",
+      "palette_name": "紫罗兰与青绿",
+      "colors": [
+        "#76518f",
+        "#287e80",
+        "#c98b52",
+        "#596f9f",
+        "#6b6871"
+      ],
+      "colormap": "PuBuGn",
+      "sheet": "sheet-05.png",
+      "panel": 2
+    },
+    {
+      "id": 19,
+      "name": "三维响应曲面",
+      "purpose": "直观显示两参数共同影响响应的形态",
+      "method": "z=exp[-(x²+0.7y²)]+0.15x，二维解析响应，不冒充实验",
+      "provenance": "computed",
+      "palette_name": "赭石与石墨",
+      "colors": [
+        "#af5f32",
+        "#46525e",
+        "#859e60",
+        "#9f7890",
+        "#6b7075"
+      ],
+      "colormap": "YlOrBr",
+      "sheet": "sheet-05.png",
+      "panel": 3
+    },
+    {
+      "id": 20,
+      "name": "极坐标方向响应",
+      "purpose": "比较不同角度下的方向敏感性",
+      "method": "r=0.3+0.7cos²θ；θ是物理方向，r为归一化响应",
+      "provenance": "computed",
+      "palette_name": "深绿与金色",
+      "colors": [
+        "#28725c",
+        "#b68a27",
+        "#537da0",
+        "#a66c7e",
+        "#65736a"
+      ],
+      "colormap": "YlGn",
+      "sheet": "sheet-05.png",
+      "panel": 4
+    },
+    {
+      "id": 21,
+      "name": "时序着色轨迹",
+      "purpose": "读取空间路径、时间方向与偏移",
+      "method": "x=10cos(t)，y=6sin(t)+0.15t，t∈[0,2π]；解析演示轨迹",
+      "provenance": "computed",
+      "palette_name": "酒红与蓝灰",
+      "colors": [
+        "#9b405a",
+        "#4f7f96",
+        "#be8b56",
+        "#81749d",
+        "#70636a"
+      ],
+      "colormap": "PuRd",
+      "sheet": "sheet-06.png",
+      "panel": 1
+    },
+    {
+      "id": 22,
+      "name": "帕累托前沿",
+      "purpose": "比较多个目标之间无法同时改善的权衡",
+      "method": "seed=22；成本随机20–100，误差=100/成本+U(0,3)；两目标均最小化，逐点支配判断",
+      "provenance": "illustrative",
+      "palette_name": "海军蓝与珊瑚",
+      "colors": [
+        "#284b68",
+        "#c06a51",
+        "#4b948b",
+        "#aa9444",
+        "#6b7480"
+      ],
+      "colormap": "Blues",
+      "sheet": "sheet-06.png",
+      "panel": 2
+    },
+    {
+      "id": 23,
+      "name": "三元组分图",
+      "purpose": "显示总和为1的三种组分及其组合效应",
+      "method": "seed=23，Dirichlet(2,2,2)生成90组配比；响应=0.5A+0.8B+0.2C，重心坐标绘制",
+      "provenance": "illustrative",
+      "palette_name": "梅紫与橄榄",
+      "colors": [
+        "#855576",
+        "#7b8539",
+        "#3b8392",
+        "#be8659",
+        "#69616e"
+      ],
+      "colormap": "cividis",
+      "sheet": "sheet-06.png",
+      "panel": 3
+    },
+    {
+      "id": 24,
+      "name": "平行坐标",
+      "purpose": "比较多个方案的指标组合与短板",
+      "method": "四方案、五项同向效益评分0–100；每轴固定共同范围，非原始异量纲值",
+      "provenance": "illustrative",
+      "palette_name": "黑灰与铜色",
+      "colors": [
+        "#343b43",
+        "#a96c3c",
+        "#6e8790",
+        "#8d7b98",
+        "#686d72"
+      ],
+      "colormap": "Greys",
+      "sheet": "sheet-06.png",
+      "panel": 4
+    },
+    {
+      "id": 25,
+      "name": "山脊分布",
+      "purpose": "对比连续工况下分布位置与形态迁移",
+      "method": "五个解析正态密度N(20+7k,(3+0.5k)²)，k=0..4；同一密度放大系数8，不是样本估计",
+      "provenance": "computed",
+      "palette_name": "靛蓝与琥珀",
+      "colors": [
+        "#354f92",
+        "#c78316",
+        "#607d8b",
+        "#9372a0",
+        "#555f6a"
+      ],
+      "colormap": "YlGnBu",
+      "sheet": "sheet-07.png",
+      "panel": 1
+    },
+    {
+      "id": 26,
+      "name": "六边形密度分箱",
+      "purpose": "大量散点重叠时显示聚集结构",
+      "method": "seed=26，3500组联合正态样本，均值(50,50)、协方差[[150,95],[95,120]]；颜色为分箱计数",
+      "provenance": "illustrative",
+      "palette_name": "紫罗兰与青绿",
+      "colors": [
+        "#76518f",
+        "#287e80",
+        "#c98b52",
+        "#596f9f",
+        "#6b6871"
+      ],
+      "colormap": "PuBuGn",
+      "sheet": "sheet-07.png",
+      "panel": 2
+    },
+    {
+      "id": 27,
+      "name": "敏感性龙卷风图",
+      "purpose": "识别参数扰动对结果影响的大小与方向",
+      "method": "线性模型R=100+Σcᵢδᵢ，c=[70,-45,30,18,-8]；逐参数δ=±0.1，其余为0",
+      "provenance": "computed",
+      "palette_name": "赭石与石墨",
+      "colors": [
+        "#af5f32",
+        "#46525e",
+        "#859e60",
+        "#9f7890",
+        "#6b7075"
+      ],
+      "colormap": "YlOrBr",
+      "sheet": "sheet-07.png",
+      "panel": 3
+    },
+    {
+      "id": 28,
+      "name": "堆叠面积构成",
+      "purpose": "同时呈现总量变化和各来源构成",
+      "method": "t=0..24；A=40+10sin(2πt/24)，B=25+5cos(2πt/24)，C=15+0.5t；仅独立可加来源",
+      "provenance": "computed",
+      "palette_name": "深绿与金色",
+      "colors": [
+        "#28725c",
+        "#b68a27",
+        "#537da0",
+        "#a66c7e",
+        "#65736a"
+      ],
+      "colormap": "YlGn",
+      "sheet": "sheet-07.png",
+      "panel": 4
+    },
+    {
+      "id": 29,
+      "name": "衰减振荡相图",
+      "purpose": "观察状态收敛、振荡与方向",
+      "method": "x=e^(-0.15t)cos(2t)，v=dx/dt；t=0..25，解析轨迹",
+      "provenance": "computed",
+      "palette_name": "酒红与蓝灰",
+      "colors": [
+        "#9b405a",
+        "#4f7f96",
+        "#be8b56",
+        "#81749d",
+        "#70636a"
+      ],
+      "colormap": "PuRd",
+      "sheet": "sheet-08.png",
+      "panel": 1
+    },
+    {
+      "id": 30,
+      "name": "可靠度曲线",
+      "purpose": "比较运行时间增加时的模型存活概率",
+      "method": "Weibull模型R=exp[-(t/η)^β]；β=2，η=1000和1400h；理论模型，无实测故障证据",
+      "provenance": "computed",
+      "palette_name": "海军蓝与珊瑚",
+      "colors": [
+        "#284b68",
+        "#c06a51",
+        "#4b948b",
+        "#aa9444",
+        "#6b7480"
+      ],
+      "colormap": "Blues",
+      "sheet": "sheet-08.png",
+      "panel": 2
+    },
+    {
+      "id": 31,
+      "name": "气泡多变量比较",
+      "purpose": "在两个指标上同时编码第三个规模量",
+      "method": "八方案演示值；横轴能耗、纵轴产量；气泡面积与批量成正比",
+      "provenance": "illustrative",
+      "palette_name": "梅紫与橄榄",
+      "colors": [
+        "#855576",
+        "#7b8539",
+        "#3b8392",
+        "#be8659",
+        "#69616e"
+      ],
+      "colormap": "cividis",
+      "sheet": "sheet-08.png",
+      "panel": 3
+    },
+    {
+      "id": 32,
+      "name": "滞回环与方向",
+      "purpose": "揭示加载和卸载路径不同",
+      "method": "输入x=sin(t)，输出y=sin(t-0.45)，t=0..2π；相位滞后参数化演示，不是材料实测",
+      "provenance": "computed",
+      "palette_name": "黑灰与铜色",
+      "colors": [
+        "#343b43",
+        "#a96c3c",
+        "#6e8790",
+        "#8d7b98",
+        "#686d72"
+      ],
+      "colormap": "Greys",
+      "sheet": "sheet-08.png",
+      "panel": 4
+    }
+  ]
+}

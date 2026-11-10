@@ -12,6 +12,9 @@ REVIEW_COVERAGE_POLICY = 'required-evidence-v1'
 def review_coverage_policy(run):
     """Absent policies retain frozen contracts; explicit unknown versions fail."""
     policy = run.get('review_coverage_policy')
+    from system_diagrams import POLICY as DIAGRAM_POLICY
+    if run.get('system_diagram_policy') == DIAGRAM_POLICY and policy != REVIEW_COVERAGE_POLICY:
+        raise ValueError('System diagram v2 requires the existing first-review coverage policy')
     if policy is not None and policy != REVIEW_COVERAGE_POLICY:
         raise ValueError('Unknown review coverage policy')
     return policy
@@ -98,14 +101,28 @@ def _required_review_paths(workspace, run, scope, checks, artifacts, current=Tru
                 raise ValueError('Frozen review must preserve complete Web workflow evidence')
             if module_policy:
                 modules,entries,screens=web.get('module_ids'),web.get('module_entry_assertions'),web.get('module_screenshots')
-                if (web.get('web_module_policy')!=module_policy or web.get('minimum_business_modules')!=10
-                        or not isinstance(modules,list) or len(modules)<10 or len(set(modules))!=len(modules)
+                from case_representation import POLICY as SOURCE_FORM_POLICY, minimum_modules
+                minimum=minimum_modules(web.get('representation')) if module_policy==SOURCE_FORM_POLICY else 10
+                if module_policy==SOURCE_FORM_POLICY:
+                    from case_representation import validate_product_plan, PLAN_POLICY
+                    rep=web['representation']
+                    plan=validate_product_plan(rep,rep.get('runtime_validation'),run)
+                    if run.get('product_plan_policy')==PLAN_POLICY:
+                        for row in plan['technical_evidence']:
+                            if not set(row['input_paths']+row['result_paths']+[row['source_ref']['path']])<=set(web['evidence_hashes']):
+                                raise ValueError('Frozen technical materials must preserve their input/result/source hashes')
+                if (web.get('web_module_policy')!=module_policy or web.get('minimum_business_modules')!=minimum
+                        or not isinstance(modules,list) or len(modules)<minimum or len(set(modules))!=len(modules)
                         or not isinstance(entries,dict) or set(entries)!=set(modules)
                         or not all(isinstance(v,str) and v.strip() for v in entries.values())
                         or len(set(entries.values()))!=len(entries)
                         or not isinstance(screens,dict) or set(screens)!=set(modules)
                         or not all(isinstance(v,str) and v in web['evidence_hashes'] for v in screens.values())):
                     raise ValueError('Frozen review must preserve all ten-policy modules and their visible-entry assertion bindings')
+            if run.get('web_outcome_policy'):
+                from observed_outcomes import outcome_policy
+                if web.get('web_outcome_policy') != outcome_policy(run) or set(web.get('core_outcomes', {})) != {'primary','changed_input','recovery'}:
+                    raise ValueError('Frozen review must preserve its core outcome bindings')
             add('.product-v2/build-checks.json')
             for path in web['evidence_hashes']: add(path)
         if not package_revision and not document_revision:
@@ -140,7 +157,8 @@ def _required_review_paths(workspace, run, scope, checks, artifacts, current=Tru
     package = document('source-package.json')
     members = package.get('files')
     if not isinstance(members, dict) or not members: raise ValueError('Current source package members required')
-    for path in members: add(path)
+    from runtime_cache import evidence_path
+    for path in members: add(evidence_path(workspace,run,package,path).relative_to(workspace).as_posix())
     if package_revision:
         return required, technical - required
     controlled = document('controlled-video.json')
@@ -179,6 +197,9 @@ def _required_review_paths(workspace, run, scope, checks, artifacts, current=Tru
                     scope['web'].update({key:web[key] for key in
                         ('module_ids','web_module_policy','minimum_business_modules',
                          'module_entry_assertions','module_screenshots')})
+                if module_policy=='source-form-v1':scope['web']['representation']=web['representation']
+                if run.get('web_outcome_policy'):
+                    scope['web'].update({key:web[key] for key in ('web_outcome_policy','core_outcomes')})
                 for path in web['evidence_paths']: add(path)
             for check in value.get('checks', {}).values():
                 add(check.get('log'))
@@ -199,6 +220,8 @@ def review_coverage_snapshot(workspace, run, records, scope, checks=None, requir
     scope = deepcopy(scope)
     required, technical = _required_review_paths(workspace, run, scope, checks, artifacts, inherited=inherited,
                                                 hashes={path: row['sha256'] for path, row in indexed.items()})
+    from system_diagrams import required_review_paths
+    required |= required_review_paths(run, artifacts, indexed)
     declared = {_relative(workspace, p) for p in (required_paths or [])}
     declared.discard('.product-v2/model-dispatch.json')
     missing = (required | technical | declared) - set(indexed)
@@ -214,6 +237,8 @@ def _known_frozen_bindings(workspace, run, proof, spec, indexed, required):
     """Check signed known snapshots without opening any original mutable file."""
     package_revision = run.get('revision_scope') == 'package' and bool(run.get('revision_of'))
     document_revision = bool(run.get('revision_of')) and run.get('revision_scope', 'document') == 'document'
+    from system_diagrams import required_review_paths
+    required_review_paths(run, spec['current_artifacts'], indexed, required)
     def require_hash(sha, path=None, human=True):
         rows = ([indexed.get(_relative(workspace, path))] if path is not None else
                 [row for row in indexed.values() if row['sha256'] == sha])
@@ -437,6 +462,8 @@ def review_input(workspace,index,destination,compact=False):
     else:facts['evidence']=spec['evidence']
     facts['review_sequence']={'first':'Use the actual source mappings and algorithm/API/persistence evidence to check applicable acceptance/rejection boundaries and final-engine derived results in references/system-data.md before expensive visual coverage.',
         'on_blocking_defect':'Collect all reproducible material defects in this review. Continue independent checks and the complete first visual reading of stable Word/video even if code needs repair. Stop only checks made impossible or invalid by that actual dependency; disclose exactly what remains unread and why. Never invent coverage or add a whole-case review for minor fixes.',
+        'issue_triage':'In this same first review distinguish core delivery blockers from nonblocking advice using the actual source and explicit requirements. Do not request optional enhancements. State concrete impact and affected artifacts in existing issues; keep harmless style/future-feature advice in internal notes. Optional added functionality may be disabled/removed only when source requirements, explicit functions and the frozen delivery contract remain satisfied; check actual entry points and backend actions rather than hiding a failing action. Core computation/source mismatches, startup/export failures, damaged/missing deliverables and required unread/failed checks remain blockers. Never relabel those as advice.',
+        'after_first_review':'Preserve the first issue IDs, severity, unread scope and revise decision. Existing resolutions may record accepted_nonblocking with a source/scope reason for advice needing no change, removed for actual optional-function removal, or resolved for a fix. An unchanged advice-only closure reuses exact successful first checks and the existing owner/authorization, without a new repair agent. Removal/fixes use the original repairer and only real affected browser/API/backend and current package-startup checks, then close-simplified; do not add whole-case review, forms, or redo unchanged Word/data/video. Keep diagnoses/history internal and never call simplified closure an independent pass.',
         'for_pass':'Complete the full required source, document, chart, UI and video review; no visual scope or independent role is reduced. A video already actually reviewed and accepted may inherit its original viewed conclusion while its final media and technical evidence remain unchanged; later minor code, data or copy edits do not require another video review. A video never actually accepted still requires the complete first review.'}
     revision = run.get('revision_scope', 'document') if coverage_policy and run.get('revision_of') else None
     if revision == 'document':
@@ -445,6 +472,23 @@ def review_input(workspace,index,destination,compact=False):
     elif revision == 'package':
         facts['review_sequence']['first']='Check the current source archive, startup evidence and existing inherited_evidence_chain. Authenticate unchanged prior visual conclusions without inventing a new viewing claim.'
         facts['review_sequence']['for_pass']='Review the current package changes and startup facts. Inherit the unchanged Word/chart/data/video conclusions through the existing finalized chain; do not repeat their first visual review.'
+    from source_delivery import main_code_only, retain_all_source
+    if main_code_only(run):
+        sequence=facts['review_sequence']
+        sequence['after_first_review']=sequence['after_first_review'].replace('current package-startup checks','current package member/hash checks')
+        sequence['issue_triage']=sequence['issue_triage'].replace('startup/export failures','working-system startup/export failures')
+        if revision == 'package':
+            sequence['first']='Check current complete main source members/hashes and existing inherited_evidence_chain; no package unpack/install/startup check. Authenticate unchanged prior visual conclusions without a new viewing claim.'
+            sequence['for_pass']='Review current package changes and complete main code coverage. Inherit unchanged working-system execution and Word/chart/data/video conclusions through the finalized chain; do not repeat their first review.'
+        elif revision is None:
+            sequence['first']+=' Inspect actual packaged main algorithm/backend modules against the existing source mappings and working system: full functions/classes, data processing, validation, persistence and applicable query/export paths; excerpts, missing core logic or filler are not sufficient. Do not unpack/install/start this code package or impose a line-count quota.'
+    if retain_all_source(run):
+        facts['review_sequence']['first']+=' Compare the full declared project trees and loose files to exported members; only identified production/private/runtime exclusions are allowed. Preserve tests, assets, configs and existing scripts. No new review stage or startup test.'
+    from source_delivery import retain_runtime_cache
+    if retain_runtime_cache(run) and revision != 'document':
+        facts['review_sequence']['first'] += ' Case-owned runtime results/caches are retained delivery data. Check source-package runtime_cache_files and SQLite snapshot hashes/time against actual members; credentials, private sessions and machine dependencies stay out. Mutable cache state is not code coverage: fixed calculation inputs remain dependency-bound.'
+        if revision is None:
+            facts['review_sequence']['first'] += ' Inspect the source-specific continuous state transitions, partial feedback and repeat/recovery behavior in existing execution assertions, not just a successful initial page.'
     if policy is not None:
         facts['current_charts']['chart_policy']=policy
         facts['chart_review_requirements']={'every_current_png':True,
@@ -477,12 +521,31 @@ def review_input(workspace,index,destination,compact=False):
                 'and the located explanation blocks. Independently find omitted meaningful '
                 'annotations, turning points, extrema, thresholds, start/end conditions and '
                 'events; declarations and exact excerpt matches do not prove completeness. '
+                'Also check symbols both ways: prose-to-figure and figure-to-prose, point versus '
+                'vector versus matrix, basis directions, origins, projections, start/end coordinates, '
+                'units, weights and panel/example identity. A matrix is not a point; its columns '
+                'may be depicted as basis vectors. Do not mix numeric examples between panels. '
+                'A symbol mentioned only in prose does not prove that the figure depicts its relation. '
                 'Check the cited source/data locator, value, time reference, unit, object, '
                 'conditions and cause/result together, including before/after prose. '
                 'Continuous samples and automatic ticks need not be transcribed point by point. '
                 'Explain this actual comparison in each existing chart_reviews.explanation '
                 'judgment; a missing or inconsistent necessary explanation is a material '
                 'document defect. No new review stage or semantic pass is created by the script.')
+            if run.get('explanation_fact_policy') == 'key-facts-v2':
+                facts['chart_review_requirements']['correspondence_instruction'] = (
+                    'Use existing chart_reviews.explanation.checked_fact_ids for all actually checked '
+                    'key facts and existing evidence for concrete observed correspondences or defects. '
+                    'Inspect the current PNG and Word, not just the declared depiction. Independently '
+                    'find missing labels/relations/definitions even when omitted from key_facts. '
+                    'Do not add another review round or prefill checked IDs from the manifest.')
+            facts['chart_review_requirements']['explanation_reading_order'] = [
+                'Read each actual PNG first: axes/time reference/units, every meaningful series/region/legend/color scale, annotation and event. Cross-check declarations; an omitted declaration must not hide an omitted explanation.',
+                'Read its own original embodiment before/explanation/after: same object, conditions, baseline, meaningful values/intervals, grounded cause or explicitly limited inference, conclusion and next-step use. Explain ordinary ticks/samples by range and trend, not point-by-point transcription.',
+                'For relevant source formulas, inspect native inline symbols in the rendered Word: original subscripts/superscripts/accents/Greek letters, index meaning and units, and which plotted quantity/series/region they represent. Describe the observed change and applicable conditions; never copy the full equation or invent a formula for a formula-free figure.',
+                'During the same reading, flag generic warning/production-use endings for targeted removal by the author, not manual user cleanup. The original author also cleans the final exported Word before packaging; bind the actual final bytes, preserve source text and check only affected content for wording fixes. End with the embodiment-specific conclusion. Keep original text and necessary technical conditions/uncertainty integrated accurately; never relabel computation as measurement. Do not delete the last sentence mechanically or start another review round.',
+                'Record the actual graph-to-prose comparison and any missing item in the existing chart_reviews.explanation evidence. No separate checklist file, new review round, automatic semantic pass or repeat reading of unchanged accepted artifacts.'
+            ]
     controlled=workspace/'.product-v2/controlled-video.json'
     use_controlled=controlled.exists() and revision is None
     if use_controlled:
@@ -515,16 +578,21 @@ def review_input(workspace,index,destination,compact=False):
         web = spec['review_scope']['web']
         facts['web_review_requirements'] = {
             'policy': web['policy'], 'page_ids': web['page_ids'], 'workflow_ids': web['workflow_ids'],
-            'instruction': 'Read every business page screenshot and actual task assertion with its original-source mapping and implementation. Check complete case-specific tasks, navigation, input-to-backend-to-result/persistence/export and suitable system form. For vision, inspect real input images, licensing/provenance and actual backend results; reject decoration, prepainted labels or fixed outputs masquerading as recognition. A declared task list, page count, hashes and structural success do not establish semantic completeness. Include all material findings in the existing independent review, no extra design review stage.'}
+            'instruction': 'Read every business page screenshot and actual task assertion with its original-source mapping and implementation. Check complete case-specific tasks, navigation, input-to-backend-to-result/persistence/export and suitable system form. For vision, inspect real input images, licensing/provenance and actual backend results; reject decoration, prepainted labels or fixed outputs masquerading as recognition. A declared task list, page count, hashes and structural success do not establish semantic completeness. Compare the actual core page with the builder\'s stated primary object, operator task and simultaneous information needs. In the existing review findings identify the page/region and trace one concrete object -> simultaneous information -> action -> observable result from the builder scene, using the supplied pages.screenshot and workflow/assertion evidence. Verify that the main work area, adjacent information and interaction serve the source-specific task; screenshots establish spatial organization, not backend correctness, and assertions alone do not establish readable layout. Generic praise or a palette change is not evidence. Missing required relationships/actions or an obstructive layout is material; a familiar layout serving the same work is valid. Do not choose a template from title keywords, demand novel components, or impose new fields, screenshot counts, reports or evidence files. If same-batch screenshots are already supplied, compare task structure rather than counting different colors; do not fetch old cases or require comparison artifacts. Review visible copy in the supplied core/detail/empty/error-state evidence: persistent text should help identify an object, enter a value, interpret a result or recover an action. Remove purposeless welcome banners, capability marketing, repeated title explanations and algorithm-introduction walls during construction; use concrete action labels and contextual state messages. Put low-frequency definitions in accessible on-demand help, but keep decision-critical conditions, units, data nature, risks and blocking reasons visible beside the affected input/result. Do not impose a word quota, blacklist, new screenshot/evidence field or review round; do not reduce Word figure explanations. Extra prose alone is nonblocking unless it obstructs work or misleads. Judge information depth from real objects, task queues, domain views, exceptions, history and comparison where source-supported, not whitespace filled by decorative cards or repeated copies of one result. Trace selection and filtering through related views and meaningful backend changes; examine secondary modules as well as the home page. Inspect primary/changed-input/recovery observations in the existing browser report when the run freezes observed-outcomes-v1: typed equality is only an evidence consistency check, not proof of execution or semantic correctness. Check screenshot density, hierarchy, type scale and legibility at normal zoom; use the supplied interaction/video evidence to inspect real motion, interruption and reduced-motion behavior. Rich animation must connect actual state changes, never fake progress or live data. Inspect the source along a real UI action -> API validation -> domain computation -> transaction/query -> rendered result, including a source-specific invariant and failure recovery. Readable responsibility separation, bounded data access, disposal and stable identities matter; line counts, framework choice and file counts are not quality scores. Keep this in the same first review and classify only material defects as blocking. Ten modules need not be ten identical pages. Do not fail a useful sidebar, table or card merely for its component type. Report material usability/content defects together; cosmetic preferences remain nonblocking, with only affected checks after a fix. Include all material findings in the existing independent review, no extra design review stage.'}
+        if run.get('web_outcome_policy'):
+            facts['web_review_requirements'].update({key:web[key] for key in ('web_outcome_policy','core_outcomes')})
         if run.get('web_module_policy'):
             from web_contract import web_module_policy
             facts['web_review_requirements'].update(
                 web_module_policy=web_module_policy(run),
-                minimum_business_modules=10,
+                minimum_business_modules=web['minimum_business_modules'],
                 module_ids=web['module_ids'],
                 module_entry_assertions=web['module_entry_assertions'],
                 module_screenshots=web['module_screenshots'],
-                module_instruction='In the same first review inspect all declared modules, at least ten with no upper limit: each has an actual visible entry, independent business purpose and real tested action. Reject empty pages, statistical cards and renamed/repeated pages/actions used as modules. Read all module screenshots and assertions even when the continuous core-workflow video does not visit every module; preserve the original video duration and quality contract, without a new review stage.')
+                module_instruction='In the same first review inspect all declared modules against their source-selected minimum and complete source requirements, with no upper limit: each has an actual visible entry, independent business purpose and real tested action. Reject empty pages, statistical cards and renamed/repeated pages/actions used as modules. Read all module screenshots and assertions even when the continuous core-workflow video does not visit every module; preserve the original video duration and quality contract, without a new review stage.')
+        if run.get('web_module_policy')=='source-form-v1':
+            facts['web_review_requirements']['representation']=web['representation']
+            facts['web_review_requirements']['form_instruction']='Compare the source-selected software form and original paragraphs with actual runtime logs, implementation and screenshots. A validation console is not a native product UI. A browser phone frame is not a native App/mini-program. Read all technical figures for their actual feature, depiction and source, not appearance similarity. Do this in the same first review; structural validation alone does not certify authenticity or technical relevance.'
         navigation['web'] = [reference(path, sha) for path, sha in web['evidence_hashes'].items()
                              if Path(path).suffix.lower() in {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tif', '.tiff'}]
     facts['visual_navigation']=navigation

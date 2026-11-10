@@ -14,14 +14,42 @@ import zipfile
 
 from common import digest, file_map, inside, no_links, read_json, write_json, delivery_paths
 from review_packet import execution_checks
+from source_delivery import main_code_only, execution_kinds, directory_delivery, source_digest, source_map_digest
 
 CONTRACT='targeted-closure-v1'
+
+
+def substantive_issue(issue):
+    """Keep the original review's explicit blockers; never downgrade them."""
+    return (issue.get('core') is True or issue.get('blocking') is True
+            or issue.get('severity') in {'core','critical','P0','P1','实质','重大'}
+            or issue.get('priority') in {'P0','P1','0','1',0,1})
+
+
+def unchanged_owner_binding(proof,first,spec,changed):
+    """Accept unchanged advice using existing owner/auth facts, without a repair."""
+    fixes=proof.get('resolutions',[])
+    if (changed or not fixes or any(item.get('status')!='accepted_nonblocking' for item in fixes)
+            or proof.get('repair_dispatch') is not None
+            or proof.get('checks')!=first.get('checks') or proof.get('affected_checks')):
+        raise ValueError('No-repair closure may only accept unchanged nonblocking advice and reuse exact first checks')
+    return {'kind':'original-owner-unchanged','session_log':spec['stages']['review']['session_log'],
+            'authorization':proof['authorization']}
+
+
+def independent_reviewer_agents(dispatch):
+    """Only the authenticated review role must remain separate from repair."""
+    review=dispatch.get('review') if isinstance(dispatch,dict) else None
+    agent=review.get('agent_id') if isinstance(review,dict) else None
+    if not isinstance(agent,str) or not agent.strip():
+        raise ValueError('Verified first independent reviewer identity required')
+    return {agent}
 
 
 def authorized_instruction(text,workspace,case_id,scope_context=False):
     """Recognize direct scope/action/reduced-review intent, not fixed wording."""
     from contracts import _direct_user_lines
-    if ('<heartbeat>' in text or re.search(r'不(?:允许|同意|授权)[^，,。；;\n]{0,48}(?:小问题|简化|(?:取消|跳过|省略|减少|绕过|停止).{0,8}(?:审核|复验)|(?:直接|就|只).{0,10}(?:打包|压缩包|导出))|不要.{0,5}(?:取消|跳过|省略|减少|绕过|停止).{0,8}(?:审核|复验)|(?:仍需|仍要|必须|照常).{0,12}(?:审核|复验)',text)):
+    if ('<heartbeat>' in text or re.search(r'不(?:允许|同意|授权)[^，,。；;\n]{0,48}(?:小问题|简化|(?:取消|跳过|省略|减少|绕过|停止).{0,8}(?:审核|复验)|(?:直接|就|只).{0,10}(?:打包|压缩包|导出))|不要.{0,5}(?:取消|跳过|省略|减少|绕过|停止).{0,8}(?:审核|复验)|(?:仍需|仍要|必须|照常).{0,12}(?:审核|复验)|(?:不要|不得|禁止|不授权|不允许|不同意).{0,12}(?:剔除|移除|停用)',text)):
         return False
     lines=_direct_user_lines(text)
     direct=[]
@@ -33,7 +61,9 @@ def authorized_instruction(text,workspace,case_id,scope_context=False):
         direct.append(line)
     statement='\n'.join(direct)
     path=str(workspace).replace('\\','/').rstrip('/').casefold()
-    repair_pattern=r'小问题.{0,32}(?:修|补).{0,32}(?:打包|压缩包|导出)'
+    noncore_pattern=(r'(?:小问题|非核心|非阻断|不影响.{0,12}(?:主要|主体|核心).{0,8}(?:交付|功能)).{0,64}'
+                     r'(?:(?:不要|不用|无需|不必).{0,8}(?:管|处理|修复|返修)|(?:直接|可以|允许).{0,8}(?:剔除|移除|停用))')
+    repair_pattern=r'(?:小问题.{0,32}(?:修|补).{0,32}(?:打包|压缩包|导出)|'+noncore_pattern+r')'
     scope=False
     for clause in re.split(r'[。；;\n]',statement):
         if not re.search(repair_pattern,clause):continue
@@ -43,11 +73,13 @@ def authorized_instruction(text,workspace,case_id,scope_context=False):
         path_scope=bool(re.search(r'(?<![\w/.:\-])'+re.escape(path)+r'(?![\w/.\-])',normalized))
         case_scope=scope_context and bool(re.search(r'(?<![A-Za-z0-9_./:\-])'+re.escape(case_id)+r'(?![A-Za-z0-9_.\-])',scoped,re.I))
         explicit_scope=bool(re.search(r'(?<![A-Za-z0-9_])case_[A-Za-z0-9_\-]+|[A-Za-z]:[\\/]',scoped,re.I))
-        general_scope=not explicit_scope and bool(re.search(r'(?:以后|今后)\s*(?:所有|全部|每个案件|这种|这类|类似|小问题)|通用要求|所有案件',scoped))
+        general_scope=not explicit_scope and bool(re.search(r'(?:以后|今后)\s*(?:所有|全部|每个案件|这种|这类|类似|小问题)|通用要求|所有案件',scoped)
+            or (re.search(noncore_pattern,scoped) and re.search(r'(?:写进|写入)技能|整体交付',statement)))
         scope=scope or path_scope or case_scope or general_scope
         scope=scope or (scope_context and not explicit_scope and any(key in scoped for key in ('剩余批次','剩下的案件','剩余案件')))
     repair=bool(re.search(repair_pattern,statement,re.S))
-    reduced=bool(re.search(r'(?:不再|不要|不得|不用|无需).{0,32}(?:反复|整案|复验|审核|大费周章)',statement,re.S))
+    reduced=bool(re.search(r'(?:不再|不要|不得|不用|无需).{0,32}(?:反复|整案|复验|审核|大费周章)',statement,re.S)
+                 or re.search(noncore_pattern,statement,re.S))
     return scope and repair and reduced
 
 
@@ -231,6 +263,51 @@ def repaired_chart_checks(first,charts,fixes,by_kind,word_name,changed,current,w
             raise ValueError('Failed first chart check lacks corresponding affected visual selfcheck: '+number+'/'+key)
 
 
+def correspondence_coverage(first, charts, by_kind, word_name, current):
+    """Reuse unchanged first-reading facts and merge only actual affected checks."""
+    from contracts import EXPLANATION_FACT_POLICY, validate_correspondence_review, unread_visual_evidence
+    if charts.get('explanation_fact_policy') != EXPLANATION_FACT_POLICY:
+        return
+    prior = first.get('chart_snapshot', {})
+    combined = []
+    for number, png in charts['figures'].items():
+        facts = {f['fact_id']: f for f in charts['explanation_key_facts'][number]}
+        old_facts = {f['fact_id']: f for f in prior.get('explanation_key_facts', {}).get(number, [])}
+        checked, evidence = set(), []
+        for review in first.get('chart_reviews', []):
+            explanation = review.get('explanation', {})
+            ids = explanation.get('checked_fact_ids', [])
+            if (str(review.get('figure_id')) == number and review.get('png_sha256') == png
+                    and prior.get('figures', {}).get(number) == png
+                    and explanation.get('passed') is True
+                    and isinstance(ids, list) and all(isinstance(i, str) for i in ids)
+                    and isinstance(explanation.get('evidence'), str) and explanation['evidence'].strip()
+                    and not unread_visual_evidence(explanation['evidence'])):
+                checked.update(i for i in ids if i in facts and old_facts.get(i) == facts[i])
+                evidence.append(explanation['evidence'])
+        for check in by_kind.values():
+            if (check.get('artifact_hashes', {}).get(word_name) != current.get(word_name)
+                    or not check.get('visual_notes') or unread_visual_evidence(check['visual_notes'])):
+                continue
+            for review in check.get('chart_reviews', []):
+                explanation = review.get('explanation', {})
+                if (str(review.get('figure_id')) != number or review.get('png_sha256') != png
+                        or explanation.get('passed') is not True):
+                    continue
+                ids = explanation.get('checked_fact_ids', [])
+                if (not isinstance(ids, list) or not all(isinstance(i, str) for i in ids)
+                        or len(ids) != len(set(ids)) or not set(ids).issubset(facts)):
+                    raise ValueError('Affected correspondence check contains invalid fact IDs')
+                text = explanation.get('evidence')
+                if not isinstance(text, str) or not text.strip() or unread_visual_evidence(text):
+                    raise ValueError('Affected correspondence needs actual visual/context evidence')
+                checked.update(ids)
+                evidence.append(text)
+        combined.append({'figure_id': number, 'explanation': {
+            'checked_fact_ids': sorted(checked), 'evidence': '\n'.join(evidence)}})
+    validate_correspondence_review(charts, combined)
+
+
 def validate(workspace,path,output,run):
     import proflow
     from contracts import first_review_binding, delivery_layout, chart_snapshot
@@ -252,8 +329,7 @@ def validate(workspace,path,output,run):
         log=inside(workspace,item['log'])
         if type(item.get('exit_code')) is not int or not item.get('command') or not log.stat().st_size or digest(log)!=item.get('sha256'):
             raise ValueError('First necessary independent execution evidence missing or changed')
-    excluded={item['agent_id'] for item in first_dispatch.values() if isinstance(item,dict) and 'agent_id' in item}
-    repair=repair_binding(workspace,path,proof,excluded)
+    excluded=independent_reviewer_agents(first_dispatch)
     first_issues=first.get('issues',first.get('findings'))
     fixes=proof.get('resolutions')
     if (not isinstance(first_issues,list) or not first_issues or not isinstance(fixes,list)
@@ -266,8 +342,14 @@ def validate(workspace,path,output,run):
     if current!=proof.get('files'):raise ValueError('Current delivery files differ from repairer attested snapshot')
     old=first['reviewed_files']
     changed=sorted(key for key in set(current)|set(old) if current.get(key)!=old.get(key))
+    paths=delivery_paths(run,output);zip_rel=paths['source_zip'].relative_to(output).as_posix()
+    removed_source={k:old[k] for k in changed if k not in current and directory_delivery(run) and k.startswith(zip_rel+'/')}
     if proof.get('changed_files')!=changed:raise ValueError('Exact changed artifact list required')
-    checks=execution_checks(proof.get('checks'));by_kind={item['kind']:item for item in checks}
+    owner=None
+    if proof.get('repair_dispatch') is None:
+        owner=unchanged_owner_binding(proof,first,spec,changed);repair=None
+    else:repair=repair_binding(workspace,path,proof,excluded)
+    checks=execution_checks(proof.get('checks'),execution_kinds(run));by_kind={item['kind']:item for item in checks}
     affected_checks=proof.get('affected_checks',[])
     if (not isinstance(affected_checks,list) or any(not isinstance(item,dict) or not isinstance(item.get('kind'),str) for item in affected_checks)
             or len({item['kind'] for item in affected_checks})!=len(affected_checks)
@@ -284,31 +366,54 @@ def validate(workspace,path,output,run):
         artifacts=item.get('artifact_hashes',{})
         if not isinstance(artifacts,dict) or any(current.get(key)!=sha for key,sha in artifacts.items()):
             raise ValueError('Execution evidence belongs to an older artifact')
+        removed=item.get('removed_artifacts',{})
+        if not isinstance(removed,dict) or any(removed_source.get(key)!=sha for key,sha in removed.items()):
+            raise ValueError('Removed source evidence must bind original reviewed bytes and actual absence')
         prior=first_checks.get(item['kind'],{})
         if (item.get('log')==prior.get('log') and item.get('sha256')==prior.get('sha256')
-                and any(item.get(key,{})!=prior.get(key,{}) for key in ('input_files','artifact_hashes'))):
+                and any(item.get(key,{})!=prior.get(key,{}) for key in ('input_files','artifact_hashes','removed_artifacts'))):
             raise ValueError('Reused successful execution fact has changed dependencies; target only the affected check')
     paths=delivery_paths(run,output);zip_rel=paths['source_zip'].relative_to(output).as_posix()
-    container_only=zip_rel in changed and same_source_members(first,zip_rel,paths['source_zip'])
+    source_changed={p for p in changed if p==zip_rel or (directory_delivery(run) and p.startswith(zip_rel+'/'))}
+    container_only=not directory_delivery(run) and zip_rel in changed and same_source_members(first,zip_rel,paths['source_zip'])
     covered=set()
     original_by_id={item['id']:item for item in first_issues}
     for fix in fixes:
-        if fix.get('status')!='resolved' or not fix.get('checks') or not fix.get('result'):
+        original=original_by_id[fix['id']]
+        status=fix.get('status')
+        if status=='accepted_nonblocking':
+            # The original issue remains frozen. The owner/repairer states the
+            # source/scope reason in result; this is not a semantic classifier.
+            if (substantive_issue(original) or original.get('required') is True or original.get('required_checks')
+                    or original.get('severity') not in {'minor','suggestion','nonblocking','非阻断','建议'}
+                    or not isinstance(fix.get('result'),str) or not fix['result'].strip()
+                    or fix.get('checks') or fix.get('affected_files')):
+                raise ValueError('Only nonblocking advice without required checks may be accepted unchanged')
+            continue
+        if status not in {'resolved','removed'} or not fix.get('checks') or not fix.get('result'):
             raise ValueError('Unresolved original issue, including core defect, blocks closure')
         affected=fix.get('affected_files',[])
-        if not isinstance(affected,list) or not affected or any(key not in current for key in affected):
+        if not isinstance(affected,list) or not affected or any(key not in current and key not in removed_source for key in affected):
             raise ValueError('Each original repair requires actual affected delivery paths')
         tested=set()
         for kind in fix['checks']:
             if kind not in by_kind:raise ValueError('Affected selfcheck kind missing')
             tested.update(by_kind[kind].get('artifact_hashes',{}))
-        original=original_by_id[fix['id']]
+            tested.update(by_kind[kind].get('removed_artifacts',{}))
         required=original.get('required_checks',[])
         if not set(required).issubset(set(fix['checks'])):
             raise ValueError('Original substantive issue lacks its required affected check coverage')
-        if (original.get('core') is True or original.get('severity') in {'core','critical','P0','P1','实质','重大'}
-                or original.get('priority') in {'P0','P1','0','1',0,1}
-                or (zip_rel in affected and zip_rel in changed and not container_only)):
+        if status=='removed':
+            if (substantive_issue(original) or original.get('required') is True
+                    or original.get('severity') not in {'minor','suggestion','nonblocking','非阻断','建议'}):
+                raise ValueError('Core or explicitly required functionality cannot be removed as noncore')
+            browser=by_kind.get('browser',{})
+            if (not source_changed or not source_changed.intersection(affected)
+                    or 'browser' not in fix['checks'] or (not main_code_only(run) and 'package_startup' not in fix['checks'])
+                    or not source_changed.intersection(affected).issubset(set(browser.get('artifact_hashes',{}))|set(browser.get('removed_artifacts',{})))):
+                raise ValueError('Removed optional functionality needs changed source and current browser/entry plus package startup checks')
+        if (substantive_issue(original)
+                or (source_changed.intersection(affected) and not container_only)):
             business_checks={'algorithm','api','persistence','browser'}
             document_only=(original.get('core') is not True
                            and original.get('severity') not in {'core','critical'}
@@ -330,11 +435,11 @@ def validate(workspace,path,output,run):
                 raise ValueError('Changed Word requires actual affected visual selfcheck evidence')
         covered.update(affected)
     if not set(changed).issubset(covered):raise ValueError('Changed delivery artifacts lack targeted issue/selfcheck coverage')
-    if (proof.get('source_zip_sha256')!=current.get(zip_rel)
-            or by_kind['package_startup'].get('artifact_hashes',{}).get(zip_rel)!=current.get(zip_rel)):
+    if (proof.get('source_zip_sha256')!=source_map_digest(run,output,current)
+            or (not main_code_only(run) and by_kind['package_startup'].get('artifact_hashes',{}).get(zip_rel)!=current.get(zip_rel))):
         raise ValueError('Actual package startup selfcheck must bind the current source ZIP')
     word=delivery_layout(output,run)
-    for artifact in (word,paths['source_zip']):
+    for artifact in ((word,) if directory_delivery(run) else (word,paths['source_zip'])):
         with zipfile.ZipFile(artifact) as archive:
             if archive.testzip() is not None:raise ValueError('Broken Word/source ZIP blocks closure')
     scanned=proflow.scan_delivery(output,run['word_name'],run)
@@ -343,9 +448,14 @@ def validate(workspace,path,output,run):
     charts=chart_snapshot(workspace,word,run) if current.get(run['word_name'])!=old.get(run['word_name']) else first['chart_snapshot']
     if charts!=proof.get('chart_snapshot'):raise ValueError('Current chart snapshot differs from targeted selfcheck')
     repaired_chart_checks(first,charts,fixes,by_kind,run['word_name'],changed,current,word)
-    for relative,sha in read_json(inside(workspace,'.product-v2/source-package.json'))['files'].items():
-        if digest(inside(workspace,relative))!=sha:raise ValueError('Source changed after packaging')
-    if read_json(inside(workspace,'.product-v2/source-package.json'))['sha256']!=current[zip_rel]:
+    correspondence_coverage(first,charts,by_kind,run['word_name'],current)
+    from system_diagrams import validate_affected_review
+    validate_affected_review(run,current,changed,by_kind)
+    from runtime_cache import evidence_path
+    package=read_json(inside(workspace,'.product-v2/source-package.json'))
+    for relative,sha in package['files'].items():
+        if digest(evidence_path(workspace,run,package,relative))!=sha:raise ValueError('Source changed after packaging')
+    if read_json(inside(workspace,'.product-v2/source-package.json'))['sha256']!=source_map_digest(run,output,current):
         raise ValueError('Source package receipt differs from the delivered ZIP')
     recording=read_json(inside(workspace,'.product-v2/recording.json'))
     from media_evidence import validate_recording_duration
@@ -373,7 +483,8 @@ def validate(workspace,path,output,run):
             'workspace':str(workspace),'files':current,'chart_snapshot':charts,'source_docx_sha256':run['source_docx_sha256'],
             'first_review':reference(first_path),'first_dispatch':reference(spec_path),'verified_first_dispatch':first_dispatch,
             'first_independent_decision':'revise','independent_pass_claimed':False,'verified_repair_dispatch':repair,
-            'execution_evidence':reference(path),'authorization':auth,'changed_files':changed,
+            **({'verified_unchanged_owner':owner} if owner else {}),
+            'execution_evidence':reference(path),'authorization':auth,'changed_files':changed,'resolutions':fixes,
             'reused_files':{key:sha for key,sha in current.items() if old.get(key)==sha},'at':proflow.utc()}
 
 
@@ -457,8 +568,12 @@ def close(workspace,evidence,destination,archive,owner_pid=None):
                 raise ValueError('Frozen simplified closure evidence changed')
             for key in ('first_review','first_dispatch','execution_evidence'):bound(workspace,receipt[key])
             proof=read_json(path)
-            excluded={item['agent_id'] for item in receipt['verified_first_dispatch'].values() if isinstance(item,dict) and 'agent_id' in item}
-            if repair_binding(workspace,path,proof,excluded)!=receipt['verified_repair_dispatch']:
+            excluded=independent_reviewer_agents(receipt['verified_first_dispatch'])
+            if receipt.get('verified_unchanged_owner'):
+                owner=unchanged_owner_binding(proof,read_json(bound(workspace,receipt['first_review'])),
+                                              read_json(bound(workspace,receipt['first_dispatch'])),receipt['changed_files'])
+                if owner!=receipt['verified_unchanged_owner']:raise ValueError('Frozen unchanged owner binding changed')
+            elif repair_binding(workspace,path,proof,excluded)!=receipt['verified_repair_dispatch']:
                 raise ValueError('Frozen original repair dispatch changed')
             for check in proof['checks']+proof.get('affected_checks',[]):
                 if digest(inside(workspace,check['log']))!=check['sha256']:raise ValueError('Frozen successful selfcheck log changed')
@@ -506,7 +621,7 @@ def draft(workspace,manifest,evidence):
     charts=first['chart_snapshot'] if current.get(run['word_name'])==first['reviewed_files'].get(run['word_name']) else chart_snapshot(workspace,paths['word'],run)
     value.update(contract=CONTRACT,workspace=str(workspace),run_id=run['run_id'],files=current,
                  changed_files=sorted(key for key in set(current)|set(first['reviewed_files']) if current.get(key)!=first['reviewed_files'].get(key)),
-                 chart_snapshot=charts,source_zip_sha256=digest(paths['source_zip']),
+                 chart_snapshot=charts,source_zip_sha256=source_digest(paths['source_zip']),
                  video_timeline_sha256=read_json(inside(workspace,'.product-v2/controlled-video.json'))['sha256'])
     write_json(evidence,value)
     return {'status':'unsigned-draft','evidence':reference(evidence),'scope':'Mechanical metadata only. Original repairer must complete real affected checks and attest this SHA256 in its existing final.'}

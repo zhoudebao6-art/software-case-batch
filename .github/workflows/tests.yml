@@ -51,6 +51,7 @@ jobs:
         run: |
           $TaskSettings = [ordered]@{
             output_root = 'D:\研发图表'
+            cache_root = 'D:\codex+'
             python = (Get-Command python.exe).Source
             node = (Get-Command node.exe).Source
             playwright_module = 'D:\codex+\dependencies\scb-ci\node_modules\playwright'
@@ -66,5 +67,5 @@ jobs:
       - name: Node recording contracts
         run: |
           . '.\Enter-Environment.ps1'
-          & $env:SCB_PRO_NODE --test '.\tests\test_record.cjs' '.\tests\test_request_scope.cjs'
+          & $env:SCB_PRO_NODE --test '.\tests\test_record.cjs' '.\tests\test_request_scope.cjs' '.\tests\test_business_motion.cjs'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

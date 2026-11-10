@@ -330,6 +330,9 @@ async function observeVisibleResult(page,selector,text,{timeout=10000}={}) {
   // and the initial readiness marker must identify one visible element.
   await locator.first().waitFor({state:'visible',timeout});
 }
+async function observeRecordedResult(page,step) {
+  return observeVisibleResult(page,step.expect,step.text,{timeout:actionTimeout(step)});
+}
 async function performRecordedAction(page,step,mouse,{requestGuard,dir,index,timeout=actionTimeout(step)}={}) {
   try {
     inputBudget({...step,timeout_ms:timeout},index??0);
@@ -374,21 +377,43 @@ function recordingSetup(workspace,planPath) {
   if(('construction_check_policy_version' in run||'delivery_requirements_version' in run)&&(constructionChecks.status!=='ready'||constructionChecks.required!==true))throw Error('Current construction self-check admission required');
   return {workspace,run,plan,estimatedDuration,recordingPolicy,planSha:sha(planBytes),runSha:sha(runBytes),inputs,storageState,storageStateHash,constructionChecks,deliveryPaths};
 }
+function readinessError(category,message,cause) {
+  const error=new Error(message+(cause?': '+String(cause.message||cause):''));
+  error.readinessCategory=category;return error;
+}
+function readinessFailure(error) {
+  const actions={
+    service_unreachable:'Inspect the existing approved launcher exit and stderr; reuse the current case, never infer policy from a network error.',
+    health_response_invalid:'Check the configured health endpoint and actual response; do not restart a healthy service merely to change stages.',
+    service_identity_mismatch:'Compare the frozen run, workspace and version with the listening service; do not adopt or stop another case.',
+    listener_not_registered:'Inspect and register the verified existing launcher/listener using process_guard; do not relaunch merely for registration.',
+    readiness_input_or_tool_failed:'Inspect the named plan, file or tool failure and repair only that dependency; preserve existing receipts and media.'
+  };
+  const category=Object.hasOwn(actions,error?.readinessCategory)?error.readinessCategory:'readiness_input_or_tool_failed';
+  return {kind:'recording-readiness-check',status:'not_ready',category,next_action:actions[category],
+    capture_performed:false,service_started:false,retry_performed:false,policy_conclusion:'not_assessed',
+    diagnostic:commandFailure('readiness',[],{status:2,stderr:String(error)})};
+}
 async function healthIdentity(workspace,run,plan,request=null) {
   const origin=new URL(plan.url),url=new URL(plan.health_path,origin.origin);
   if(url.origin!==origin.origin||!localUrl(url.href))throw Error('Health endpoint must stay on the recording origin');
-  const response=request?await request.get(url.href,{maxRedirects:0,timeout:10000}):
-    await fetch(url.href,{method:'GET',redirect:'error',signal:AbortSignal.timeout(10000)});
-  if(!(request?response.ok():response.ok))throw Error('Health endpoint failed');
-  const value=await response.json();
+  let response;
+  try { response=request?await request.get(url.href,{maxRedirects:0,timeout:10000}):
+    await fetch(url.href,{method:'GET',redirect:'error',signal:AbortSignal.timeout(10000)}); }
+  catch(error) { throw readinessError('service_unreachable','Health request failed',error); }
+  if(!(request?response.ok():response.ok))throw readinessError('health_response_invalid','Health endpoint failed');
+  let value;
+  try { value=await response.json(); }
+  catch(error) { throw readinessError('health_response_invalid','Invalid health JSON',error); }
+  if(!value||typeof value!=='object')throw readinessError('health_response_invalid','Invalid health JSON object');
   if(value.run_id!==run.run_id||value.version!==plan.version||String(value.workspace).toLowerCase()!==workspace.toLowerCase()||
-     !Number.isInteger(value.pid)||value.pid<1)throw Error('Health endpoint belongs to a different case/version');
+     !Number.isInteger(value.pid)||value.pid<1)throw readinessError('service_identity_mismatch','Health endpoint belongs to a different case/version');
   const current=parseIdentityJson(command(process.env.SCB_PRO_PYTHON,[path.join(__dirname,'process_guard.py'),'inspect','--workspace',workspace]));
   const registry=load(path.join(workspace,'.product-v2/processes.json'));
-  if(typeof registry.workspace!=='string'||registry.workspace.toLowerCase()!==workspace.toLowerCase())throw Error('Registry workspace identity differs');
+  if(typeof registry.workspace!=='string'||registry.workspace.toLowerCase()!==workspace.toLowerCase())throw readinessError('service_identity_mismatch','Registry workspace identity differs');
   const port=Number(origin.port||(origin.protocol==='https:'?443:80));
   const live=current.owned.find(p=>p.pid===value.pid&&p.ports.includes(port)),saved=registry.processes.find(p=>p.pid===value.pid);
-  if(!live||!saved||typeof live.created_ticks!=='string'||! /^[1-9]\d*$/.test(live.created_ticks)||live.created_ticks!==saved.created_ticks||live.command_sha256!==saved.command_sha256)throw Error('No current registered listener identity for this case');
+  if(!live||!saved||typeof live.created_ticks!=='string'||! /^[1-9]\d*$/.test(live.created_ticks)||live.created_ticks!==saved.created_ticks||live.command_sha256!==saved.command_sha256)throw readinessError('listener_not_registered','No current registered listener identity for this case');
   return {pid:live.pid,created_ticks:live.created_ticks,command_sha256:live.command_sha256,ports:live.ports};
 }
 async function checkReady(workspace,planPath) {
@@ -496,7 +521,7 @@ async function recordPhase(workspace, planPath, phase='full',lease=null) {
       const started=(performance.now()-captureStart)/1000;
       try {
       const downloadProof=await performRecordedAction(page,step,mouse,{requestGuard,dir,index:i});
-      await observeVisibleResult(page,step.expect,step.text);
+      await observeRecordedResult(page,step);
       const event={index:i,action:step.action,scheduled:step.at,started,completed:(performance.now()-captureStart)/1000,screenshot:await observe('step-'+String(i+1).padStart(2,'0')),download:downloadProof};
       events.push(event);return event;
       } catch(error) {
@@ -592,7 +617,7 @@ function finishRecording(workspace,lease=null) {
   validateMeasuredDuration({...c,duration:seconds},policyVersion(run.recording_policy_version));
   if(stream.width!==1920||stream.height!==1080) throw Error('Video geometry check failed');
   fs.mkdirSync(path.dirname(final),{recursive:true});if(!fs.existsSync(final)) fs.copyFileSync(staged,final,fs.constants.COPYFILE_EXCL);
-  const evidenceDir=path.join(workspace,'.product-v2','video-'+crypto.randomUUID()),frames=path.join(evidenceDir,'frames');
+  const evidenceDir=path.join(dir,'controlled-video-'+crypto.randomUUID()),frames=path.join(evidenceDir,'frames');
   const report={passed:true,duration:seconds,width:1920,height:1080,sha256:sha(fs.readFileSync(final)),video:final,raw_video:rawPath,prelude_seconds:prelude,input_files:inputs,service_identity:identity,events,texts,frames,visual_review_required:true,capture_receipt_sha256:pending.sha256,encoding_threads:2,...(c.recording_policy_version===BOUNDED_FLOW_POLICY?{capture_quality:{native_width:1920,native_height:1080,codec:'libx264',preset:'fast',crf:18,resized:false,transcodes_from_raw:1}}:{}),construction_checks:c.construction_checks,plan_path:c.plan_path,
     recording_policy_version:policyVersion(c.recording_policy_version),plan_sha256:c.plan_sha256,estimated_duration_seconds:c.estimated_duration_seconds,timeout_seconds:c.timeout_seconds,planned_step_count:c.planned_step_count,completed_step_count:c.completed_step_count,final_result_completion:c.final_result_completion};
   save(path.join(workspace,'.product-v2/recording.json'),report);
@@ -608,7 +633,7 @@ if(require.main===module) {
   const args=process.argv.slice(2),value=name=>args.includes(name)?args[args.indexOf(name)+1]:undefined;
   if(args.includes('--check-ready')) {
     if(!value('--workspace')||!value('--plan')){console.error('Expected --workspace and --plan for --check-ready');process.exitCode=2;}
-    else checkReady(value('--workspace'),value('--plan')).then(result=>console.log(JSON.stringify(result))).catch(error=>{console.error(String(error));process.exitCode=2;});
+    else checkReady(value('--workspace'),value('--plan')).then(result=>console.log(JSON.stringify(result))).catch(error=>{console.log(JSON.stringify(readinessFailure(error)));process.exitCode=2;});
   }
   else if(!args.includes('--workspace')||(!args.includes('--plan')&&value('--phase')!=='evidence')) {console.error('Expected --workspace and --plan (except evidence phase)');process.exitCode=2;}
   else {
@@ -626,4 +651,4 @@ if(require.main===module) {
     }catch(error){console.error(String(error));process.exitCode=2;}
   }
 }
-module.exports={approvedTempRoot,frozenDeliveryPaths,validatePlan,checkReady,downloadRequestGuard,record,localUrl,auditUiText,finishRecording,leaseArgs,isolatedBrowserOptions,batchBinding,validateBatchPhase,executeTimeline,boundPolicy,validateMeasuredDuration,withActionableTarget,performRecordedAction,uniqueVisibleLocator,observeVisibleResult,movePointer,command,commandFailure};
+module.exports={readinessFailure,approvedTempRoot,frozenDeliveryPaths,validatePlan,checkReady,downloadRequestGuard,record,localUrl,auditUiText,finishRecording,leaseArgs,isolatedBrowserOptions,batchBinding,validateBatchPhase,executeTimeline,boundPolicy,validateMeasuredDuration,withActionableTarget,performRecordedAction,uniqueVisibleLocator,observeVisibleResult,observeRecordedResult,movePointer,command,commandFailure};

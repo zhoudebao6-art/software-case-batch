@@ -16,6 +16,14 @@ MODEL_STAGES={'build','review','expedited'}
 MODELS={'build':['gpt-6.1-sol','high'],'repair':['gpt-6.1-sol','ultra'],
         'review':['gpt-6.1-sol','ultra'],'expedited':['gpt-6-astra','low']}
 REVIEW_ADMISSION_CONTRACT='frozen-review-route-v1'
+CONTROL_WAIT_SECONDS=10
+
+
+class BatchStateBusy(ValueError):
+    """The shared lock was not acquired; the transaction body never ran."""
+    def __init__(self,lock,wait_seconds):
+        self.lock=str(lock);self.wait_seconds=wait_seconds
+        super().__init__('Batch state busy; retry after the short parent mutation completes, never delete a live lock')
 
 def authorization_scope_names(manifest,case):
     if manifest.get('review_admission_contract')==REVIEW_ADMISSION_CONTRACT:
@@ -204,7 +212,7 @@ def transaction(root,wait_seconds=0):
     while True:
         try:fd=os.open(lock,os.O_CREAT|os.O_EXCL|os.O_WRONLY);break
         except FileExistsError:
-            if time.monotonic()>=deadline:raise ValueError('Batch state busy; retry after the short parent mutation completes, never delete a live lock')
+            if time.monotonic()>=deadline:raise BatchStateBusy(lock,wait_seconds)
             time.sleep(.03+(os.getpid()%7)*.005)
     try:os.write(fd,str(os.getpid()).encode());os.close(fd);yield
     finally:lock.unlink()
@@ -287,6 +295,15 @@ def legacy_media_exit_proof(case,entry,value):
     return {'binding_sha256':digest(binding_path),'batch_id':entry['batch_id'],'token':entry['token'],
             'cleanup_sha256':digest(proof),'registry_sha256':digest(registry_path),'verified_ns':time.time_ns()}
 
+def local_recording_limit():
+    """Optional host calibration, frozen only when a new auto batch registers."""
+    config=Path(__file__).resolve().parents[1]/'local.config.json'
+    if not config.is_file():return None
+    limit=read_json(config).get('recording_auto_limit')
+    if limit is not None and (type(limit) is not int or limit<1):
+        raise ValueError('recording_auto_limit must be a positive integer')
+    return limit
+
 def register(root,batch_id,case_list,authorization,host_slots=4,recording_limit=None):
     if not batch_id or not all(c.isalnum() or c in '-_' for c in batch_id):raise ValueError('Unsafe batch ID')
     if not authorization.strip():raise ValueError('Explicit confirmed-batch authorization reference required')
@@ -301,8 +318,13 @@ def register(root,batch_id,case_list,authorization,host_slots=4,recording_limit=
         limit=int(recording_limit) if str(recording_limit)!='auto' else GLOBAL_RECORDING_LIMIT
         if str(recording_limit)=='auto':
             available=memory_available_mb();cpu=cpu_snapshot()
-            limit=max(1,min(limit,1+max(0,available-4096)//2048,
+            limit=max(1,min(1+max(0,available-4096)//2048,
                             max(1,(cpu['logical_processors']-2)//4)))
+            calibrated=local_recording_limit()
+            if calibrated is not None:
+                policy['calibrated_recording_limit']=calibrated
+                limit=min(limit,calibrated)
+            policy.update(version='hardware-adaptive-v2',global_recording_limit=limit)
             policy['registration_resources']={'available_mb':available,**cpu}
         profile.update(resource_accounting='separate-model-media-v1',recording_policy=policy)
         profile['capacities']['record']=limit
@@ -479,10 +501,23 @@ def active_profiles(root,manifest,active):
         if ticket['batch_id'] not in profiles:profiles[ticket['batch_id']]=batch(root,ticket['batch_id'])[1]['execution_profile']
     return list(profiles.values())
 
+def recording_capacity(profile):
+    """Frozen host budget; legacy active profiles retain their original ceiling."""
+    policy=profile.get('recording_policy') or {}
+    version=policy.get('version')
+    cap=profile['capacities']['record']
+    if type(cap) is not int or cap<1:raise ValueError('Invalid frozen recording capacity')
+    if version is None:return min(GLOBAL_RECORDING_LIMIT,cap)
+    if version!='hardware-adaptive-v2':raise ValueError('Unknown recording policy version')
+    if (policy.get('mode')!='auto' or profile.get('resource_accounting')!='separate-model-media-v1'
+            or policy.get('global_recording_limit')!=cap):
+        raise ValueError('Inconsistent hardware recording budget')
+    return cap
+
 def admission_limits(root,manifest,active,stage):
     profiles=active_profiles(root,manifest,active)
-    limit=min([GLOBAL_RECORDING_LIMIT if stage=='record' else CAPACITIES[stage]]+
-              [p['capacities'][stage] for p in profiles])
+    limit=(min(recording_capacity(p) for p in profiles) if stage=='record' else
+           min([CAPACITIES[stage]]+[p['capacities'][stage] for p in profiles]))
     legacy=[p for p in profiles if p.get('resource_accounting')!='separate-model-media-v1']
     if legacy and len(active)>=min(p['worker_capacity'] for p in legacy):
         return limit,False
@@ -631,9 +666,9 @@ def defer_capacity(root,target,manifest,state,pool,entry,pid,value):
     return waiting
 
 def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=None,authorization=None,runtime_pid=None):
-    # Concurrent Node captures can perform launch checks together. Wait only for
-    # this exact short-lived lock contention, never remove or steal a live lock.
-    with transaction(root,wait_seconds=3 if action in {'verify-record','verify-evidence','bind-media-runtime','verify-review','complete-review','release-slot','defer-capacity'} else 0):
+    # Independent parent processes share this lock, including queue/acquire.
+    # Wait only before the transaction body; never replay mutations or media.
+    with transaction(root,wait_seconds=CONTROL_WAIT_SECONDS):
         target,manifest=batch(root,batch_id);owner_check(target,pid);state=read_json(target/'state.json')
         if case_id is not None and case_id not in state['cases']:raise ValueError('Control is restricted to this batch registered cases')
         if action in {'configure-scheduler','bind-controller','bind-repair'}:
@@ -696,7 +731,7 @@ def mutate(root,batch_id,pid,action,case_id=None,value=None,token=None,stage=Non
                 item['recovery']={'path':str(evidence),'sha256':digest(evidence)};item['phase']='prepared'
             else:
                 update=read_json(value)
-                if update.get('phase') not in {'prepared','building','repairing','waiting_record','recording','waiting_review','reviewing','blocked','delivered'}:
+                if update.get('phase') not in {'prepared','building','repairing','waiting_record','recording','waiting_review','reviewing','ready_finalize','blocked','delivered'}:
                     raise ValueError('Unknown case phase')
                 if update['phase']=='delivered':
                     case=next(c for c in manifest['cases'] if c['case_id']==case_id)
@@ -954,6 +989,47 @@ def status_fields(value,keys,label,warnings,valid=None):
     return projected
 
 
+def recorded_continuation(item,tickets,drain,pending=None):
+    """Route existing records only; never certify artifacts, acquire or mutate.
+
+    A completed review is usable here only when its last call, state summary
+    and released queue handoff agree. Current work and pause always take priority.
+    Finalize/close still perform their original complete current-input checks.
+    """
+    base={'scope':'recorded handoff only; not fresh acceptance or admission'}
+    def action(name,**facts):return dict(base,action=name,**facts)
+    if item.get('cancelled_by_user') or item.get('excluded_from_delivery'):
+        return action('keep_cancelled')
+    if item.get('phase')=='delivered':return action('keep_delivered',publication_verified=False)
+    if drain is not False:return action('wait_for_authorized_continue')
+    if item.get('maintenance_pause') or item.get('pause_checkpoint'):return action('inspect_recorded_pause')
+    if pending:return action('inspect_original_pending',pending=pending)
+    current=[t for t in tickets if not isinstance(t.get('status'),str) or t['status'] not in {'released','interrupted_released','released_paused','completed','cancelled','canceled'}]
+    if current:
+        return action('continue_original_ticket',tokens=[t.get('token') for t in current])
+    calls=item.get('calls')
+    last=calls[-1] if isinstance(calls,list) and calls else None
+    review=item.get('review_result')
+    if not isinstance(last,dict) or not isinstance(review,dict):return None
+    decision=review.get('decision')
+    if not isinstance(decision,str) or decision not in {'pass','revise','blocked'} or last.get('status')!='completed_'+decision:return None
+    if not isinstance(item.get('phase'),str) or item['phase'] not in {'pass':{'waiting_review','ready_finalize'},'revise':{'repairing'},'blocked':{'blocked'}}[decision]:return None
+    keys=('review_evidence','review_evidence_sha256')
+    if any(not isinstance(review.get(k),str) or not review[k] or review[k]!=last.get(k) for k in keys):return None
+    sha=review['review_evidence_sha256']
+    if len(sha)!=64 or any(c not in '0123456789abcdef' for c in sha):return None
+    matches=[t for t in tickets if t.get('token')==last.get('token')]
+    if len(matches)!=1:return None
+    ticket=matches[0];completion=ticket.get('review_completion')
+    if (ticket.get('status')!='released' or not isinstance(ticket.get('stage'),str) or ticket['stage'] not in {'review','expedited'}
+            or not isinstance(completion,dict) or completion.get('decision')!=decision
+            or not last.get('call_id') or completion.get('call_id')!=last['call_id']
+            or not completion.get('authenticated_group')
+            or any(completion.get(k)!=review[k] for k in keys)):return None
+    return action({'pass':'finalize_existing_review','revise':'resolve_recorded_findings','blocked':'resolve_recorded_blocker'}[decision],
+                  review=review,token=ticket['token'])
+
+
 def compact_status(root,path,result,pool,case_id=None):
     """Project already loaded records. No acceptance checks or dispatch prediction."""
     manifest,state,settings=result['manifest'],result['state'],result['scheduler']
@@ -970,7 +1046,7 @@ def compact_status(root,path,result,pool,case_id=None):
         registered[case['case_id']]=case
     if case_id is not None and case_id not in registered:raise ValueError('Unknown registered case_id: '+case_id)
     warnings=[];counts={};rows=[];states=state['cases']
-    known={'prepared','building','repairing','waiting_record','recording','waiting_review','reviewing','blocked','delivered'}
+    known={'prepared','building','repairing','waiting_record','recording','waiting_review','reviewing','ready_finalize','blocked','delivered'}
     ticket_fields=('token','batch_id','case_id','stage','status','priority','owner','model','effort',
                    'model_kind','work_kind','submitted_ns','acquired_ns','scheduler_lane','scheduler_admission',
                    'review_admission','review_dispatch_permit','repair_binding','capacity_retry','retry_after_ns',
@@ -980,12 +1056,13 @@ def compact_status(root,path,result,pool,case_id=None):
                  'error','reason','message','fatal','started_ns','completed_ns')
     terminal={'released','interrupted_released','released_paused','completed','cancelled','canceled'}
     if not isinstance(pool,list):raise ValueError('Recorded queue must be a list; inspect queue.json')
-    queue_tokens={};current_tickets=[]
+    queue_tokens={};current_tickets=[];case_tickets={}
     for index,ticket in enumerate(pool):
         source='queue.json['+str(index)+']'
         if not isinstance(ticket,dict) or not isinstance(ticket.get('batch_id'),str) or not ticket['batch_id']:
             raise ValueError('Invalid recorded queue batch identity; inspect '+source)
         if ticket['batch_id']!=manifest['batch_id']:continue
+        if isinstance(ticket.get('case_id'),str):case_tickets.setdefault(ticket['case_id'],[]).append(ticket)
         valid=all(isinstance(ticket.get(key),str) and ticket[key] for key in ('token','case_id','stage'))
         if isinstance(ticket.get('token'),str) and ticket['token']:
             queue_tokens.setdefault(ticket['token'],[]).append(ticket)
@@ -1002,8 +1079,11 @@ def compact_status(root,path,result,pool,case_id=None):
             warnings.append('Unknown recorded ticket stage retained; inspect '+source)
         if not isinstance(status,str) or status not in terminal:
             current_tickets.append(status_fields(ticket,ticket_fields,'Current ticket',warnings))
+    duplicate_tokens=set()
     for token,tickets in queue_tokens.items():
-        if len(tickets)>1:warnings.append('Duplicate recorded queue token '+token+'; pending resolution disabled; inspect queue.json')
+        if len(tickets)>1:
+            duplicate_tokens.add(token)
+            warnings.append('Duplicate recorded queue token '+token+'; pending resolution disabled; inspect queue.json')
     for cid in list(registered)+[cid for cid in states if cid not in registered]:
         item=states.get(cid);phase=item.get('phase') if isinstance(item,dict) else None
         count_key=phase if isinstance(phase,str) else 'unknown'
@@ -1023,7 +1103,8 @@ def compact_status(root,path,result,pool,case_id=None):
                         'execution_status','recovery','recovery_evidence','evidence_pointer','publication_receipt',
                         'checkpoint','pause_checkpoint','completed_report','executor','recording_pending',
                         'capacity_retry','retry_after_ns','not_before_ns','status_note','maintenance_pause',
-                        'resume_action','interrupted_at','priority','final_receipt','publish_receipt','final_path'):
+                        'resume_action','interrupted_at','priority','final_receipt','publish_receipt','final_path',
+                        'review_result','cancelled_by_user','excluded_from_delivery'):
                 if key in item:row[key]=item[key]
             if 'pending' not in item:local.append('Missing recorded pending collection; legacy absence does not prove no pending work')
             pending=item.get('pending',[])
@@ -1065,6 +1146,11 @@ def compact_status(root,path,result,pool,case_id=None):
                       for key in ('stage','status','agent_id','call_id','token','session_log','review_session_log','handoff'))
                 row['latest_call']=status_fields(latest,call_fields,'Latest call',local,valid) if calls else None
             else:local.append('Invalid calls collection; inspect state.json')
+        if not local and cid in registered:
+            tickets=case_tickets.get(cid,[])
+            conflict=any(isinstance(t.get('token'),str) and t['token'] in duplicate_tokens for t in tickets)
+            continuation=None if conflict else recorded_continuation(item,tickets,state.get('drain'),row.get('pending'))
+            if continuation:row['continuation']=continuation
         if local:row['warnings']=local
         rows.append(row)
     drain=state.get('drain')

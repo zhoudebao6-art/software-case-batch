@@ -95,13 +95,84 @@ def worker(probe_script, root, result, log):
         runpy.run_path(str(probe_script), run_name='__main__')
 
 
+def stop_windows_job(job, timeout=5):
+    """Confirm owned members exited while the original Job remains observable.
+
+    TerminateJobObject, like TerminateProcess, initiates asynchronous exit. Keep
+    real member handles until signaled; a missing named Job after close proves
+    nothing about those exits. Never terminate a PID obtained by a later lookup.
+    The caller still owns/ closes the Job and the launcher's original handles.
+    """
+    deadline = time.monotonic() + timeout
+    handles, errors, before, remaining = {}, [], [], []
+
+    def retain(pids):
+        for pid in pids:
+            if pid in handles:
+                continue
+            handle = job.k.OpenProcess(0x100000 | 0x1000, False, pid)
+            if not handle:
+                error = ctypes.get_last_error()
+                # The exact process can finish between the Job query and open.
+                if error != 87:
+                    errors.append('OpenProcess failed for owned member: ' + str(error))
+                continue
+            try:
+                member = wintypes.BOOL()
+                if not job.k.IsProcessInJob(handle, job.handle, ctypes.byref(member)):
+                    raise ctypes.WinError(ctypes.get_last_error())
+                if member.value:
+                    handles[pid] = handle
+                    handle = None
+                # PID reuse cannot make us wait on an unrelated process.
+            finally:
+                if handle:
+                    job.k.CloseHandle(handle)
+
+    try:
+        before = job.pids()
+        retain(before)
+        if not job.k.TerminateJobObject(job.handle, 2):
+            raise ctypes.WinError(ctypes.get_last_error())
+        while True:
+            current = job.pids()
+            retain(current)
+            pending = []
+            for pid, handle in handles.items():
+                milliseconds = max(0, min(100, math.ceil((deadline - time.monotonic()) * 1000)))
+                waited = job.k.WaitForSingleObject(handle, milliseconds)
+                if waited == 258:
+                    pending.append(pid)
+                elif waited != 0:
+                    raise ValueError('Owned package member process wait failed')
+            remaining = sorted(set(current) | set(pending))
+            if not remaining or time.monotonic() >= deadline:
+                break
+            if not pending:
+                # Only pace a still-populated original Job after observed process
+                # handles signaled; this never substitutes for an exit assertion.
+                time.sleep(min(.01, max(0, deadline - time.monotonic())))
+    except (OSError, ValueError) as error:
+        errors.append(str(error))
+        remaining = sorted(set(remaining) | set(before))
+    finally:
+        for handle in handles.values():
+            if not job.k.CloseHandle(handle):
+                errors.append('Owned package member handle close failed')
+    result = {'mechanism': 'windows-job', 'members_at_close': before,
+              'remaining_pids': remaining, 'status': 'stopped' if not remaining and not errors else 'cleanup_pending'}
+    if errors:
+        result['errors'] = errors
+    return result
+
+
 def execute(args, environment, timeout):
     """Return only exit/cleanup facts; never expose inherited command lines."""
     if os.name == 'nt':
-        from media_job import Job, launch_suspended, job_pids
+        from media_job import Job, launch_suspended
         name = 'Local\\SCBProPackage-' + uuid.uuid4().hex
         job, info, code, timed_out = Job(name), None, None, False
-        before_close = []
+        execution_error = None
         try:
             info = launch_suspended(job, args, environment)
             if job.k.ResumeThread(info.thread) == 0xffffffff:
@@ -118,21 +189,21 @@ def execute(args, environment, timeout):
                     raise ValueError('Package probe process wait failed')
                 if time.monotonic() >= deadline:
                     timed_out = True; break
+        except (OSError, ValueError) as error:
+            execution_error = str(error)
         finally:
             try:
-                before_close = job.pids()
+                cleanup = stop_windows_job(job)
             finally:
-                job.close()  # KILL_ON_JOB_CLOSE, only this invocation's members.
+                job.close()  # Crash/failure fallback remains KILL_ON_JOB_CLOSE.
                 if info:
-                    job.k.WaitForSingleObject(info.process, 5000)
                     job.k.CloseHandle(info.thread); job.k.CloseHandle(info.process)
-        deadline = time.monotonic() + 5
-        remaining = job_pids(name)
-        while remaining and time.monotonic() < deadline:
-            time.sleep(.05); remaining = job_pids(name)
-        return {'exit_code': code, 'timed_out': timed_out, 'launcher_pid': info.pid,
-                'cleanup': {'mechanism': 'windows-job', 'members_at_close': before_close,
-                            'remaining_pids': remaining, 'status': 'stopped' if not remaining else 'cleanup_pending'}}
+        result = {'exit_code': code, 'timed_out': timed_out, 'cleanup': cleanup}
+        if info:
+            result['launcher_pid'] = info.pid
+        if execution_error is not None:
+            result['execution_error'] = execution_error
+        return result
     process = subprocess.Popen(args, env=environment, start_new_session=True)
     timed_out, code = False, None
     try:
@@ -169,14 +240,18 @@ def execute(args, environment, timeout):
 
 def probe(workspace, probe_script, receipt, timeout=120, keep_extracted=False):
     workspace, output, run = state(workspace)
+    from source_delivery import main_code_only
+    if main_code_only(run):
+        raise ValueError('main-code-v1 does not require or permit this package startup step; use the packed source receipt')
     probe_script = no_links(probe_script)
     if workspace not in probe_script.parents or not probe_script.is_file() or probe_script.suffix.lower() != '.py':
         raise ValueError('Use an actual case-specific Python probe inside the original workspace')
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not math.isfinite(timeout) or not 0 < timeout <= 1800:
         raise ValueError('Timeout must be finite and in (0, 1800] seconds')
     temporary = no_links(os.environ.get('TEMP', ''))
-    if os.name == 'nt' and temporary != no_links(r'D:\codex+\temp'):
-        raise ValueError('Load installed Enter-Environment.ps1; TEMP must be D:\\codex+\\temp')
+    if os.name == 'nt':
+        from runtime_paths import checked_temp_root
+        temporary = checked_temp_root()
     if not temporary.is_dir() or any(no_links(os.environ.get(k, '')) != temporary for k in ('TMP', 'TMPDIR')):
         raise ValueError('TEMP, TMP and TMPDIR must identify the same existing private temp root')
     python = no_links(os.environ.get('SCB_PRO_PYTHON', ''))
@@ -222,6 +297,8 @@ def probe(workspace, probe_script, receipt, timeout=120, keep_extracted=False):
         report.update(execute(args, dict(os.environ, SCB_PACKAGE_RUN_ID=run['run_id']), timeout))
         if report['cleanup']['status'] != 'stopped':
             raise ValueError('Owned package probe processes still require cleanup')
+        if report.get('execution_error') is not None:
+            raise ValueError(report['execution_error'])
         if report['timed_out'] or report['exit_code'] != 0:
             raise ValueError('Package probe timed out or failed; inspect the private log')
         report['case_assertions'] = validate_result(read_json(no_links(result)))

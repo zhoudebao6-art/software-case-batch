@@ -1,3 +1,3 @@
 # Software Case Batch
 
-项目源码。使用文档不在公开仓库提供。
+Public source-only distribution. Local skill instructions, invocation details, cases, credentials, sessions, databases, and runtime evidence are intentionally excluded.

@@ -1,5 +1,7 @@
 """Real tiny isolated applications/process trees, never production case reruns."""
 import json
+import ctypes
+from ctypes import wintypes
 import os
 from pathlib import Path
 import socket
@@ -8,12 +10,14 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from common import digest, read_json, write_json
-from package_probe import probe, unpack, validate_result
+import package_probe
+from package_probe import probe, unpack, validate_result, stop_windows_job
 
 APP = '''\
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -219,6 +223,25 @@ class PackageProbeTests(unittest.TestCase):
         self.assertEqual(result['exit_code'], 0)
         extract = Path(result['extract_root']); self.addCleanup(__import__('shutil').rmtree, extract)
 
+    def test_cleanup_pending_retains_tree_and_original_failure_evidence(self):
+        def pending(*_):
+            self.receipt.with_suffix('.log').write_text('original startup failure\n', encoding='utf-8')
+            return {'exit_code': None, 'timed_out': False, 'execution_error': 'original wait failure',
+                    'cleanup': {'mechanism': 'windows-job', 'status': 'cleanup_pending',
+                                'remaining_pids': [123], 'errors': ['member wait failure']}}
+        with patch('package_probe.execute', side_effect=pending), patch('package_probe.shutil.rmtree') as remove:
+            result = probe(self.work, self.case_probe, self.receipt)
+        self.assertEqual(result['status'], 'failed', result)
+        self.assertEqual(result['execution_error'], 'original wait failure')
+        self.assertEqual(result['cleanup']['errors'], ['member wait failure'])
+        self.assertTrue(result['extract_root_retained'])
+        self.assertTrue(Path(result['extract_root']).is_dir())
+        self.assertEqual(self.receipt.with_suffix('.log').read_text(), 'original startup failure\n')
+        self.assertEqual(result['log_sha256'], digest(self.receipt.with_suffix('.log')))
+        self.assertNotIn('execution_check', result)
+        remove.assert_not_called()
+        self.addCleanup(__import__('shutil').rmtree, Path(result['extract_root']))
+
     def test_unsafe_zip_members_fail_before_extracting_any_files(self):
         for name in ('../outside', '/outside', 'C:/outside', 'folder/../outside', 'bad./x', 'CON.txt', 'a//b'):
             with self.subTest(name=name):
@@ -247,6 +270,156 @@ class PackageProbeTests(unittest.TestCase):
         for value in ({}, {'core_flow': 'actual', 'checks': []},
                       {'core_flow': 'actual', 'checks': [{'kind': 'startup', 'name': 'claim', 'passed': 1}]}):
             with self.assertRaises(ValueError): validate_result(value)
+
+
+@unittest.skipUnless(os.name == 'nt', 'Windows process-handle semantics')
+class WindowsPackageCleanupTests(unittest.TestCase):
+    class FakeJob:
+        """Job disappears from census immediately, but member exit is delayed."""
+        def __init__(self, mode='async'):
+            self.handle = 77
+            self.k = self
+            self.mode = mode
+            self.now = 0
+            self.terminated = False
+            self.events = []
+            self.member_waits = 0
+
+        def pids(self):
+            if self.terminated and self.mode == 'query-failed':
+                raise ValueError('original Job query failed')
+            # Deliberately empty even while the retained member is not signaled.
+            return [] if self.terminated else [101, 102]
+
+        def OpenProcess(self, rights, inherit, pid):
+            self.asserted_rights = rights
+            self.events.append(('open', pid))
+            if self.mode == 'open-denied':
+                ctypes.set_last_error(5)
+                return 0
+            return pid + 1000
+
+        def IsProcessInJob(self, handle, job, member):
+            ctypes.cast(member, ctypes.POINTER(wintypes.BOOL)).contents.value = True
+            return True
+
+        def TerminateJobObject(self, handle, code):
+            self.events.append(('terminate-job', handle))
+            if self.mode == 'terminate-failed':
+                ctypes.set_last_error(5)
+                return False
+            self.terminated = True
+            return True
+
+        def WaitForSingleObject(self, handle, milliseconds):
+            self.events.append(('wait', handle))
+            if handle != 1102:
+                return 0
+            self.member_waits += 1
+            self.now += milliseconds / 1000
+            if self.mode == 'wait-failed':
+                return 0xffffffff
+            if self.mode == 'timeout' or self.member_waits == 1:
+                return 258
+            return 0
+
+        def CloseHandle(self, handle):
+            self.events.append(('close-handle', handle))
+            return True
+
+        def close(self):
+            self.events.append(('close-job', self.handle))
+            self.handle = None
+
+        def ResumeThread(self, handle):
+            if self.mode == 'resume-failed':
+                ctypes.set_last_error(5)
+                return 0xffffffff
+            return 1
+
+        def GetExitCodeProcess(self, handle, code):
+            ctypes.cast(code, ctypes.POINTER(wintypes.DWORD)).contents.value = 0
+            return True
+
+    def stop(self, job, timeout=.25):
+        with patch('package_probe.time.monotonic', side_effect=lambda: job.now):
+            return stop_windows_job(job, timeout)
+
+    def assert_member_handles_closed(self, job):
+        self.assertEqual([event for event in job.events if event[0] == 'close-handle'],
+                         [('close-handle', 1101), ('close-handle', 1102)])
+
+    def test_empty_job_query_cannot_hide_asynchronous_member_exit(self):
+        job = self.FakeJob()
+        result = self.stop(job)
+        self.assertEqual(result['status'], 'stopped', result)
+        self.assertEqual(result['remaining_pids'], [])
+        self.assertEqual(job.member_waits, 2)
+        self.assertEqual(job.handle, 77)  # Observation Job is still held.
+        self.assertEqual(job.asserted_rights, 0x101000)
+        self.assert_member_handles_closed(job)
+
+    def test_member_timeout_is_bounded_pending_even_when_query_is_empty(self):
+        job = self.FakeJob('timeout')
+        result = self.stop(job)
+        self.assertEqual(result['status'], 'cleanup_pending', result)
+        self.assertEqual(result['remaining_pids'], [102])
+        self.assertGreaterEqual(job.now, .25)
+        self.assertLessEqual(job.now, .251)
+        self.assert_member_handles_closed(job)
+
+    def test_cleanup_api_failures_preserve_reason_and_close_member_handles(self):
+        for mode, reason in (('terminate-failed', 'Access is denied'),
+                             ('query-failed', 'original Job query failed'),
+                             ('wait-failed', 'process wait failed')):
+            with self.subTest(mode=mode):
+                job = self.FakeJob(mode)
+                result = self.stop(job)
+                self.assertEqual(result['status'], 'cleanup_pending', result)
+                self.assertTrue(result['errors'])
+                if mode != 'terminate-failed':
+                    self.assertIn(reason, result['errors'][0])
+                self.assert_member_handles_closed(job)
+
+    def test_process_open_denial_cannot_be_reported_as_stopped(self):
+        job = self.FakeJob('open-denied')
+        result = self.stop(job)
+        self.assertEqual(result['status'], 'cleanup_pending', result)
+        self.assertTrue(all('OpenProcess failed' in error for error in result['errors']))
+        self.assertEqual([event for event in job.events if event[0] == 'close-handle'], [])
+
+    def test_launch_and_resume_failures_keep_cleanup_and_original_error(self):
+        info = SimpleNamespace(pid=101, process=501, thread=502)
+        for mode in ('launch-failed', 'resume-failed'):
+            with self.subTest(mode=mode):
+                job = self.FakeJob(mode)
+                with patch('media_job.Job', return_value=job), \
+                     patch('media_job.launch_suspended', side_effect=ValueError('launch fixture failure')
+                           if mode == 'launch-failed' else None, return_value=info), \
+                     patch('package_probe.time.monotonic', side_effect=lambda: job.now):
+                    result = package_probe.execute(['owned-fixture'], {}, 1)
+                self.assertEqual(result['cleanup']['status'], 'stopped', result)
+                self.assertTrue(result['execution_error'])
+                self.assertEqual(job.events[-1] if mode == 'launch-failed' else job.events[-3], ('close-job', 77))
+                if mode == 'launch-failed':
+                    self.assertNotIn('launcher_pid', result)
+                else:
+                    self.assertEqual(job.events[-2:], [('close-handle', 502), ('close-handle', 501)])
+
+    def test_execute_waits_member_handles_before_closing_observation_job(self):
+        job = self.FakeJob()
+        info = SimpleNamespace(pid=101, process=501, thread=502)
+        with patch('media_job.Job', return_value=job), \
+             patch('media_job.launch_suspended', return_value=info), \
+             patch('media_job.job_pids', return_value=[]) as named_query, \
+             patch('package_probe.time.monotonic', side_effect=lambda: job.now):
+            result = package_probe.execute(['owned-fixture'], {}, 1)
+        self.assertEqual(result['cleanup']['status'], 'stopped', result)
+        self.assertEqual(result['exit_code'], 0)
+        self.assertEqual(job.member_waits, 2)
+        self.assertLess(job.events.index(('wait', 1102)), job.events.index(('close-job', 77)))
+        self.assertEqual(job.events[-3:], [('close-job', 77), ('close-handle', 502), ('close-handle', 501)])
+        named_query.assert_not_called()
 
 
 if __name__ == '__main__':

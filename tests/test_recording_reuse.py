@@ -20,7 +20,7 @@ class CompletedRecordingTests(DependencyFixture):
         self.assertEqual(status['steps']['recording']['state'],'technical_ready')
         self.assertTrue(status['steps']['recording']['video_completed'])
         self.assertEqual(status['independent_visual_review'],'pending')
-        self.assertNotIn('check-build then capture',status['next_actions'])
+        self.assertNotIn('capture',status['next_actions'])
         self.assertEqual(digest(self.control/'recording.json'),record_hash)
         self.assertEqual(file_map(self.work),before)
     def test_completed_old_run_needs_no_new_record_or_confirmation(self):

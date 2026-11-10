@@ -50,7 +50,11 @@ class SourceIntakeTests(unittest.TestCase):
         self.source_package(self.original_body, self.old_media, self.old_rels)
         self.run = prepare(self.work, self.output, '设备联动诊断', self.source)
         # Preserve r9 numbering/source-protection fixtures independently of r10 mix checks.
+        self.run.pop('word_title_policy',None)  # Legacy fixture has no cover; new-title coverage is in test_word_title.
         self.run['chart_policy']='analytical-v1'
+        # Frozen r9 fixtures must not inherit a future form policy from prepare.
+        # The new policy's integration with source protection is tested below.
+        self.run.pop('web_module_policy',None)
         # These pre-key-facts fixtures exercise frozen numbering/source contracts.
         # New-run fact requirements are covered by test_explanation_facts.
         self.run.pop('explanation_fact_policy',None)
@@ -61,6 +65,23 @@ class SourceIntakeTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp.cleanup()
+
+    def test_source_form_purpose_gate_keeps_original_formula_protection(self):
+        run=dict(self.run,web_module_policy='source-form-v1')
+        self.candidate([4,5])
+        with self.assertRaisesRegex(ValueError,'source feature and technical purpose'):
+            chart_snapshot(self.work,self.word,run)
+        path=self.work/'.product-v2/chart-manifest.json';spec=read_json(path)
+        for row in spec['figures']:
+            row['technical_purpose']={'role':'quantitative_result','depiction':'computed_plot',
+                'source_locator':'TEST source paragraph 1','technical_feature':'TEST bound source result',
+                'why_this_form':'TEST expose the source result without modifying source formula'}
+        write_json(path,spec)
+        self.assertEqual(set(chart_snapshot(self.work,self.word,run)['figures']),{'4','5'})
+        self.candidate([4,5],body=self.original_body.replace('δ','x'))
+        write_json(path,spec)
+        with self.assertRaisesRegex(ValueError,'body blocks'):
+            chart_snapshot(self.work,self.word,run)
 
     def source_package(self, body, media=None, rels=None):
         with zipfile.ZipFile(self.source, 'w') as package:

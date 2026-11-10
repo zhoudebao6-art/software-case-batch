@@ -18,9 +18,13 @@ from common import (TEXT_SUFFIXES, META_COLUMNS, digest, file_map, forbidden, in
                     no_links, normalized, read_json, state, write_json, delivery_paths,
                     DEFAULT_DELIVERY_LAYOUT)
 from source_intake import source_figure_numbers
+from runtime_cache import evidence_path as source_evidence_path
 from contracts import (ANALYTICAL_CHART_POLICY, BUILD_CHART_POLICY, EXPLANATION_CONTEXT_POLICY,
                        EXPLANATION_FACT_POLICY, chart_policy)
 from review_packet import execution_checks
+from source_delivery import (MAIN_CODE_POLICY, DIRECTORY_POLICY, main_code_only, execution_kinds,
+                             selected_files, directory_delivery, source_digest, source_members, RETAINED_DIRECTORY_POLICY, retain_all_source,
+                             source_map_digest, source_descriptor, RUNTIME_CACHE_POLICY, retain_runtime_cache)
 
 ROOT = Path(__file__).resolve().parent.parent
 # Compatibility import only; operations resolve their own run's frozen layout.
@@ -88,7 +92,8 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
     source_hash = digest(source_docx)
     source_numbers = source_figure_numbers(source_docx)
     base=None
-    layout_version=DEFAULT_DELIVERY_LAYOUT
+    from common import SOURCE_DIRECTORY_LAYOUT
+    layout_version=SOURCE_DIRECTORY_LAYOUT
     if allow_untracked_base and (not revision_of or revision_scope!='package'):
         raise ValueError('Untracked-base allowance is limited to explicit package revisions')
     if revision_of:
@@ -98,6 +103,9 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
         chart_policy(base_run)
         from web_contract import web_module_policy
         web_module_policy(base_run)
+        from observed_outcomes import outcome_policy
+        outcome_policy(base_run)
+        main_code_only(base_run)
         base_receipt=inside(base_workspace,'.product-v2/final-receipt.json')
         prior=read_json(base_receipt)
         frozen_source=prior.get('source_docx_sha256') or base_run.get('source_docx_sha256')
@@ -117,6 +125,9 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
         chart_policy(previous)
         from web_contract import web_module_policy
         web_module_policy(previous)
+        from observed_outcomes import outcome_policy
+        outcome_policy(previous)
+        main_code_only(previous)
         if previous.get('schema_version') != 2:
             raise ValueError('Legacy run is frozen; prepare a separate revision workspace and output')
         if (previous['output'] == str(output) and previous['title'] == title
@@ -126,6 +137,10 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
         raise ValueError('Workspace already has a different product-v2 run; preserve it')
     adopted=None
     layout_run={'output':str(output),'title':title,'word_name':source_docx.name,'delivery_layout_version':layout_version}
+    if base and 'source_delivery_policy' in base_run:
+        layout_run['source_delivery_policy']=base_run['source_delivery_policy']
+    elif not base:
+        layout_run['source_delivery_policy']=RUNTIME_CACHE_POLICY
     if layout_version == DEFAULT_DELIVERY_LAYOUT:
         layout_run['materials_case_name'] = base_run.get('materials_case_name',base_run['title']) if base else title
     paths=delivery_paths(layout_run)
@@ -136,8 +151,8 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
         delivery_layout(output,dict(layout_run,schema_version=2))
         candidate=file_map(paths['system'])
         same=(candidate==base['system_files']) if revision_scope=='document' else (
-            {k:v for k,v in candidate.items() if k!=paths['source_name']}==
-            {k:v for k,v in base['system_files'].items() if k!=paths['source_name']})
+            {k:v for k,v in candidate.items() if k!=paths['source_name'] and not k.startswith(paths['source_name']+'/')}==
+            {k:v for k,v in base['system_files'].items() if k!=paths['source_name'] and not k.startswith(paths['source_name']+'/')})
         if not same:
             raise ValueError('Adopted revision draft must preserve the complete finalized system snapshot')
         adopted=file_map(output)
@@ -150,6 +165,8 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
            **{key:str(paths[key]) for key in ('word','data_dir','source_zip','video','screenshot') if key in paths},'status':'prepared'}
     if 'materials_case_name' in layout_run:run['materials_case_name']=layout_run['materials_case_name']
     if not base or revision_scope=='document':
+        from word_title import POLICY as WORD_TITLE_POLICY
+        run['word_title_policy']=WORD_TITLE_POLICY
         run['chart_policy']=BUILD_CHART_POLICY
         run['explanation_context_policy']=EXPLANATION_CONTEXT_POLICY
         run['explanation_fact_policy']=EXPLANATION_FACT_POLICY
@@ -165,8 +182,10 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
         run['source_integrity_policy']=base_run['source_integrity_policy']
     if base and revision_scope=='package' and 'review_coverage_policy' in base_run:
         run['review_coverage_policy']=base_run['review_coverage_policy']
+    if base and revision_scope=='package' and 'word_title_policy' in base_run:
+        run['word_title_policy']=base_run['word_title_policy']
     if base:
-        for policy_key in ('recording_policy_version','data_policy_version'):
+        for policy_key in ('recording_policy_version','data_policy_version','source_delivery_policy','system_diagram_policy','web_outcome_policy','product_plan_policy'):
             if policy_key in base_run:run[policy_key]=base_run[policy_key]
         if 'web_module_policy' in base_run:
             run['web_module_policy']=base_run['web_module_policy']
@@ -177,9 +196,16 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
         run['data_policy_version']='neutral-expanded-v1'
         from contracts import CONSTRUCTION_POLICY
         run['construction_check_policy_version']=CONSTRUCTION_POLICY
-        from web_contract import WEB_EXPERIENCE_POLICY, WEB_MODULE_POLICY
+        from web_contract import WEB_EXPERIENCE_POLICY, SOURCE_FORM_POLICY
         run['web_experience_policy']=WEB_EXPERIENCE_POLICY
-        run['web_module_policy']=WEB_MODULE_POLICY
+        run['web_module_policy']=SOURCE_FORM_POLICY
+        from case_representation import PLAN_POLICY
+        run['product_plan_policy']=PLAN_POLICY
+        from observed_outcomes import POLICY as OUTCOME_POLICY
+        run['web_outcome_policy']=OUTCOME_POLICY
+        run['source_delivery_policy']=RUNTIME_CACHE_POLICY
+        from system_diagrams import POLICY as SYSTEM_DIAGRAM_POLICY
+        run['system_diagram_policy']=SYSTEM_DIAGRAM_POLICY
     # Historical finalized revisions keep their frozen numbering contract.
     if not base or base_run.get('chart_numbering_policy') == 'source-sequential-v1':
         run['chart_numbering_policy'] = 'source-sequential-v1'
@@ -193,16 +219,17 @@ def prepare(workspace, output, title, source_docx, revision_of=None, adopt_draft
 交付Word必须保留原始完整文件名：{run['word']}
 成品文件夹：{output}
 数据交付位置：{run['data_dir']}
-源码压缩包：{run['source_zip']}
+主要代码交付位置：{run['source_zip']}
 最终视频：{run['video']}
 
 父会话必须使用实际spawn_agent工具(fork_turns=none, model=gpt-6.1-sol, reasoning_effort=high)分派建设和自检，完成后另行分派独立只读验收(fork_turns=none, model=gpt-6.1-sol, reasoning_effort=ultra)。未支持明确目标时停在未验收状态，不静默降级、不用当前会话替代、不称自动caseflow接入。保存真实call_id、返回的独立task_name和原会话JSONL路径；按references/tools.md绑定当前产物哈希。建设者只写建设和自检记录，不写独立pass。
 先从上述显式冻结的原技术Word盘点正文、原式、原图、实施例和输入约束；新案不依赖已有测试成品。同案同源哈希且已合格的图文、定义与代码才可复用，不能套用上一案件的业务、图或数据。原流程图、结构图和示意图全保留，不计入新增结果图数量；源正文和图题已占用的阿拉伯图号为{source_numbers}，新增结果图从图{max(source_numbers, default=0)+1}起连续编号；只有正文引用而无对应图题时先人工核对，仍保守占号，不改原文。逐图结合原技术实施例，读前文—新增红字—后文，详细自然讲清工况、读图、计算依据、可复核算例、结果原因和适用判断。有原式时承接计算含义并按需引用关键符号，原文已解释的定义不再堆写，禁止完整抄写原公式再改红色；符号保留上下标、帽号和希腊字母；无公式只按实施例解释，不强塞数学，不凑字数。每图独立“请参考图N”，原文原式原图不动；仅新增图及图下图题放全部原文之后。PNG图内禁止顶部title/suptitle、表头、图N或说明框，轴与必要图例正常。技术附图PNG、图设计manifest、渲染及证据留工作区，不放成品根目录。
-在原工作区对后端算法做尽可能深入的完善，补全领域约束、异常处理、持久化、批量处理和可验证业务闭环。Web优先多有效业务模块、充足有效数据，沿既有简洁质感指导实施；纯风格微调不返修阻塞，技术真实、可启动、文件完整、核心业务及首次必要质量核对不减。所有可见模块和按钮有效，不出现数学推导和过量英文。
+先用最小业务对象实跑准确启动入口及核心API，再扩展耗时图文和数据；从当前项目代码确认实际运行时、argv或环境变量、cwd、数据库与端口，不能统一套用--run-id/--workspace或诊断工具自己的Python。沿已有自检日志保存真实命令、进程退出码及stderr；已退出立即查错，不耗尽健康等待。健康的现有服务核本案run/workspace/version和进程归属后复用，真实审批拒绝保留原动作和证据交正式审批，不拆命令或换外壳绕过。
+在原工作区完成原材料和明确需求要求的后端算法、领域约束、异常处理、持久化和可验证业务闭环；批量等附加功能按本案实际需求决定，不为完整感自行扩展可选功能。Web优先真实有效业务模块、充足有效数据，沿既有简洁质感指导实施。无损主要交付的风格建议或额外功能问题不阻塞；可选附加功能可直接停用或剔除，但须移除实际入口及后台动作，保留原技术、明确功能和冻结交付合同。所有保留的可见模块和按钮有效，不隐藏仍会执行的错误或造成误导的限制，不出现数学推导和过量英文。
 实际检索同类型开源项目及原始数据，核对许可、字段、单位和分布，用项目领域机理进行可复现扩充；数据量按实体、时间、频率和代表工况充分覆盖，不用复制或无约束随机数凑行数。保留内部出处、参数、种子、日志和限制，不冒充现场实测。
-完成图文、系统与数据后，再实际操作最终网页录制一分多钟，不录十秒版，按本案有效操作与结果阅读自然结束，不固定60秒、不为凑时长空等、加速或截断。展示筛选、详情、业务提交、结果、历史和导出等完整使用过程。连续真实浏览器录屏，不能拼图、循环或假响应。实际测试算法、接口、保存重启、浏览器、构建和压缩包解压后的启动。
-录制就绪使用本案绝对.py启动文件登记launcher/listener，并确认process_guard inspect.owned含实际监听；high自检实际执行 & $env:SCB_PRO_NODE "{Path(__file__).with_name('record.cjs')}" --check-ready --workspace "{workspace}" --plan "{workspace/'.product-v2/record-plan.json'}"，只读核验计划、真实文件和服务/登记身份，检查通过后父再按既有槽/lease/Job进入capture。此检查不启动浏览器、不写录制状态、不代表录制或视觉通过，不替代真实登录及UI就绪实测，不新增模型或审批。
-建设与独立审查读取references/quality.md的交付质量分级：issues说明具体impact及affected_artifacts，阻交付缺陷一次列齐、定向修复，无实质影响的小细节记内部建议。按references/recording.md在原自检校验最终exact计划的完整value输入预算和timeout_ms，保留完整业务输入；同一次已有browser实测到达对应界面时，调用record.cjs.uniqueVisibleLocator核ready及实际动作的唯一可见定位，结果集合用只读断言。已有首轮审核小问题由原ultra修复者完成受影响自检后直接打包，不再整案复验；已合格Word、视频与数据按同hash复用，首次必要质量核对仍保留。小修不新增完整replay或审核轮次。真实首次检查、失败证据和独立验收保持，此处独立验收指首次必要质量核对，不为小修新增审核。
+系统、数据和录制输入已稳定且满足原票据/建设自检/媒体准入时，即可实际操作最终网页录制一分多钟；原负责人可同时完成不改变这些绑定输入的Word排版或离线收尾，不因无依赖文件未收尾而空等，不新增代理或阶段；最终首审仍须材料完整。视频不录十秒版，按本案有效操作与结果阅读自然结束，不固定60秒、不为凑时长空等、加速或截断。展示筛选、详情、业务提交、结果、历史和导出等完整使用过程。连续真实浏览器录屏，不能拼图、循环或假响应。实际测试算法、接口、保存重启、浏览器、构建和压缩包解压后的启动。
+录制就绪按本案已经实际验证的入口登记launcher/listener（Python、Node等沿真实接口，不强制改为.py），并确认process_guard inspect.owned含实际监听；high自检实际执行 & $env:SCB_PRO_NODE "{Path(__file__).with_name('record.cjs')}" --check-ready --workspace "{workspace}" --plan "{workspace/'.product-v2/record-plan.json'}"，只读核验计划、真实文件和服务/登记身份，检查通过后父再按既有槽/lease/Job进入capture。此检查不启动浏览器、不写录制状态、不代表录制或视觉通过，不替代真实登录及UI就绪实测，不新增模型或审批。
+建设与独立审查读取references/quality.md的交付质量分级：同一次首审一次区分核心阻断与非阻断，issues说明具体impact及affected_artifacts；阻交付缺陷一次列齐、定向修复，无实质影响的小细节记内部建议，不为可选增强要求返修。已有首审保留原ID、严重度、未读范围和revise，非核心建议可在现resolutions记accepted_nonblocking并说明无需改件的原材料/需求依据；无改件直接复用首审实际成功事实，由原owner走close-simplified，不为建议另派repair。非核心附加功能可由原ultra修复者停用/剔除，现resolution记removed并说明原需求不受影响，实查入口和后台动作已停止、剩余核心流程正常及当前包启动；仅核受影响项后close-simplified直接打包，不追加整案审核。不能删除原技术或明确功能、隐藏仍执行的错误，必检失败和未读不改名为建议；内部诊断和历史问题不混入成品，不伪称独立pass。按references/recording.md在原自检校验最终exact计划的完整value输入预算和timeout_ms，保留完整业务输入；同一次已有browser实测到达对应界面时，调用record.cjs.uniqueVisibleLocator核ready及实际动作的唯一可见定位，结果集合用只读断言。已合格Word、视频与数据按同hash复用，首次必要质量核对仍保留。小修不新增完整replay或审核轮次。真实首次检查、失败证据和独立验收保持；此处指首次必要质量核对，不为非核心处置追加审核。
 异步对象/版本切换按references/web-design.md复用assets/web/request_scope.mjs或已有等效机制，成功/错误/finally都核请求归属；同一次建设自检验证迟到响应、搜索清空、关闭与修订的实际消费路径。多件已入媒体队列由原owner按references/progress.md用--ready有界接续，不另派录制准备模型。首审按facts.visual_navigation直接读取图和视频，稳定Word/视频一次读完，不因首个普通缺陷推迟整轮阅读。
 录制和在线验证结束后核实并关闭本案全部专属后台，保留Codex/MCP、共享服务及其他项目。之后仅把白名单重要CSV清洗到上述数据目录；每个CSV整列删除“生成数据”“数据来源”及明确同义元数据列，保留其他字段和值，数据目录仅CSV，不删原工作区数据或数据库。
 本项目交付代码、Web和数据内容不得出现：模拟、虚拟、仿真、物理仿真、参考、源文件、公式、正文。固定容器目录“{paths['system_name']}”按run冻结布局保留；原技术Word原样保留，许可证单独核对。禁词命中按语义修复，不能转义藏词或破坏算法。
@@ -251,15 +278,19 @@ PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据
         prompt+='\n本次package revision沿用父chart_policy='+str(base_run.get('chart_policy','未标记历史2–6'))+'，不新增或重制图、不用新政策重写父通过。\n'
     prompt+=f'''\n以下均为以后每个授权案件的通用要求，不限于本次测试案：完整中文业务系统/领域算法和充分数据、原文原式原图保留、详细实施例红字和原式符号、图内无标题而Word图下有图题、一分多钟连续平顺真实实操、真实独立审核、录后核归属关闭后台再清洗重要CSV、源码ZIP排除使用说明及制作/原件解析/来源构造说明和模拟性质文案。
 通用状态验收：任何业务状态操作后，按本项目实际可见项核对列表、详情、统计、摘要和日志属于同一对象/版本；刷新保持用户筛选、排序及合法当前分页，关闭详情抽屉后迟到异步请求不得重新打开，连续/逆向操作也核验。不硬编码某个测试案的业务字段或动作。
-新版默认日常正式成果根：{default_output_root()}；按批次/案件集中，候选也在同卷私有.staging以便整案原子发布。当前显式指定的候选仍是{output}；用户明确指定其他目录时优先遵循。每周仅将已完成成品核验归档到F:\\研发图表；历史和活跃批次路径不改，归档按references/archive.md先复制校验、更新位置索引再清理对应源。TEMP和工具缓存仍D:\\codex+。
+新版默认日常正式成果根：{default_output_root()}；按批次/案件集中，候选也在同卷私有.staging以便整案原子发布。当前显式指定的候选仍是{output}；用户明确指定其他目录时优先遵循。每周仅将已完成成品核验归档到F:\\研发图表；历史和活跃批次路径不改，归档按references/archive.md先复制校验、更新位置索引再清理对应源。TEMP和可再生工具缓存沿当前环境入口解析的缓存根；本机未来新任务默认E:\\codex+，已安装依赖路径保持。
 原模型角色继续保留：返修及录制准备修复必须另派gpt-6.1-sol/ultra，独立reviewer只读不实现；原high建设及每轮ultra真实调用/快照均保留。仅明确原加急模式且真实当前批/案user消息核验时才Astra/low；提速不换模型。本次普通ultra。{('首轮pass由finalize冻结候选并publish原子发布；原review的revise保留不改签pass，原修复者受影响自检后走close-simplified，真实收据同步delivered并只清理本案同owner未派发review等待票。可用draft-closure从现有元数据生成机械字段，原修复者同一次最终答复绑定handoff路径与SHA256，不新增收费阶段。' if not base else '本次按上述授权修订专用finalize入口冻结候选，再publish至全新同卷目录，保留原冻结继承与独立审核要求。')}正式成品发布和整案ZIP以各自真实收据为准。
 '''
+    if not base:
+        frontend_root = Path(__file__).resolve().parents[1]
+        prompt += f'''\n常规命令输出：本案check-build/status使用--compact；实际检查和完整本地证据不缩减，失败原因/下一步保留。不将摘要当独立审核证据，不把哈希列表、完整历史和已读日志反复贴给模型；异常时按返回路径定向读。已有检查/服务健康/原片有效则直接推进下一就绪动作，不重复check-build→check-ready→status→capture链，capture仍保留内置核验。
+产品完成度必读：{frontend_root/'references/product-quality.md'}。本次以煤炭供需参考中的丰富同屏业务内容、跨模块深链、专业层次与实质代码分工为基准，并补足更丰富的业务动效；借鉴信息组织原则，不复制煤炭侧栏/拓扑为所有案件模板。十模块是下限，不能拆同一结果凑页面；实际数据、待办、异常、历史和比较关系按原案适用。前端分别组织请求/状态、领域视图与复用控件；后端分离输入校验、领域计算、业务事务和查询，既有测试核实际消费路径，不堆行数、不新建微服务。用当前业务对象完成主流程→换对象/参数→失败后恢复，在原browser报告core_outcomes引用这三组已有断言；observed_input与comparisons保存实际输入和期望/实际JSON值，不拿HTTP200或弹出成功作结果。精度按原单位和显示规则规整，不自动放宽容差。至少10个模块和全部页面仍按原流程实看，不能只完善首页。动效覆盖实际适用的视图/详情切换、选中联动、曲线或方案变化、计算/提交反馈；不是只做hover或加载转圈，数量按场景决定，不用假实时/假进度。可复用assets/web/business_motion.mjs管理取消、减少动效和卸载；状态先提交，动画不阻塞业务。正常与减少动态效果、快速反向操作在原browser会话一次核。纯装饰偏好不新增返修轮次，图文质量不降。\n前端执行必读：开始写本案Web前，实际读取当前技能绝对路径 {frontend_root/'references/frontend-design-playbook.md'} 与 {frontend_root/'references/frontend-motion.md'}。父派发建设任务必须保留本段与这两个路径，fork_turns=none不能依赖上下文继承。先在已有建设计划用本案真实实体写一条具体操作场景：谁选择哪个对象→哪些信息必须同屏→用户判断/操作→哪个结果或状态改变；说明主工作区、辅助区及主交互为何适合本案。按工作方式选空间和交互，不按标题关键词分配模板，不把十模块做成十张同构页面。影像检视、资源时间带、设备关系与轨迹、空间选区、试样曲线对照、密集记录处置等是可组合例子，按原材料选择或另行设计；无数据依据不造地图/拓扑/识别框，不为不同而换导航。先实现该场景的真实纵向切片，再扩展配置与历史等模块。若同批已有可直接读取的核心页截图或摘要，快速比较主对象/布局/交互，不为对照启动旧案或新增截图；没有对照直接继续，同类工作允许合理复用。仅换名称或色调不能算本案设计；忽略名称/色调/图标后，核本案必要对象关系与动作是否仍清楚，缺失就改主体结构；不因普通侧栏/表格相似而返工。界面文字按工作用途取舍：常驻只保留对象/参数/单位、实际状态、可执行动作及影响当前判断的条件；删除欢迎横幅、功能宣传、重复标题释义、算法介绍墙和每张卡片的解释尾句，用真实对象、专业视图和操作关系体现专业度。低频定义或较长帮助按需展开；阻断原因、风险、数据性质和结果适用限制仍在相关输入/结果旁可见，不以少字掩盖边界。按钮写具体动作，空状态写当前原因与可用下一步，不写“赋能/智能高效”等空泛口号；不设字数配额或机械禁词，不全局删介绍段。此要求只作用于系统界面，不缩减Word图表解释。模型自主决定布局、排版、视觉重点与适用动效，直接代码实现，不套固定CSS或imagegen整页模板；在已有建设计划简记核心页设计与动效用途并落实到真实核心页，按需选库、不为数量硬加动画。原browser自检实际查看页面和运动过程、快速切换/关闭与减少动态效果，复用原pages.screenshot和workflow/assertion，在原browser记录写清场景对应页面/区域、实际对象、动作及可观察联动结果；截图证明空间组织，断言证明真实行为，均写清未验证范围。在同次browser自检读核心页、详情及空/错误状态可见文案：每段常驻文字应帮助选择对象、输入、判断结果或恢复操作；无用途介绍直接在建设内删改，保留必要限制，帮助展开可达且不遮主操作，不新增报告或审核。只列文件或库名不算使用，不新增表单、审批或审美审核轮次。\n'''
     if run.get('data_policy_version')=='neutral-expanded-v1' and not base:
         prompt+='''\n建设开始在现有data-plan制定足量数据：对现有不足版本先统计清洗后主要明细有效规模，以约2倍作为扩容起点，按业务粒度和性能说明调整，维表不机械翻倍；新案业务明细以万行级、多对象时序以十万行级起步，重在有效独立记录及对象、时段、状态、正常/边界/异常/恢复多样性；真实图像、稀有设备、低频实验按输入形式与语义合理设目标，在现data-plan/export_schema/expansion_plan说明，不加统一硬行数门槛。使用批量可复现计算，不复制换号、不造不可能频率。导出文件名、表头、备注和单元格不得有真实或编造的地名、公司名称、人名，统一稳定编号，保持跨表与Web下载一致。原始来源、性质和映射只留内部，不伪称实测。先用data_preflight实际检查规模、引用和专名；清洗后的交付CSV与Web、初始化、筛选分页、统计和导出用同一数据集，核实际有效规模与覆盖，不能CSV很大Web几条或以计划代替现统计，沿原check-data核验；沿现有数据清洗记录绑定当前文件哈希，见references/system-data.md。\n'''
     if not base:
         prompt+='\n建设开始实际读取references/web-design.md和references/system-data.md：从本案原材料形成角色、核心任务、主工作区、关键交互的短设计画像，按业务主对象设计页面结构，不仅换颜色；沿已有source_trace、calculation_trace_map、coverage_matrix绑定原段/原式→实际函数→真实边界测试，不新增第二张台账。同一次high browser自检实际主页面、关键详情、空状态和错误提示的可见文字，调用现有record.cjs.auditUiText（共用references/ui-policy.json），在录制前修齐，不新增preflight模型；不展示“经计算生成数据”等制作过程说明，保留真实“生成报告/计算结果/预测结果”，不伪称实测或已上线，不自动改写原文或源码。建设自检在原有映射与六类检查中记录原定义→具体接受/拒绝断言→最终同引擎派生结果重算；先用最小业务闭环和关键反例调用真实最终函数，按源机制核验执行边界、集合门槛、真实输出误差和输入传递；同一次high内以当前部署入口实跑启动、健康身份、核心接口、必要持久化和停止/端口释放，通过后再扩量及制作依赖图文和录制；只前移便宜必要自检，不要求先完成全部后端，已有合格数据、计算和图文按原同hash规则复用，业务失败立即停止依赖生成、保留未变成果和独立验收，不以结构校验或成功状态代替业务正确，不新增台账或模型阶段。\n'
     if not base:
-        prompt+='''\n本次新完整案件冻结delivery_requirements_version=rich-delivery-v1及research-materials-v3：至少10份有独立业务用途、实际数据且跨表一致的CSV，至少10个真实业务模块，两项均不设数量上限；新完整run独立冻结web_module_policy=ten-modules-v1，不能因特殊小案说明而低于10。历史rich-delivery-v1未标此字段仍按原6模块合同，文档或源码包修订继承父策略，不追改在制案。CSV在现export_schema逐份写dataset_id/purpose，原check-data拒绝不足、空表、直接复制内容或改名凑表。模块在现web_experience.modules逐项绑定purpose/ui_locator/page_ids/workflow_ids/assertion_ids及entry_assertion_id/screenshot，后者绑定原browser已有实际模块界面截图，入口断言引用该截图并记录entry_visible=true及匹配ui_locator的实际可见入口；同一真实截图可支持多个同时可见模块，不要求10张不同截图或新截图阶段，真实动作断言不可重复凑数，同页的明确业务功能区可以独立计数。技术含义、充分规模及覆盖仍在原自检和首次独立检查核，不另增审核循环。参考规模按本案实体、时序、场景和关联充分覆盖，10只是最低线，不机械统一行数。\n视频展示完整核心业务流程，不必逐一录完所有10个及更多模块；全部模块仍须原browser自检和首次独立读图。视频新合同flow-complete-v2：实测大于60秒且最多300秒，有效流程通常规划2—4分钟留余量；超时保护独立，不加速、不截断操作或结果、不补静止尾段。原生viewport和recordVideo均1920×1080，原片尺寸实核后仅一次CRF18编码，不放大；不能靠缩小浏览器文字装下全部模块，沿原browser/首次审查实读正常字号。CRF只能减少新增损失，不能恢复原WebM细节。\n同一次browser自检保存至少一张代表核心业务的原生高清PNG（至少1920×1080，可更高），沿web_experience.delivery_screenshot绑定原pages.screenshot、page_id、native_width/native_height和resized=false。用proflow.py export-screenshot --workspace 本案工作区将原PNG逐字节导出为新材料目录/界面截图.png；不放大、不重编码冒充高清。其余页面内部截图与首次完整业务检查保留，不强制每页交付截图。\n'''
+        prompt+='''\n本次新完整案件冻结delivery_requirements_version=rich-delivery-v1及本run冻结布局：至少10份有独立业务用途、实际数据且跨表一致的CSV，至少10个真实业务模块，两项均不设数量上限；新完整run独立冻结web_module_policy=ten-modules-v1，不能因特殊小案说明而低于10。历史rich-delivery-v1未标此字段仍按原6模块合同，文档或源码包修订继承父策略，不追改在制案。CSV在现export_schema逐份写dataset_id/purpose，原check-data拒绝不足、空表、直接复制内容或改名凑表。模块在现web_experience.modules逐项绑定purpose/ui_locator/page_ids/workflow_ids/assertion_ids及entry_assertion_id/screenshot，后者绑定原browser已有实际模块界面截图，入口断言引用该截图并记录entry_visible=true及匹配ui_locator的实际可见入口；同一真实截图可支持多个同时可见模块，不要求10张不同截图或新截图阶段，真实动作断言不可重复凑数，同页的明确业务功能区可以独立计数。技术含义、充分规模及覆盖仍在原自检和首次独立检查核，不另增审核循环。参考规模按本案实体、时序、场景和关联充分覆盖，10只是最低线，不机械统一行数。\n视频展示完整核心业务流程，不必逐一录完所有10个及更多模块；全部模块仍须原browser自检和首次独立读图。视频新合同flow-complete-v2：实测大于60秒且最多300秒，有效流程通常规划2—4分钟留余量；超时保护独立，不加速、不截断操作或结果、不补静止尾段。原生viewport和recordVideo均1920×1080，原片尺寸实核后仅一次CRF18编码，不放大；不能靠缩小浏览器文字装下全部模块，沿原browser/首次审查实读正常字号。CRF只能减少新增损失，不能恢复原WebM细节。\n同一次browser自检保存至少一张代表核心业务的原生高清PNG（至少1920×1080，可更高），沿web_experience.delivery_screenshot绑定原pages.screenshot、page_id、native_width/native_height和resized=false。用proflow.py export-screenshot --workspace 本案工作区将原PNG逐字节导出为新材料目录/界面截图.png；不放大、不重编码冒充高清。其余页面内部截图与首次完整业务检查保留，不强制每页交付截图。\n'''
         prompt+='\n本案Web按references/web-design.md至少建设10个有实际可见入口、独立业务用途和真实动作的模块，数量无上限，可为导航页或明确功能分区；不能把三页作为固定模板或上限。按源技术/生命周期适配对象、批次、采集输入、配置、处理、诊断分析、处置复核、历史比较、报表导出等适用功能。不用同表换名、关于页、空页、统计卡或重复面板凑数；按源领域适配功能但不降低10模块门槛，在现source_trace、coverage_matrix或建设计划一句说明，不另建台账/审批，不全领域强加。工作台有真实任务/对象处理及结果去向；视觉识别接入合法真实图片，输入真正进入后端方法，展示原图/实际结果与适用复核，不用装饰图、预画框、标签或固定JSON冒充。监测、控制、调度、工艺和评估分别按原文业务类型组织主视图与交互。所有页面在原browser自检里运行，沿现有build-checks.json的web_experience绑定原技术映射、页面截图、实际动作断言及输入结果文件；新run冻结case-workflow-v1，缺业务覆盖证据在录制前拒绝。必要运行图像/权重/许可纳入源码白名单，实际解包检查可加载，不能被制作附图清理规则误删。既有独立审核实看全部业务页并对照源技术，不新建审核阶段或重做历史成果。\n'
     if not base or revision_scope=='package':
         prompt+='''\n建设自检及最终源码ZIP解压验证沿既有检查核验部署生命周期：PowerShell输出CIM/JSON前在子进程内明确[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false)，Python读取明确encoding='utf-8',errors='strict'并检查returncode；编码异常或非零退出如实失败，保留stdout/stderr，不用替换解码或吞错。启动返回后先保有Popen、PID、创建时间和本案entry归属再做探查，finally中失败也精确清退已核归属子树，无法核准时记录cleanup_pending，保留Codex/MCP及其他项目，不放宽process_guard边界。启动/停止使用同一真实entry，按当前部署目录解析绝对路径，入口变更时同步；建设内实际跑启动→停止→端口释放并核PID退出，最终ZIP解压后核对同一入口及清退效果、绑定ZIP哈希。命令、日志和哈希沿原有检查保存，不新增模型阶段、审批或全量重复测试。\n'''
@@ -269,12 +300,86 @@ PNG、图设计manifest、原式与实施例映射、渲染和当前检查证据
     if run.get('explanation_context_policy') and (not base or revision_scope=='document'):
         prompt+='\n正文解释落点：红字解释必须插入对应实施例、计算或结果分析的原正文段落之后，读前文—说明—后文并自然衔接；仅图片和图题放文末。不得把全文末尾新加“实施例补充分析”标题当作正文插入，也不机械全部放实施例最后。每图在现chart-manifest填写explanation_after_source_block（原Word w:body排除sectPr后的零起始块索引，同图多个落点可填不重复的索引数组）；各处解释放所选原段之后、下一原块之前，每图至少一处独立“请参考图N”，可重复引用、可联合解释多图。原有chart_snapshot核全部新增说明及原生公式的归属，不能只移动引用留下文末解释；空段/原图/图题不是正文锚点。结构通过不能证明语义正确；独立审核按当前锚点真实阅读上下文。说明脱离实施例、集中堆在无关文末或新增完整重复原式均属实质文档缺陷。source-context-v2在原有自检拦截新增原生数学关系的原式副本，忽略普通显示样式但保留数学结构；原件已有重复不动，独立符号和有依据的不同推导不误删，文本或图片公式仍须实际阅读比较。必须定向修Word及受影响包，不按小瑕疵放行，不重录未受影响视频。\n'
     if run.get('explanation_fact_policy') and (not base or revision_scope=='document'):
+        if run['explanation_fact_policy'] == EXPLANATION_FACT_POLICY:
+            prompt += '\n图文符号与空间对应：沿现key_facts逐图双向核对正文→图及图→正文。相关symbol和spatial_relation事实补depiction={panel,quantity_type,visible_objects,relationship}，写实际面板/算例、point/vector/matrix/scalar/index/relation/other类型、可见点/箭头/基向量/曲线及其关系；无子图填whole，不适用坐标时如实写业务关系，不造几何。矩阵不是点，B类方向矩阵用其列向量和方向对应，b类位置用点对应；核大小写/上下标、坐标原点/正方向/投影、单位/比例、起止点、权重和数值算例；投影中不可见量用适当局部图或正文明确承接，不伪画。不同面板/工况/时刻的坐标不得混用，图号引用须落到真正承载该量的图。普通图不强加公式或空间符号。原建设自检和同一次首审实际看最终PNG及Word，漏标或错位影响理解是实质问题，不能仅因正文出现符号放行。首审在既有chart_reviews.explanation填实际checked_fact_ids和具体evidence，同时主动找未声明漏项；脚本只核绑定覆盖，不替代视觉判断。一次列齐，仅修受影响图文/包，不增派审、台账或整案复验。\n'
+        prompt += '\n解释写作与图中信息逐项覆盖：实际读取 references/quality.md 的“实施例图解与公式符号”段。先从最终图反查轴、系列、区域、图例、标记和关键事件，再在原实施例前文—本图—后文内自然解释；用已有 key_facts 绑定，不新建台账。有原式且本图相关时，用原生行内 OMML 单独引用必要符号，说明符号的物理/业务含义、图形对应和变化含义，不抄完整公式。symbol 事实的 symbol_text 为该单独 OMML 的文本序列；格式和原定义由原首次阅读核对。无关符号不凑数。一次完成写作和原自检，不增加模型调用或审核轮次。\n'
+        prompt+='\n新增解释提交前由建设者主动逐段清理结尾：删除仅作提醒、免责、重复已述条件或讨论成品使用的泛化尾注（如“改变条件后应重新计算”“不能沿用本绘图结果”“最终报告仍受……约束”），不留给用户手删；以本实施例具体技术结论自然收尾。不是机械删除每段最后一句，也不按关键词删原文。影响读图/结论的实际工况、计算性质、单位和适用条件，应简明肯定地融入对应技术叙述；必要的不确定性、校准或测量边界不能隐去，计算不得冒称实测。仅调整新增说明和受影响Word/包，不重建未变图、系统、数据、视频，不新增检查阶段。\n'
+        prompt+='\n最终交付清理并入现有导出/打包收尾，由原制作/收尾负责人完成：再次检查实际导出的Word新增说明，交付品不得残留上述泛化尾注及同义提醒口吻，不留给用户手删。必要技术条件以具体实施例叙述保留；原输入原文不自动删改，遇原文冲突定位报告。改字后核受影响内容及分页/符号显示，更新原产物哈希与现有检查绑定；不能改Word后沿用旧文件pass。批次ZIP中的Word须与清理后的交付Word逐字节一致。首审前尽早清理；首审后只属措辞小修时沿原简化收尾核受影响项，不另排整案复验、不重做图/系统/数据/视频，不新增台账或模型阶段。\n'
         prompt+='\n逐图关键事实与解释：沿现chart-manifest的key_facts登记图上实际关键数值、时刻/基准、单位、事件、转折、极值、阈值和起止条件；无此类量的关系图登记关键状态或条件，不补造数字。每条填fact_id、kind、chart_text、basis={path,locator}、after_source_block、explanation_block及explanation_excerpt。explanation_block是最终Word body零起始块号，限定为本图该锚点的具体新增说明块；同间隙多图不借别图说明抵充。basis复用工作区内非空原件/数据/计算证据及具体位置；不另建重复台账。explanation_excerpt摘对应已声明锚点新增说明中的实际完整技术短句，连同对象、工况、时间基准、值和单位或事件，不能只填孤立数字。等义表述或有据单位换算写正文实际短句，由原独立阅读核实换算与源一致。原chart_snapshot核当前依据hash及短句确在本图该锚点说明内，不能以全文某处出现同一数字抵充解释。连续采样和自动坐标刻度不逐点抄，关键标记不得漏讲；先读前后文，解释原因、成立条件及接续逻辑，不凑字、不补造源结论。high在原建设自检实看实际图逐条核漏项，原首次独立审核实际对照图、依据和正文，在现chart_reviews.explanation说明是否完整且一致；声明和文字匹配不能代替语义判断，不新增阶段。\n'
     if run.get('source_integrity_policy') and (not base or revision_scope=='document'):
         prompt+='\n原有chart_snapshot同时核原Word关系、目标资源和末尾节属性；全部新增图形必须唯一登记、紧邻其图题并位于全部原文后，不夹带额外图，不改原模板页面设置。沿原建设自检处理，不增加模型阶段。\n'
     if run.get('review_coverage_policy'):
         prompt+='\n首次独立交接沿既有review_packet draft准备完整索引，按references/closure.md声明当前Word完整页序和原技术映射；review proof与原review阶段记录绑定同一review_index。只由实际审核者填写已阅ID，不能空列表或缩减必查集合冒充完成。原始技术帧与必须实际看的完整接触页、首尾和操作关键帧分开，保留全部技术证据。普通发布和首审简化收尾均拒绝明确未读的矛盾声明；已实际通过且未变的材料继续合法继承，小修只查受影响项，不增加整案审核。\n'
+    if retain_all_source(run):
+        for old,new in (
+            ('及当前包启动','及当前项目成员一致性'),
+            ('原有映射与六类检查','原有映射与五类工作区检查'),
+            ('原完整case六类检查','原完整case五类工作区检查'),
+            ('新ZIP、包启动实际log/结果/署名及完整继承链','新目录成员哈希、原工作区事实及完整继承链'),
+            ('实际测试算法、接口、保存重启、浏览器、构建和压缩包解压后的启动。','实际测试工作区算法、接口、保存重启、浏览器和构建；导出只核成员字节。'),
+            ('将实际可运行的项目源码压成上述ZIP','将清洗后的完整项目复制到上述目录'),
+            ('压缩包不得依赖被排除文件或旧绝对路径。','交付代码不要求独立运行；完整工作区保留。'),
+            ('旧源码、六类执行日志、ZIP启动证据','旧源码、五类工作区执行日志及目录成员证据'),
+            ('建设自检及最终源码ZIP解压验证沿既有检查核验部署生命周期','建设自检沿既有检查核验工作区运行生命周期'),
+            ('，最终ZIP解压后核对同一入口及清退效果、绑定ZIP哈希',''),
+            ('必要运行图像/权重/许可纳入源码白名单，实际解包检查可加载，不能被制作附图清理规则误删','实际项目图像/权重/许可完整保留，建设中检查加载；不进行交付目录启动')):
+            prompt=prompt.replace(old,new)
+        prompt=prompt.replace('源码ZIP','代码目录').replace('当前ZIP哈希','当前源码目录成员清单哈希')
+        prompt=prompt.replace('应用成员字节不改，源码完整可启动','清洗后全部项目成员字节保留，不要求独立启动')
+        prompt=prompt.replace('对最终新ZIP在隔离目录真实解压安装/启动并验证业务核心、部署入口、数据与导出，绑定最终ZIPhash及command/exit_code/log/sha256；记录launcher/listener身份、健康run/workspace/version和实际PID。','只核导出目录成员与原实现字节，不解包、不安装、不启动。')
+        if retain_runtime_cache(run):
+            prompt=prompt.replace('同时排除原技术文档、过程证据、日志、缓存、依赖目录与凭据。使用明确打包白名单，不复制整个工作区；','同时排除原技术文档、过程证据、日志、安装依赖副本与凭据；完整业务项目和本案运行缓存按source_roots/runtime_cache_roots导出；')
+            prompt += '\n新run使用clean-source-cache-directory-v4：完整保留真实业务前后端、核心算法、处理/查询/事务/恢复模块、配置、测试、静态资源、已有脚本和许可；不是摘取主要代码，禁止空实现、复制函数或无调用代码凑量。读取references/product-quality.md中的连续业务闭环，在原自检核跨对象/适用时间窗口、部分反馈、重复动作、失败恢复和持久化；只覆盖原技术实际需要的机制，不套建筑能耗模板。\n既有source-manifest用source_roots列完整项目，files补散落文件，runtime_cache_roots列本案自有运行缓存目录（有才填写、不得指向共享依赖/浏览器会话/其他案件）。.cache内实际结果、索引、模型中间数据和已有业务运行数据保留；旧runtime-state排除不再丢弃这些数据。依赖安装副本、解释器字节码、制作记录、README/操作说明、日志、凭据和个人会话排除，其余实际项目文件全部保留；delivery_files不能缩减。源码厚度由真实职责和调用链体现，缓存不算代码量。\n原export-source在复制时冻结运行缓存，SQLite通过只读在线备份合并已提交WAL，保留可复算数据快照而非复制活动数据库侧文件；不停止服务、不改源库。源码仍直接目录，不压缩、不解包启动，整案包包含该目录及缓存。导出后核实际成员与hash，内部source-package记录快照时间、方法和缓存文件。只处理当前导出异常，不重做未变Word/视频/代码检查。\nruntime_cache_roots和.cache下的数据不计入implementation_hashes；其中代码仍必须绑定。算法/录制真正消费的输入必须用固定快照在原input_files中绑定，不得拿可变缓存豁免正确性核对。缓存来源、数据性质、版本/单位与解释和图表一致；清理只作用于交付副本。原图文/数据/视频/五类自检和一次首审保持，不增加报告阶段或审核轮次。\n'
+        else:
+            prompt+='\n新run使用clean-source-directory-v3：只排除原件分析、制作记录、README/操作说明、缓存日志、依赖副本和凭据，其余实际项目文件全部保留；不是摘取主要代码。在既有source-manifest填写source_roots（全部实际项目根目录，如app、web、tests），根目录散落文件写files。工具递归合并完整目录和files，delivery_files即使存在也不能缩小范围，exclude不得删除保留范围。前后端、业务分析/parser、子模块、测试、配置及lockfile、静态资源、已有启动/构建/部署脚本和必要许可证都保留。不补不存在的部署环境，不以代码行数凑量。代码内非业务制作文字只定向清理，必要技术条件和真实数据性质不改不隐瞒。用原export-source一次清洗并复制系统代码/主要代码/（兼容目录名，不代表只取主代码），核成员与字节，不压缩、不解包启动、不运行package_probe或package_startup。原五类algorithm/api/persistence/browser/build、图文数据视频和首次独立核对保持，源码完整性并入已有自检/首审，不增加轮次。source-package.json沿用directory/source-tree-v1并记录保留与排除数。旧run/owner/票据/版本和成品保持冻结。\n'
+    if main_code_only(run) and not retain_all_source(run):
+        prompt=prompt.replace('及当前包启动','及当前包成员与主代码一致')
+        prompt=prompt.replace('原有映射与六类检查','原有映射与五类工作区检查')
+        prompt=prompt.replace('原完整case六类检查','原完整case五类工作区检查')
+        prompt=prompt.replace('新ZIP、包启动实际log/结果/署名及完整继承链','新ZIP主代码成员/哈希、原工作区执行事实及完整继承链')
+        prompt=prompt.replace('实际测试算法、接口、保存重启、浏览器、构建和压缩包解压后的启动。','实际测试工作区算法、接口、保存重启、浏览器和构建；交付代码包只核成员及完整性。')
+        prompt=prompt.replace('将实际可运行的项目源码压成上述ZIP','将实际项目的主要业务与算法源码压成上述ZIP')
+        prompt=prompt.replace('压缩包不得依赖被排除文件或旧绝对路径。','代码包用于交付主要源码，不要求独立运行；完整工作区保留。')
+        prompt=prompt.replace('旧源码、六类执行日志、ZIP启动证据','旧主要源码、五类工作区执行日志、ZIP成员及哈希证据')
+        prompt=prompt.replace('建设自检及最终源码ZIP解压验证沿既有检查核验部署生命周期','建设自检沿既有检查核验工作区运行生命周期')
+        prompt=prompt.replace('，最终ZIP解压后核对同一入口及清退效果、绑定ZIP哈希','')
+        prompt=prompt.replace('必要运行图像/权重/许可纳入源码白名单，实际解包检查可加载，不能被制作附图清理规则误删','工作区实际运行所需图像/权重/许可完整保留并在建设内验证；交付代码仅选主要源码及必要许可')
+        prompt=prompt.replace('应用成员字节不改，源码完整可启动','所选主要代码成员字节不改，交付代码不要求独立启动')
+        prompt=prompt.replace('对最终新ZIP在隔离目录真实解压安装/启动并验证业务核心、部署入口、数据与导出，绑定最终ZIPhash及command/exit_code/log/sha256；记录launcher/listener身份、健康run/workspace/version和实际PID。','只核最终新ZIP成员、CRC及哈希与实际所选主要代码一致，不解包、不安装依赖、不另启服务或执行包业务探针。')
+        prompt+='\n源码交付按本run冻结的main-code策略：在已有source-manifest的files保留完整工作实现清单，并用delivery_files选择本案主要算法、主要后端业务及主要前端源码；只选实际已制作代码，必要第三方许可保留。在制作时按案件适度增加前后端主要代码体量和自然模块数量，不设KB/行数/文件数指标，不新增检查环节，不刻意拆碎或合成巨文件。前端实际实现页面、组件、交互、状态、查询筛选、错误恢复和适用导出；排除原材料解析/文档提取等制作工具，正常业务CSV/数据库读写保留。后端要厚实：按本案实际能力实现完整算法与计算链、输入校验、数据处理、业务服务、持久化、查询及导出、异常恢复和模块协作；交付保留这些主要代码的完整函数/类和实际调用关系，不只摘几个短片段。代码量来自真实业务深度，不用重复、死代码、无关功能或第三方库凑量，不删核心逻辑来缩包。使用pack-source一次压缩并核成员/CRC/哈希，不要求独立可启动，不为代码交付补启动脚本、依赖、环境、数据库、部署文件或说明，不执行package_probe或package_startup。工作区系统仍实际运行，建设五类algorithm/api/persistence/browser/build日志、真实视频、数据、图文及首次独立审核保持；审查草稿和finalize沿用这五类真实事实并绑定当前ZIP哈希，包专用修订checks为空，不能伪填一次启动通过。主要源码覆盖原技术的核对合入原首审，不另增环节。\n'
+    if retain_runtime_cache(run) and base and revision_scope=='document':
+        start=prompt.find('\n新run使用clean-source-cache-directory-v4：')
+        end=prompt.find('\n',prompt.find('原图文/数据/视频/五类自检和一次首审保持',start))
+        if start>=0 and end>=0:prompt=prompt[:start]+'\n本次仅文档修订：继承原已发布源码、运行缓存及系统结论，不重查系统业务、不重新读取活库或导出缓存；只处理授权Word/图文范围。\n'+prompt[end+1:]
+    if directory_delivery(run) and not retain_all_source(run):
+        prompt=prompt.replace('源码ZIP','主要代码目录').replace('当前ZIP哈希','当前源码目录成员清单哈希')
+        prompt=prompt.replace('使用pack-source一次压缩并核成员/CRC/哈希','使用export-source按delivery_files清洗并一次复制主要代码目录，核成员与字节哈希')
+        prompt+='\n本run使用main-code-directory-v2：交付系统代码/主要代码/，不生成源码ZIP、不解包启动。files仍保留完整工作实现，delivery_files只选实际主代码；导出自动排除分析原件、提示词、制作记录、日志缓存和凭据，内部原件与证据保留。不要删除业务分析算法、必要注释、第三方许可或原材料要求的核心代码。遇到代码内制作过程注释，只定向清理该非业务文本并核受影响项，不改计算逻辑，不加审核轮次。source-package.json的format=directory，sha256是source-tree-v1规范成员清单哈希；兼容字段source_zip/source_zip_sha256在本策略下分别指目录和该清单哈希，不伪称ZIP文件。最终reviewed_files与发布files逐文件列真实代码路径。整案/批次外层压缩方式不变。\n'
+    if run.get('word_title_policy'):
+        prompt+='\n案件名称以原Word封面完整名称为准。把scripts/word_title.py的normalize_written_word(Path(run["word"]),Path(run["source_docx"]),run["title"])接在现有Word制作脚本save之后、渲染/计算hash/提交首审之前，同次写出直接执行；它跨w:t文本片段清理正文、图题及页眉页脚中比封面多出的“一种”，不删除普通技术用语，不改变封面正式名称，原输入只读。原有contracts.chart_snapshot内check_title实际拒绝遗漏项，并只豁免该精确名称修正的源正文比对。原Word全页检查一并看受影响段落；不得在审核或发布阶段自动改文件，不新增命令阶段、审核轮次或台账。封面标题无法定位或与本案标题冲突时在本次制作内核清，不能猜测改名。\n'
+    if run.get('web_module_policy')=='source-form-v1' and not base:
+        if run.get('product_plan_policy'):
+            prompt+='\n产品先行：本新案product_plan_policy=product-realization-v2。第一次读原文时就在现web_experience.representation写product_plan={subject,core_chain,target_runtime,validation_level,media_route}，用简短本案事实明确实际产品、输入→处理→输出、目标运行端、可验证层次、真实录制路径，然后建设；不新增表单或阶段。原browser报告runtime_validation同填validation_level，原check-build与首审绑定计划和实际运行，禁止默默改成通用网站。具体取值见references/product-forms.md。用户图中五类全部考虑：桌面网站/客户端、手机网站/App、小程序、游戏App/小游戏/H5、无界面嵌入式；不是每案各做一遍。游戏App和小游戏可用game_native/game_mini_program；与game_web分别验证。目标工具或媒体通道未具备时在开始暴露准确缺口，独立推进Word和核心计算，不把选择分类称为打通原生端。图型从本案技术问题选择，结构/状态/电路关系图不能代替计算效果图，界面截图不能代替算法或设备证据。原图数量与解释完整性保持，复用现key_facts，不加反复审核。同时读取references/system-data.md的系统材料分型：先按核心技术确定要证明的结论、输入和输出，再制作对应工程资源/数据/运行展示。product_plan.technical_evidence引用原source_ref、technical_claim、expected_result、provenance、boundary、input_paths、result_paths、assertion_ids，复用现有输入结果和runtime断言，不另出报告；原check-build核实际绑定，原首次审核核完整技术覆盖与结论边界。不是每类都做后台和十张同构表，不增加解包启动或审核轮次。\n'
+        prompt=prompt.replace('本案Web按references/web-design.md至少建设10个', '本案若为桌面Web，按references/web-design.md至少建设10个')
+        prompt=prompt.replace('按源领域适配功能但不降低10模块门槛', '桌面Web按源领域适配功能但不降低10模块门槛；其他形态按原技术完整覆盖，不凑十个GUI模块')
+        prompt=prompt.replace('所有页面在原browser自检里运行', '所有实际产品状态在对应真实运行端自检；browser字段仅为兼容证据名称，原生端必须绑定真实原生运行日志')
+        prompt=prompt.replace('全部模块仍须原browser自检和首次独立读图', '全部实际功能仍须对应运行端自检和首次独立核对')
+        prompt=prompt.replace('连续真实浏览器录屏', 'Web产品使用连续真实浏览器录屏；原生端先确认实际原生媒体适配，不能用浏览器操作冒充')
+        prompt=prompt.replace('原生viewport和recordVideo均1920×1080', '仅现有桌面浏览器媒体通道的原生viewport和recordVideo均1920×1080；移动或原生端先核真实媒体适配，不得套此通道伪证')
+        prompt=prompt.replace('原生高清PNG（至少1920×1080，可更高）', '原生高清PNG（桌面至少1920×1080；源选手机Web、手机App或小程序可用至少1080×1920竖屏，可更高；截图适配不等于视频已适配）')
+        prompt=prompt.replace('至少10个真实业务模块，两项均不设数量上限；新完整run独立冻结web_module_policy=ten-modules-v1，不能因特殊小案说明而低于10。', '软件形态由原技术选择，web_module_policy=source-form-v1；桌面Web保留至少10个实际模块，其他形态按源需求完整覆盖，不强凑十页。')
+        prompt=prompt.replace('十模块是下限，不能拆同一结果凑页面；','桌面Web十模块是下限；移动端、原生端和无界面技术按实际完整功能组织，不拆同一结果凑页面；')
+        prompt=prompt.replace('至少10个模块和全部页面仍按原流程实看','桌面Web至少10个模块；其他形态按源技术完整覆盖。全部实际产品状态仍在原流程实看')
+        prompt=prompt.replace('不把十模块做成十张同构页面','不把本案功能做成同构页面')
+        prompt+='\n按专利技术选择表达：实际读取 '+str(Path(__file__).resolve().parents[1]/'references/patent-representation.md')+' 和 '+str(Path(__file__).resolve().parents[1]/'references/product-forms.md')+'。先从原文辨别软件运行形态与技术问题，再确定产品界面或验证工具，不能按题名关键词一律造管理后台。原web_experience内写representation，原browser报告写runtime_validation；沿原输入hash、自检和首审核源段、实际运行端、实现与操作证据，不另建阶段。无界面案件用真实算法/服务输入输出验证台，明确其验证工具身份，不冒称专利有该界面。手机Web不能冒称原生App或小程序；原生端必须有真实对应运行工具证据，缺运行条件不得伪证。每张新增图在现chart-manifest补technical_purpose={role,depiction,source_locator,technical_feature,why_this_form}；实测图另记measurement_source。图必须回答源技术问题，界面截图不能证明算法精度、材料性能或设备结构。原分析图数量和两张系统图合同保持，具体图型按源技术变化，不套矩阵/后台截图、不编实验或仪器照片。实际看图和实施例上下文在原首次审核一次完成。\n'
     (record.parent/'深化命令词.txt').write_text(prompt, encoding='utf-8')
+    if run.get('system_diagram_policy'):
+        diagram_guide=Path(__file__).resolve().parents[1]/'references/system-diagrams.md'
+        prompt_path=workspace/'.product-v2/深化命令词.txt'
+        with prompt_path.open('a',encoding='utf-8') as f:
+            f.write('\n建设时实际读取 '+str(diagram_guide)+'；按原Word的参与者、职责、时序和条件制作设计图.png、时序图.png。不得从常见架构或已建Web补造原文技术。两图放系统代码大文件夹，与原技术分析附图分别交付，原4—6张分析图数不变。按该文档真实本地渲染并在原首次审核一并查看，不另建审核轮次。\n')
+            if run['system_diagram_policy']=='source-system-png-v2' and not run.get('revision_of'):
+                f.write('两张最终PNG的工作区原生渲染文件加入现有首审 manifest.files，字节须与交付两图一致；原draft自动将它们纳入必读ID，审核者实际看图后才填已阅。不加表单或审核阶段；后续小修只在原受影响自检记录改图的当前哈希和visual_notes，未变图沿用。\n')
     return run
 
 def cleanup_ready(workspace):
@@ -453,7 +558,10 @@ def check_data_quality(workspace,output,update=False):
     return quality
 
 
-def excluded_source(relative, extra=()):
+def excluded_source(relative, extra=(), run=None, data=None):
+    if run is not None and retain_all_source(run):
+        from retained_source import exclusion
+        return exclusion(relative, data, extra, keep_runtime=retain_runtime_cache(run))
     from package_policy import excluded_delivery_document
     document_reason=excluded_delivery_document(relative)
     if document_reason: return document_reason
@@ -465,6 +573,10 @@ def excluded_source(relative, extra=()):
     if (name in EXCLUDED_NAMES or re.match(r'^(source[-_]analysis|docx[-_](extract|analysis)|extracted[-_]text|document[-_]text|原文解析|文档解析|解析报告)',name)
             or path.suffix.lower() in {'.docx','.doc','.pdf','.log','.pyc','.pyo','.db','.sqlite','.sqlite3','.pem','.key'}):
         return 'document-analysis-or-runtime-file'
+    if (any(p in {'.codex','.agents','.claude','sessions','rollout_logs'} for p in parts)
+            or name in {'agents.md','claude.md','skill.md','build_selfcheck.json','key_facts.json'}
+            or re.match(r'^(?:analyze_source|extract_docx|render_docx|build_word|make_word|generate_word)(?:\.|$)',name)):
+        return 'production-tool-or-archive'
     dotenv_example=bool(re.fullmatch(r'\.env(?:\.[a-z0-9_-]+)*\.(?:example|sample|template)',name))
     if (name in {'.env','credentials.json','token.json','tokens.json','id_rsa','id_ed25519'}
             or (name.startswith('.env.') and not dotenv_example)):
@@ -475,8 +587,17 @@ def excluded_source(relative, extra=()):
     return None
 
 def pack_source(workspace, output, manifest_path):
+    run = read_json(inside(workspace,'.product-v2/run.json'))
+    if retain_runtime_cache(run):
+        with tempfile.TemporaryDirectory(prefix='source-cache-') as scratch:
+            return _pack_source(workspace,output,manifest_path,no_links(scratch))
+    return _pack_source(workspace,output,manifest_path)
+
+
+def _pack_source(workspace, output, manifest_path, scratch=None):
     spec = read_json(manifest_path)
-    files = spec.get('files',[])
+    run = read_json(inside(workspace,'.product-v2/run.json'))
+    files = selected_files(spec,run,workspace)
     if not isinstance(files,list) or not files:
         raise ValueError('Explicit application file allowlist required')
     paths=current_delivery_paths(workspace,output)
@@ -485,22 +606,82 @@ def pack_source(workspace, output, manifest_path):
     if target.exists():
         raise ValueError('Source archive exists; use a new delivery version')
     sources, omitted, names = [], [], set()
+    runtime_snapshots = {}
+    cache_files = []
+    cache_evidence = {}
+    if retain_runtime_cache(run):
+        from runtime_cache import member as cache_member, is_sqlite, snapshot
     for rel in files:
         rel = str(rel).replace('\\','/')
         src = inside(workspace,rel)
-        why = excluded_source(rel,spec.get('exclude',[]))
+        payload = src.read_bytes() if retain_all_source(run) else None
+        why = excluded_source(rel,spec.get('exclude',[]),run,payload)
+        if retain_runtime_cache(run) and not why and cache_member(rel,spec) and is_sqlite(src):
+            frozen = no_links(scratch/(uuid.uuid4().hex+'.db'))
+            why = snapshot(src, frozen)
+            if not why:
+                runtime_snapshots[rel] = {'source':rel, 'method':'sqlite-online-backup', 'at':utc()}
+                src = frozen
+                payload = frozen.read_bytes()
+        elif retain_runtime_cache(run) and not why and is_sqlite(src):
+            from runtime_cache import sqlite_private
+            if any(Path(str(src)+suffix).exists() for suffix in ('-wal','-journal')):
+                raise ValueError('Declare active database under runtime_cache_roots before export: '+rel)
+            if sqlite_private(src):why='private-runtime-database'
+        if retain_all_source(run) and src == no_links(run['source_docx']):
+            why='original-technical-input'
+        if directory_delivery(run) and not retain_all_source(run) and PurePosixPath(rel).suffix.lower() in {'.zip','.7z','.rar','.gz','.tar'}:
+            why='nested-source-archive'
         if why:
+            if main_code_only(run) and not directory_delivery(run):
+                raise ValueError(f'Selected main source is excluded: {rel}: {why}')
             omitted.append({'path':rel,'reason':why})
             continue
         if rel.casefold() in names or forbidden(rel):
             raise ValueError(f'Duplicate/restricted source path: {rel}')
         names.add(rel.casefold())
         legal=PurePosixPath(rel).name.upper().startswith(('LICENSE','NOTICE','COPYING')) or 'licenses' in [p.casefold() for p in PurePosixPath(rel).parts]
-        if not legal and scan_text(rel,src.read_bytes()):
+        if not legal and scan_text(rel,payload if payload is not None else src.read_bytes()):
             raise ValueError('Source delivery text requires a semantic fix before packing: '+rel)
-        sources.append((rel,src,digest(src)))
+        # Bind the exact scanned bytes, not a later version of a live cache.
+        sources.append((rel,src,hashlib.sha256(payload).hexdigest() if payload is not None else digest(src)))
+        if retain_runtime_cache(run) and (cache_member(rel,spec) or rel in runtime_snapshots):
+            cache_files.append(rel)
     if not sources:
         raise ValueError('No application files remain')
+    if directory_delivery(run):
+        # Copy once on the output volume; commit an entire clean directory.
+        # Retain failed scratch evidence, never alter implementation files.
+        temp_path=no_links(target.parent/('.source-'+uuid.uuid4().hex))
+        temp_path.mkdir(exist_ok=False)
+        for rel,src,sha in sources:
+            dst=inside(temp_path,rel,must_exist=False)
+            dst.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copyfile(src,dst)
+            if digest(src)!=sha or digest(dst)!=sha:
+                raise ValueError('Source changed while exporting: '+rel)
+            if rel in cache_files:
+                frozen=inside(workspace,'.product-v2/source-cache/'+temp_path.name+'/'+rel,must_exist=False)
+                frozen.parent.mkdir(parents=True,exist_ok=True)
+                shutil.copyfile(dst,frozen)
+                if digest(frozen)!=sha:raise ValueError('Runtime evidence copy differs: '+rel)
+                cache_evidence[rel]=frozen.relative_to(workspace).as_posix()
+        expected={rel:sha for rel,_,sha in sources}
+        if source_members(temp_path)!=expected:
+            raise ValueError('Exported source members differ')
+        os.rename(temp_path,target)
+        receipt={'at':utc(),'directory':str(target),'sha256':source_digest(target),
+                 **source_descriptor(run),'files':expected,'excluded':omitted,
+                 'excluded_patterns':spec.get('exclude',[]),
+                 'source_roots':spec.get('source_roots',[]),
+                 'inventory_count':len(files),'retained_count':len(expected),
+                 'source_delivery_policy':run['source_delivery_policy'],'standalone_startup_required':False}
+        if retain_runtime_cache(run):
+            receipt.update(runtime_cache_roots=spec.get('runtime_cache_roots',[]),
+                runtime_cache_files={rel:expected[rel] for rel in cache_files},
+                runtime_snapshots=runtime_snapshots, runtime_cache_evidence=cache_evidence)
+        write_json(workspace/'.product-v2/source-package.json',receipt)
+        return receipt
     staging=no_links(workspace/'.product-v2/staging');staging.mkdir(parents=True,exist_ok=True)
     temp_path = no_links(staging/('source-'+uuid.uuid4().hex+'.zip'))
     if temp_path.exists():
@@ -513,7 +694,6 @@ def pack_source(workspace, output, manifest_path):
     with zipfile.ZipFile(temp_path) as archive:
         if archive.testzip():
             raise ValueError('Archive CRC verification failed')
-        import hashlib
         for rel,_,sha in sources:
             if hashlib.sha256(archive.read(rel)).hexdigest() != sha:
                 raise ValueError(f'Archive content differs: {rel}')
@@ -521,6 +701,8 @@ def pack_source(workspace, output, manifest_path):
     receipt={'at':utc(),'archive':str(target),'sha256':digest(target),
              'files':{rel:sha for rel,_,sha in sources},'excluded':omitted,
              'excluded_patterns':spec.get('exclude',[])}
+    if main_code_only(run):
+        receipt.update(source_delivery_policy=run['source_delivery_policy'],standalone_startup_required=False)
     write_json(workspace/'.product-v2/source-package.json',receipt)
     return receipt
 
@@ -593,7 +775,24 @@ def scan_delivery(output, word_name=None, run=None):
         checked='/'.join(p for i,p in enumerate(relative.split('/')) if not(i==0 and p==paths['system_name']))
         original_word = word_name is not None and relative == word_name and path.suffix.lower()=='.docx'
         if not original_word and forbidden(checked): hits.append({'path':relative,'words':forbidden(checked)})
-        if path.suffix.lower()=='.zip':
+        if run is not None and directory_delivery(run) and paths['source_zip'] in path.parents:
+            rel=path.relative_to(paths['source_zip']).as_posix()
+            payload=path.read_bytes()
+            why=excluded_source(rel,run=run,data=payload if retain_all_source(run) else None)
+            if retain_runtime_cache(run):
+                from runtime_cache import is_sqlite, sqlite_private
+                if not why and is_sqlite(path) and sqlite_private(path):
+                    why='private-runtime-database'
+            if not retain_all_source(run) and path.suffix.lower() in {'.zip','.7z','.rar','.gz','.tar'}:why='nested-source-archive'
+            if why:hits.append({'path':relative,'error':why})
+            p=PurePosixPath(rel)
+            legal=p.name.upper().startswith(('LICENSE','NOTICE','COPYING')) or 'licenses' in [part.casefold() for part in p.parts]
+            if legal and p.suffix.lower() in {'','.txt','.md','.rst'}:
+                licenses.append(relative)
+                from package_policy import audit_delivery_text
+                hits.extend(audit_delivery_text(relative,path.read_text(encoding='utf-8-sig')))
+            else:hits.extend(scan_text(relative,payload))
+        elif path.suffix.lower()=='.zip':
             with zipfile.ZipFile(path) as archive:
                 seen=set()
                 for member in archive.infolist():
@@ -604,7 +803,7 @@ def scan_delivery(output, word_name=None, run=None):
                         continue
                     seen.add(rel.casefold())
                     if member.is_dir(): continue
-                    why=excluded_source(rel)
+                    why=excluded_source(rel,run=run)
                     if why: hits.append({'path':relative+'!'+rel,'error':why})
                     if forbidden(rel): hits.append({'path':relative+'!'+rel,'words':forbidden(rel)})
                     legal_name=p.name.upper().startswith(('LICENSE','NOTICE','COPYING')) or any(x.casefold()=='licenses' for x in p.parts)
@@ -664,7 +863,8 @@ def finalize(workspace, output, evidence_path):
         raise ValueError('Finalized receipt is immutable; create a separate revision')
     proof=read_json(evidence_path)
     if not isinstance(proof,dict):raise ValueError('Independent evidence must be a JSON object')
-    execution_checks(proof.get('checks'))  # Fail before expensive artifact checks.
+    run=read_json(workspace/'.product-v2/run.json')
+    execution_checks(proof.get('checks'), execution_kinds(run))  # Fail before expensive artifact checks.
     from contracts import delivery_layout, chart_snapshot, model_review
     run=read_json(workspace/'.product-v2/run.json')
     paths=current_delivery_paths(workspace,output)
@@ -681,9 +881,9 @@ def finalize(workspace, output, evidence_path):
     actual=file_map(paths['data_dir'])
     if actual!={f['name']:f['sha256'] for f in clean['files']}: raise ValueError('Clean CSV snapshot changed')
     package=read_json(workspace/'.product-v2/source-package.json')
-    if package['sha256']!=digest(paths['source_zip']): raise ValueError('Source archive changed')
+    if package['sha256']!=source_digest(paths['source_zip']): raise ValueError('Source archive changed')
     for rel,sha in package['files'].items():
-        if digest(inside(workspace,rel))!=sha: raise ValueError('Source changed after packaging: '+rel)
+        if digest(source_evidence_path(workspace,run,package,rel))!=sha: raise ValueError('Source changed after packaging: '+rel)
     if current_checks['required']:
         captured_checks=record.get('construction_checks',{})
         if (captured_checks.get('status')!='ready' or captured_checks.get('run_id')!=run['run_id'] or
@@ -701,9 +901,8 @@ def finalize(workspace, output, evidence_path):
     if proof.get('video_timeline_sha256')!=controlled['sha256'] or digest(timeline)!=controlled['sha256']:
         raise ValueError('Final review must bind the complete controlled 5fps timeline')
     validate_video_evidence(workspace,timeline,paths['video'],workspace/'.product-v2/recording.json')
-    needed={'algorithm','api','persistence','browser','build','package_startup'}
     checks=proof.get('checks',[])
-    execution_checks(checks)
+    execution_checks(checks, execution_kinds(run))
     for check in checks:
         log=inside(workspace,check['log'])
         if check.get('exit_code')!=0 or not check.get('command') or log.stat().st_size==0 or check.get('sha256')!=digest(log):
@@ -712,7 +911,7 @@ def finalize(workspace, output, evidence_path):
         raise ValueError('Current delivery snapshot, actual visual notes and limits required')
     # The reviewer must bind runtime tests to the current delivered archive too.
     if proof.get('source_zip_sha256')!=package['sha256']:
-        raise ValueError('Package startup check is not bound to this archive')
+        raise ValueError('Execution evidence is not bound to this archive')
     provenance=read_json(workspace/'.product-v2/data-provenance.json')
     if not provenance.get('nature') or not provenance.get('sources') or not provenance.get('validation'):
         raise ValueError('Internal data nature, sourcing attempts and validation record required')
@@ -739,6 +938,10 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
     def sha(path):
         path=no_links(path)
         if path not in hashes:hashes[path]=digest(path)
+        return hashes[path]
+    def source_sha():
+        path=no_links(paths['source_zip'])
+        if path not in hashes:hashes[path]=source_digest(path)
         return hashes[path]
     def receipt(name):
         path=workspace/'.product-v2'/name
@@ -785,7 +988,7 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
                 if scope not in {None,'document-revision','package-revision'}:
                     raise ValueError('Unknown final review scope')
                 checks=proof.get('checks',[])
-                needed={'package_startup'} if scope=='package-revision' else {'algorithm','api','persistence','browser','build','package_startup'}
+                needed=set(execution_kinds(run,scope=='package-revision'))
                 if scope!='document-revision':
                     if (not isinstance(checks,list) or len(checks)!=len(needed) or
                             not all(isinstance(c,dict) for c in checks) or
@@ -797,7 +1000,7 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
                                 not check.get('command') or log.stat().st_size==0 or
                                 not bound(log,check.get('sha256'),workspace)):
                             raise ValueError('Final review execution fact is missing/failed/changed: '+check['kind'])
-                    if proof.get('source_zip_sha256')!=current_files.get(paths['source_zip'].relative_to(output).as_posix()):
+                    if proof.get('source_zip_sha256')!=source_map_digest(run,output,current_files):
                         raise ValueError('Final review archive binding changed')
                 if scope is None:
                     controlled,_=receipt('controlled-video.json')
@@ -867,8 +1070,13 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
         value,path=receipt('source-package.json')
         if not value:return {'state':'not_started'}
         if '_read_error' in value:return {'state':'unknown','reason':value['_read_error']}
-        changed=inputs_current(value.get('files'))
-        if not bound(paths['source_zip'],value.get('sha256'),output):changed.append(paths['source_name'])
+        if retain_runtime_cache(run):
+            changed=[]
+            for rel,expected in value.get('files',{}).items():
+                if sha(source_evidence_path(workspace,run,value,rel))!=expected:changed.append(rel)
+        else:
+            changed=inputs_current(value.get('files'))
+        if not paths['source_zip'].exists() or source_sha()!=value.get('sha256'):changed.append(paths['source_name'])
         return {'state':'stale' if changed else 'completed','changed_dependencies':changed,'receipt':str(path)}
     summarize('data',data);summarize('source_package',package)
     recording,recording_path=receipt('recording.json')
@@ -951,22 +1159,26 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
             if not all(isinstance(c,dict) and isinstance(c.get('kind'),str) for c in checks):
                 raise ValueError('Execution checks must contain objects with string kinds')
             checks={c['kind']:c for c in checks}
-        kinds={'algorithm','api','persistence','browser','build','package_startup'}
-        if not isinstance(checks,dict) or not kinds.issubset(checks):return {'state':'pending','reason':'Six current execution facts including final ZIP startup are not yet supplied'}
+        kinds=set(execution_kinds(run,run.get('revision_scope')=='package'))
+        if not isinstance(checks,dict) or not kinds.issubset(checks):return {'state':'pending','reason':'Required current execution facts are not yet supplied: '+', '.join(sorted(kinds))}
         for kind in kinds:
             check=checks[kind]
             if (type(check.get('exit_code')) is not int or check['exit_code']!=0 or not check.get('command') or
                     not bound(inside(workspace,check['log'],must_exist=False),check.get('sha256'),workspace)):
                 return {'state':'stale','reason':'Current execution fact is missing/failed/changed: '+kind}
-        package_hash=execution_doc.get('source_zip_sha256') or checks['package_startup'].get('source_zip_sha256')
-        if not bound(paths['source_zip'],package_hash,output):return {'state':'pending','reason':'ZIP startup facts are not bound to this final archive'}
+        package_hash=execution_doc.get('source_zip_sha256') or checks.get('package_startup',{}).get('source_zip_sha256')
+        if main_code_only(run):
+            packed,_=receipt('source-package.json')
+            package_hash=package_hash or (packed or {}).get('sha256')
+        if not paths['source_zip'].exists() or source_sha()!=package_hash:
+            return {'state':'pending','reason':'Execution facts are not bound to this final source artifact'}
         return {'state':'completed','scope':'Recorded current log/archive hashes only; no business or independent pass is inferred'}
     summarize('execution_evidence',execution)
-    if steps['execution_evidence']['state']!='completed':remaining.append('final-zip-startup-and-execution-evidence')
+    if steps['execution_evidence']['state']!='completed':remaining.append('current-business-execution-evidence' if main_code_only(run) else 'final-zip-startup-and-execution-evidence')
     if steps['independent_review']['state']!='verified':remaining.append('independent-review-changed-or-unread-evidence')
     next_actions=[]
     video_state=steps['recording']['state']
-    if video_state in {'not_started','stale'}:next_actions.append('check-build then capture')
+    if video_state in {'not_started','stale'}:next_actions.append('capture')  # Capture enforces the same current construction gate.
     elif video_state=='captured':next_actions.append(steps['recording'].get('next_action','evidence'))
     elif video_state in {'unknown','failed'}:next_actions.append('inspect-recording-state-before-any-business-replay')
     elif video_state=='technical_ready':
@@ -976,7 +1188,7 @@ def workflow_status(workspace,output,run,plan_path=None,evidence_path=None):
             next_actions=['inspect-data-receipt'] if steps['data']['state']=='unknown' else ['preserve-data-draft then clean-data' if (paths['data_dir']).exists() else 'clean-data']
         elif steps['source_package']['state']!='completed':
             next_actions=['inspect-source-package-receipt'] if steps['source_package']['state']=='unknown' else ['preserve-source-draft then pack-source' if (paths['source_zip']).exists() else 'pack-source']
-        elif steps['execution_evidence']['state']!='completed':next_actions=['verify-final-zip-startup-and-execution-evidence']
+        elif steps['execution_evidence']['state']!='completed':next_actions=['verify-current-business-execution-evidence' if main_code_only(run) else 'verify-final-zip-startup-and-execution-evidence']
         else:next_actions=['independent-review-changed-or-unread-evidence']
     if steps['independent_review']['state']=='verified':next_actions=['publish']
     return {'kind':'workflow-status','workspace':str(workspace),'run_id':run['run_id'],'steps':steps,
@@ -1046,27 +1258,27 @@ def finalize_document_revision(workspace,output,evidence_path):
     if digest(inherited_evidence)!=runtime_receipt['evidence_sha256']:
         raise ValueError('Inherited execution evidence changed')
     checks=previous_proof.get('checks',[])
-    if (not isinstance(checks,list) or len(checks)!=6 or not all(isinstance(c,dict) for c in checks)
-            or {str(c.get('kind')) for c in checks}!={'algorithm','api','persistence','browser','build','package_startup'}):
-        raise ValueError('Inherited six execution checks required')
+    execution_checks(checks, execution_kinds(chain[-1]['run']))
     for check in checks:
         log=inside(runtime_base,check['log'])
         if check.get('exit_code')!=0 or not check.get('command') or digest(log)!=check.get('sha256') or log.stat().st_size==0:
             raise ValueError('Inherited execution log failed or changed')
     package=read_json(runtime_base/'.product-v2/source-package.json')
-    if digest(delivery_paths(chain[-1]['run'],chain[-1]['output'])['source_zip'])!=package['sha256'] or previous_proof.get('source_zip_sha256')!=package['sha256']:
-        raise ValueError('Inherited package startup archive changed')
-    current_zip=digest(paths['source_zip'])
+    if source_digest(delivery_paths(chain[-1]['run'],chain[-1]['output'])['source_zip'])!=package['sha256'] or previous_proof.get('source_zip_sha256')!=package['sha256']:
+        raise ValueError('Inherited source archive changed')
+    current_zip=source_digest(paths['source_zip'])
     if current_zip!=package['sha256']:
         latest_package=next((entry for entry in chain if entry['receipt'].get('scope')=='package-revision'),None)
         if not latest_package or latest_package['proof'].get('source_zip_sha256')!=current_zip:
             raise ValueError('A changed inherited archive requires its own prior package revision startup proof')
-        check=latest_package['proof']['checks'][0];log=inside(latest_package['workspace'],check['log'])
-        if check.get('kind')!='package_startup' or check.get('exit_code')!=0 or not check.get('command') or digest(log)!=check.get('sha256'):
-            raise ValueError('Inherited latest package startup failed or changed')
+        latest_checks=execution_checks(latest_package['proof']['checks'],execution_kinds(latest_package['run'],True))
+        for check in latest_checks:
+            log=inside(latest_package['workspace'],check['log'])
+            if check.get('exit_code')!=0 or not check.get('command') or digest(log)!=check.get('sha256'):
+                raise ValueError('Inherited latest package check failed or changed')
         package_only_delta(delivery_paths(chain[-1]['run'],chain[-1]['output'])['source_zip'],paths['source_zip'])
     for rel,sha in package['files'].items():
-        if digest(inside(runtime_base,rel))!=sha: raise ValueError('Inherited application source changed')
+        if digest(source_evidence_path(runtime_base,chain[-1]['run'],package,rel))!=sha: raise ValueError('Inherited application source changed')
     recording=read_json(runtime_base/'.product-v2/recording.json')
     from media_evidence import validate_recording_duration
     validate_recording_duration(recording,run.get('recording_policy_version','legacy-fixed-v1'))
@@ -1129,9 +1341,13 @@ def revision_chain(workspace, base):
 def package_only_delta(old_zip,new_zip):
     """Restrict package revision to omitted documentation and legal notices."""
     from package_policy import excluded_delivery_document
-    with zipfile.ZipFile(old_zip) as old,zipfile.ZipFile(new_zip) as new:
-        before={i.filename:old.read(i) for i in old.infolist() if not i.is_dir()}
-        after={i.filename:new.read(i) for i in new.infolist() if not i.is_dir()}
+    def contents(path):
+        if Path(path).is_dir():
+            return {name:inside(path,name).read_bytes() for name in source_members(path)}
+        with zipfile.ZipFile(path) as archive:
+            source_members(path)  # reject ambiguous members before byte comparison
+            return {i.filename:archive.read(i) for i in archive.infolist() if not i.is_dir()}
+    before,after=contents(old_zip),contents(new_zip)
     if not after or set(after)-set(before): raise ValueError('Package-only revision cannot add application members')
     removed=[];amended=[]
     for name,data in before.items():
@@ -1162,18 +1378,16 @@ def inherited_execution(root):
     paths=delivery_paths(run,output)
     check_data_quality(original,output)
     checks=proof.get('checks',[])
-    if (not isinstance(checks,list) or len(checks)!=6 or not all(isinstance(c,dict) for c in checks)
-            or {str(c.get('kind')) for c in checks}!={'algorithm','api','persistence','browser','build','package_startup'}):
-        raise ValueError('Inherited six execution checks required')
+    execution_checks(checks, execution_kinds(run))
     for check in checks:
         log=inside(original,check['log'])
         if check.get('exit_code')!=0 or not check.get('command') or digest(log)!=check.get('sha256') or not log.stat().st_size:
             raise ValueError('Inherited execution log failed or changed')
     package=read_json(original/'.product-v2/source-package.json')
-    if package['sha256']!=digest(paths['source_zip']) or proof.get('source_zip_sha256')!=package['sha256']:
+    if package['sha256']!=source_digest(paths['source_zip']) or proof.get('source_zip_sha256')!=package['sha256']:
         raise ValueError('Inherited package and original startup proof changed')
     for rel,sha in package['files'].items():
-        if digest(inside(original,rel))!=sha: raise ValueError('Inherited source changed: '+rel)
+        if digest(source_evidence_path(original,read_json(original/'.product-v2/run.json'),package,rel))!=sha: raise ValueError('Inherited source changed: '+rel)
     recording=read_json(original/'.product-v2/recording.json')
     from media_evidence import validate_recording_duration
     validate_recording_duration(recording,run.get('recording_policy_version','legacy-fixed-v1'))
@@ -1198,7 +1412,7 @@ def finalize_package_revision(workspace,output,evidence_path):
     if paths['version']!=delivery_paths(base['run'])['version']:
         raise ValueError('Revision must inherit its parent frozen delivery layout')
     current=file_map(output);old=base['receipt']['files'];zip_name=paths['source_zip'].relative_to(output).as_posix()
-    if {k:v for k,v in current.items() if k!=zip_name}!={k:v for k,v in old.items() if k!=zip_name}:
+    if {k:v for k,v in current.items() if k!=zip_name and not k.startswith(zip_name+'/')}!={k:v for k,v in old.items() if k!=zip_name and not k.startswith(zip_name+'/')}:
         raise ValueError('Package-only revision requires byte-identical Word, video and every CSV')
     word=delivery_layout(output,run);charts=chart_snapshot(workspace,word,run)
     if charts!=base['receipt'].get('chart_snapshot'):
@@ -1210,18 +1424,19 @@ def finalize_package_revision(workspace,output,evidence_path):
     scanned=scan_delivery(output,run['word_name'],run)
     if not scanned['passed']: raise ValueError('Delivery scan failed')
     package=read_json(workspace/'.product-v2/source-package.json')
-    if package['sha256']!=digest(output/zip_name): raise ValueError('New source archive changed')
+    if package['sha256']!=source_digest(output/zip_name): raise ValueError('New source artifact changed')
     for rel,sha in package['files'].items():
-        if digest(inside(workspace,rel))!=sha: raise ValueError('New packaged source changed')
+        if digest(source_evidence_path(workspace,run,package,rel))!=sha: raise ValueError('New packaged source changed')
     proof=read_json(evidence_path);checks=proof.get('checks',[])
     from media_evidence import validate as validate_video_evidence
     timeline=inside(workspace,proof['video_timeline'])
     if proof.get('video_timeline_sha256')!=digest(timeline):raise ValueError('Package review must bind current complete video evidence')
     validate_video_evidence(workspace,timeline,paths['video'],root['workspace']/'.product-v2/recording.json')
-    if not isinstance(checks,list) or len(checks)!=1 or not isinstance(checks[0],dict) or checks[0].get('kind')!='package_startup': raise ValueError('New independent archive startup check required')
-    check=checks[0];log=inside(workspace,check['log'])
-    if not check.get('command') or check.get('exit_code')!=0 or check.get('sha256')!=digest(log) or not log.stat().st_size:
-        raise ValueError('New archive startup log failed or changed')
+    execution_checks(checks, execution_kinds(run,True))
+    for check in checks:
+        log=inside(workspace,check['log'])
+        if not check.get('command') or check.get('exit_code')!=0 or check.get('sha256')!=digest(log) or not log.stat().st_size:
+            raise ValueError('New archive startup log failed or changed')
     if (proof.get('source_zip_sha256')!=package['sha256'] or proof.get('reviewed_files')!=scanned['files']
             or not proof.get('visual_notes') or not proof.get('limitations')):
         raise ValueError('Current archive, inherited visual coverage and current review limits required')
@@ -1311,11 +1526,13 @@ def main(argv=None):
     prep=sub.add_parser('prepare');prep.add_argument('--workspace',required=True);prep.add_argument('--output',required=True);prep.add_argument('--title',required=True);prep.add_argument('--source-docx',required=True);prep.add_argument('--revision-of');prep.add_argument('--adopt-draft',action='store_true');prep.add_argument('--revision-scope',choices=['document','package'],default='document');prep.add_argument('--allow-untracked-base',action='store_true')
     closure=sub.add_parser('close-simplified');closure.add_argument('--workspace',required=True);closure.add_argument('--evidence',required=True);closure.add_argument('--destination',required=True);closure.add_argument('--archive',required=True);closure.add_argument('--owner-pid',type=int)
     draft=sub.add_parser('draft-closure');draft.add_argument('--workspace',required=True);draft.add_argument('--manifest',required=True);draft.add_argument('--evidence',required=True)
-    for name in ('clean-data','check-data','check-build','status','pack-source','export-screenshot','scan','record','finalize','finalize-document-revision','finalize-package-revision','publish','preserve-draft'):
+    for name in ('clean-data','check-data','check-build','status','pack-source','export-source','export-screenshot','scan','record','finalize','finalize-document-revision','finalize-package-revision','publish','preserve-draft'):
         item=sub.add_parser(name);item.add_argument('--workspace',required=True)
-        if name in ('check-build','status'):item.add_argument('--plan')
+        if name in ('check-build','status'):
+            item.add_argument('--plan')
+            item.add_argument('--compact', action='store_true', help='Run full checks but omit repeated dependency lists from stdout')
         if name=='status':item.add_argument('--evidence')
-        if name in ('clean-data','pack-source'): item.add_argument('--manifest',required=True)
+        if name in ('clean-data','pack-source','export-source'): item.add_argument('--manifest',required=True)
         if name=='record':
             item.add_argument('--plan');item.add_argument('--phase',choices=['full','capture','evidence'],default='full')
             item.add_argument('--batch-root');item.add_argument('--batch-id');item.add_argument('--case-id');item.add_argument('--record-token');item.add_argument('--media-token');item.add_argument('--owner-pid',type=int)
@@ -1341,7 +1558,7 @@ def main(argv=None):
             elif args.command=='clean-data':
                 cleanup_ready(workspace);result=clean_csv(workspace,output,args.manifest)
             elif args.command=='check-data':result=check_data_quality(workspace,output,update=True)
-            elif args.command=='pack-source': result=pack_source(workspace,output,args.manifest)
+            elif args.command in ('pack-source','export-source'): result=pack_source(workspace,output,args.manifest)
             elif args.command=='export-screenshot': result=export_screenshot(workspace,output,run)
             elif args.command=='scan':
                 result=scan_delivery(output,run.get('word_name'),run);write_json(workspace/'.product-v2/scan.json',result)
@@ -1368,6 +1585,9 @@ def main(argv=None):
             elif args.command=='finalize-document-revision': result=finalize_document_revision(workspace,output,args.evidence)
             elif args.command=='finalize-package-revision': result=finalize_package_revision(workspace,output,args.evidence)
             else: result=finalize(workspace,output,args.evidence)
+        if getattr(args, 'compact', False):
+            from check_io import compact_result
+            result=compact_result(result,args.command,args.workspace,args.plan,getattr(args,'evidence',None))
         print(json.dumps(result,ensure_ascii=False,indent=2));return 0
     except (ValueError,OSError,KeyError,UnicodeError,csv.Error,zipfile.BadZipFile) as e:
         print(f'ERROR: {e}',file=sys.stderr);return 2

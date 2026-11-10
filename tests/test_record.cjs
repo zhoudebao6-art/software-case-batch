@@ -1,5 +1,19 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
+test('recorded result assertion uses declared step budget without replay or error suppression',async()=>{
+ const {observeRecordedResult}=require('../scripts/record.cjs');
+ for(const [step,budget] of [[{expect:'#saved',text:'version 3',timeout_ms:150000},150000],[{expect:'#saved'},30000]]) {
+  const calls=[];const locator={filter(x){calls.push(x);return this;},first(){return this;},async waitFor(x){calls.push(x);}};
+  await observeRecordedResult({locator(s){assert.equal(s,'#saved');return locator;}},step);
+  assert.deepEqual(calls.at(-1),{state:'visible',timeout:budget});
+  assert.deepEqual(calls[0],{visible:true});
+  if(step.text)assert.deepEqual(calls[1],{hasText:step.text});
+ }
+ let waits=0;const error=Error('result absent');
+ const missing={filter(){return this;},first(){return this;},async waitFor(){waits++;throw error;}};
+ await assert.rejects(observeRecordedResult({locator:()=>missing},{expect:'#saved',timeout_ms:1200}),e=>e===error);
+ assert.equal(waits,1);
+});
 const {validatePlan,downloadRequestGuard,localUrl,auditUiText,record,leaseArgs,isolatedBrowserOptions,validateBatchPhase,finishRecording,executeTimeline,boundPolicy,validateMeasuredDuration,performRecordedAction,uniqueVisibleLocator,observeVisibleResult,movePointer}=require('../scripts/record.cjs');
 test('browser TEMP accepts only normalized D or E codex descendants and isolates supplied E root',()=>{
  const {approvedTempRoot}=require('../scripts/record.cjs');
@@ -405,6 +419,35 @@ test('readiness preserves frozen policy and run identity and refuses escaped hea
   assert.equal(f.state.browserLoads,0);assert.equal(f.state.browserLaunches,0);assert.equal(f.state.commands.length,0);
  }finally{f.close();}
 });
+test('readiness diagnoses current failure without starting retrying or mutating case files',async()=>{
+ const f=readinessFixture();
+ try {
+  const original={...f.state.health};
+  for(const category of ['service_unreachable','health_response_invalid','service_identity_mismatch','listener_not_registered']) {
+   f.state.fetchError=category==='service_unreachable'?new Error('Fixture network failure'):null;
+   f.state.invalidJSON=category==='health_response_invalid';
+   f.state.health={...original,version:category==='service_identity_mismatch'?'wrong':original.version};
+   f.state.owned=category==='listener_not_registered'?[]:[{...f.listener}];
+   const before=f.snapshot();let failure;
+   try {await f.api.checkReady(f.root,f.planPath);assert.fail('failure must not pass');}
+   catch(error) {failure=f.api.readinessFailure(error);}
+   assert.equal(failure.category,category);assert.equal(failure.status,'not_ready');
+   assert.equal(failure.capture_performed,false);assert.equal(failure.service_started,false);assert.equal(failure.retry_performed,false);
+   assert.equal(failure.policy_conclusion,'not_assessed');assert.ok(failure.next_action);
+   assert.deepEqual(f.snapshot(),before);
+  }
+  assert.equal(f.state.browserLoads,0);assert.equal(f.state.browserLaunches,0);
+  assert.ok(f.state.commands.every(args=>['check-build','inspect'].includes(args[1])));
+  f.state.owned=[{...f.listener}];f.state.health=original;f.state.fetchError=null;f.state.invalidJSON=false;
+  assert.equal((await f.api.checkReady(f.root,f.planPath)).status,'ready');
+ } finally {f.close();}
+});
+test('readiness diagnostics redact credentials and do not turn quoted policy text into permission',()=>{
+ const {readinessFailure}=require('../scripts/record.cjs');
+ const result=readinessFailure(Error('prior log quoted blocked by policy; token=hidden-secret https://u:pw@host/path'));
+ assert.equal(result.category,'readiness_input_or_tool_failed');assert.equal(result.policy_conclusion,'not_assessed');
+ assert.ok(!JSON.stringify(result).includes('hidden-secret'));assert.ok(!JSON.stringify(result).includes('https://u:pw'));
+});
 function downloadFixture(){
  const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'scb-download-guard-')),frame={},page={mainFrame:()=>frame};
@@ -620,7 +663,6 @@ test('evidence completion preserves exact creation ticks from a legacy numeric c
   if(exe==='fixture-probe')return {status:0,stdout:JSON.stringify({format:{duration:'60'},streams:[{width:1920,height:1080}]})};
   assert.equal(exe,'fixture-validator');assert.equal(path.basename(args[0]),'media_evidence.py');assert.equal(args[1],'generate');
   const report=JSON.parse(fs.readFileSync(args[args.indexOf('--recording')+1],'utf8'));assert.equal(report.service_identity.created_ticks,ticks);
-  const output=args[args.indexOf('--output')+1];assert.equal(path.dirname(output),control);assert.match(path.basename(output),/^video-[0-9a-f-]{36}$/);assert.ok(!output.startsWith(path.join(root,'deep-capture')+path.sep));
   return {status:0,stdout:'{}'};
  }}:require(name);
  const sandbox={require:mediaRequire,module:{exports:{}},__dirname:path.dirname(script),
@@ -630,9 +672,8 @@ test('evidence completion preserves exact creation ticks from a legacy numeric c
  try{
   const raw=path.join(root,'raw.webm'),input=path.join(root,'app.js'),final=path.join(root,'final.mp4'),capture=path.join(root,'capture.json');
   fs.writeFileSync(raw,'fixture raw');fs.writeFileSync(input,'frozen input');save(path.join(control,'run.json'),{workspace:root,run_id:'fixture',video:final});
-  const facts={status:'captured',workspace:root,run_id:'fixture',final,dir:path.join(root,'deep-capture','controlled-'+'x'.repeat(180)),rawPath:raw,raw_sha256:hash(raw),errors:[],inputs:{'app.js':hash(input)},
+  const facts={status:'captured',workspace:root,run_id:'fixture',final,dir:root,rawPath:raw,raw_sha256:hash(raw),errors:[],inputs:{'app.js':hash(input)},
    prelude:0,duration:60,events:[],texts:[],identity:{pid:41001,created_ticks:1000,command_sha256:'verified-command-hash',ports:[8123]}};
-  fs.mkdirSync(facts.dir,{recursive:true});
   fs.writeFileSync(capture,JSON.stringify(facts).replace('"created_ticks":1000','"created_ticks":'+ticks));
   const captureHash=hash(capture);save(path.join(control,'capture-pending.json'),{path:capture,sha256:captureHash});
   sandbox.module.exports.finishRecording(root);

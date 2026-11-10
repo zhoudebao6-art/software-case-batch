@@ -58,7 +58,7 @@ try:
     cleaning=clean_csv(work,out,keep);assert digest(data)==before
     (work/'README.md').write_text('Internal fixture instructions',encoding='utf8')
     (work/'extracted_text.txt').write_text('Internal extraction fixture',encoding='utf8')
-    source=work/'.product-v2/source.json';write_json(source,{'files':['app.py','README.md','extracted_text.txt']})
+    source=work/'.product-v2/source.json';write_json(source,{'files':['app.py','README.md','extracted_text.txt'],'delivery_files':['app.py']})
     packaging=pack_source(work,out,source);scan=scan_delivery(out);assert scan['passed'],scan['hits']
     result={'fixture':str(root),'workspace':str(work),'video':run['video'],
             'rows':cleaning['files'][0]['rows'],'excluded':[x['path'] for x in packaging['excluded']],

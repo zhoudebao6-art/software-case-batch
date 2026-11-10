@@ -97,6 +97,9 @@ class ReviewPacketTests(unittest.TestCase):
         self.assertEqual((result['facts_path'], result['facts_sha256']),
                          (str(self.target / 'facts.json'), digest(self.target / 'facts.json')))
         value = read_json(self.target / 'review-draft.json')
+        facts = read_json(result['facts_path'])
+        self.assertTrue({'issue_triage','after_first_review'}.issubset(facts['review_sequence']))
+        self.assertNotIn('decision', facts)
         self.assertEqual(value['checks'], self.checks)
         self.assertEqual(value['source_package'], {'sha256': digest(self.archive), 'files': {'app.py': digest(self.source)}})
         for key in ('decision', 'reviewer_agent_id', 'passed', 'review_evidence_sha256'):

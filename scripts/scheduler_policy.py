@@ -229,6 +229,7 @@ def _desktop_root_without_thread_source(meta):
                                            'parent', 'subagent', 'thread_spawn', 'agent_path', 'agent_id')))
 
 
+
 def session_proof(root, batch_id, pid, request):
     """Only a registered owner's completed controller command proves association.
 

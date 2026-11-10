@@ -67,8 +67,9 @@ def main(argv=None):
     parser.add_argument('--port', type=int, default=0)
     args = parser.parse_args(argv)
     # This invocation alone receives these settings; no system changes.
-    os.environ.update(TEMP=r'D:\codex+\temp', TMP=r'D:\codex+\temp', TMPDIR=r'D:\codex+\temp',
-                      PYTHONPYCACHEPREFIX=r'D:\codex+\cache\python-pycache',
+    from runtime_paths import cache_root, checked_temp_root
+    temporary = checked_temp_root()
+    os.environ.update(PYTHONPYCACHEPREFIX=str(cache_root() / 'cache' / 'python-pycache'),
                       PYTHONUTF8='1', PYTHONIOENCODING='utf-8')
     sys.pycache_prefix = os.environ['PYTHONPYCACHEPREFIX']
     from common import digest, no_links, read_json, write_json
@@ -107,7 +108,7 @@ def main(argv=None):
         probe.bind(('127.0.0.1', args.port))
         port = probe.getsockname()[1]
     output.mkdir(parents=True)
-    task = Path(tempfile.mkdtemp(prefix='office-parent-controlled-', dir=r'D:\codex+\temp'))
+    task = Path(tempfile.mkdtemp(prefix='office-parent-controlled-', dir=temporary))
     shadow = task / source.name
     profile_uri = (task / 'profile').as_uri()
     report = {'kind': 'parent-controlled-native-math-PDF-render', 'status': 'starting',

@@ -23,11 +23,18 @@ def mutate(*args,**kwargs):
     with _CONTROL_LOCK:return batch.mutate(*args,**kwargs)
 
 
+def control_wait(error):
+    # This describes only the unentered control transaction, not a claim that
+    # the whole invocation had no side effects. Original checkpoints remain.
+    return {'next_action':'resume_original_command_after_short_control_transaction','reason':str(error),
+            'control_wait':{'lock':error.lock,'wait_seconds':error.wait_seconds,'transaction_started':False}}
+
+
 @contextmanager
 def invocation(root,target,pid,case_id):
     """Serialize only this case; reclaim a dead helper, never a live media Job."""
     path=target/'progress'/f'{case_id}.lock.json';nonce=uuid.uuid4().hex
-    with _CONTROL_LOCK,batch.transaction(root,wait_seconds=3):
+    with _CONTROL_LOCK,batch.transaction(root,wait_seconds=batch.CONTROL_WAIT_SECONDS):
         batch.owner_check(target,pid)
         if path.exists():
             old=read_json(path)
@@ -36,7 +43,11 @@ def invocation(root,target,pid,case_id):
         write_json(path,{'identity':batch.identity(os.getpid()),'owner':batch.identity(pid),'nonce':nonce})
     try:yield
     finally:
-        with _CONTROL_LOCK,batch.transaction(root,wait_seconds=3):
+        # A live helper cannot be replaced at the entry above (PID + creation
+        # identity, including same-process calls). Only this helper can delete
+        # its nonce; no shared queue mutation or global lock is needed here.
+        # A cleanup lock timeout must never mask the original media/body error.
+        with _CONTROL_LOCK:
             if path.exists() and read_json(path).get('nonce')==nonce:path.unlink()
 
 
@@ -123,7 +134,7 @@ def invocation_budget(workspace,phase,plan=None,timeout=None):
     return 1800
 
 
-def drive(root,batch_id,pid,case_id,plan=None,timeout=None,retry_capture=False):
+def drive(root,batch_id,pid,case_id,plan=None,timeout=None,retry_capture=False,_admission_complete=None):
     if timeout is not None:invocation_budget(None,None,timeout=timeout)
     root=no_links(root);target,manifest=batch.batch(root,batch_id);batch.owner_check(target,pid)
     case=next((c for c in manifest['cases'] if c['case_id']==case_id),None)
@@ -151,7 +162,8 @@ def drive(root,batch_id,pid,case_id,plan=None,timeout=None,retry_capture=False):
                    **{key:saved[key] for key in ('phase','capture') if key in saved},**extra}
             write_json(checkpoint,value);saved=value;return value
         def owned_tickets():
-            pool=read_json(root/'queue.json') if (root/'queue.json').exists() else []
+            with _CONTROL_LOCK,batch.transaction(root,wait_seconds=batch.CONTROL_WAIT_SECONDS):
+                pool=read_json(root/'queue.json') if (root/'queue.json').exists() else []
             found=[q for q in pool if q['batch_id']==batch_id and q['case_id']==case_id and q['status'] in {'active','waiting'}]
             if len(found)>1:raise ValueError('Multiple current case tickets; preserve and reconcile explicitly')
             if found and found[0]['owner']!=batch.identity(pid):raise ValueError('Case ticket belongs to another owner')
@@ -182,7 +194,9 @@ def drive(root,batch_id,pid,case_id,plan=None,timeout=None,retry_capture=False):
         # At most capture and evidence once each. Never poll a queue, dispatch a
         # model, execute another owner's selected ticket, or re-record on crash.
         for _ in range(2):
-            state=read_json(target/'state.json');item=state['cases'][case_id]
+            with _CONTROL_LOCK,batch.transaction(root,wait_seconds=batch.CONTROL_WAIT_SECONDS):
+                state=read_json(target/'state.json')
+            item=state['cases'][case_id]
             if state['drain'] or item.get('phase') in {'blocked','delivered'}:
                 return save('paused',next_action='owner_resume_after_actual_recovery',reason='batch drain or case blocked/delivered')
             capture=capture_ready(workspace,run);tickets=owned_tickets();entry=tickets[0] if tickets else None
@@ -215,13 +229,18 @@ def drive(root,batch_id,pid,case_id,plan=None,timeout=None,retry_capture=False):
                 mutate(root,batch_id,pid,'release-slot',token=entry['token'])
                 entry=None
             if stage=='record' and not plan:return save('waiting',next_action='provide_current_record_plan',capture=capture)
-            if not entry:entry=mutate(root,batch_id,pid,'queue',case_id,stage=stage)
-            if entry['status']=='waiting':
-                admitted=mutate(root,batch_id,pid,'acquire',token=entry['token'])
-                if admitted.get('status')!='active':
-                    return save('waiting',**({'phase':'evidence'} if phase=='evidence' else {}),
-                                next_action='resume_after_resource_or_selected_owner_progress',ticket=entry,admission=admitted)
-                entry=admitted
+            try:
+                if not entry:entry=mutate(root,batch_id,pid,'queue',case_id,stage=stage)
+                if entry['status']=='waiting':
+                    admitted=mutate(root,batch_id,pid,'acquire',token=entry['token'])
+                    if admitted.get('status')!='active':
+                        return save('waiting',**({'phase':'evidence'} if phase=='evidence' else {}),
+                                    next_action='resume_after_resource_or_selected_owner_progress',ticket=entry,admission=admitted)
+                    entry=admitted
+            except batch.BatchStateBusy as error:
+                return save('waiting',ticket=entry,**control_wait(error))
+            # Ready waves enter admission in FIFO order, then execute concurrently.
+            if _admission_complete is not None:_admission_complete()
             log=target/'progress'/f'{case_id}-{phase}-{uuid.uuid4().hex}.log';log.parent.mkdir(parents=True,exist_ok=True)
             save('running',ticket=entry,phase=phase,capture=capture,log=str(log))
             lease={'root':str(root),'batchId':batch_id,'caseId':case_id,'ownerPid':pid,'token':entry['token']}
@@ -258,7 +277,7 @@ def drive_ready(root,batch_id,pid,plans=None,timeout=None):
     identity=batch.identity(pid)
     if not identity:raise ValueError('Original live owner required')
     def snapshot():
-        with _CONTROL_LOCK,batch.transaction(root,wait_seconds=3):
+        with _CONTROL_LOCK,batch.transaction(root,wait_seconds=batch.CONTROL_WAIT_SECONDS):
             batch.owner_check(target,pid)
             state=read_json(target/'state.json')
             pool=read_json(root/'queue.json') if (root/'queue.json').exists() else []
@@ -273,9 +292,10 @@ def drive_ready(root,batch_id,pid,plans=None,timeout=None):
     plans={} if plans is None else plans
     if not isinstance(plans,dict) or set(plans)-pending:raise ValueError('Plans must map only initially queued owned cases')
     runs={c:read_json(no_links(cases[c]['workspace'])/'.product-v2/run.json')['run_id'] for c in pending}
-    results={};attempted=set();selected=None
-    def invoke(case_id):
+    results={};attempted=set();selected=None;continuation_wait=None
+    def invoke(case_id,previous,admitted):
         try:
+            if previous is not None:previous.wait()
             workspace=no_links(cases[case_id]['workspace'])
             if read_json(workspace/'.product-v2/run.json')['run_id']!=runs[case_id]:raise ValueError('Queued case run changed during ready-media continuation')
             plan=plans.get(case_id)
@@ -285,12 +305,23 @@ def drive_ready(root,batch_id,pid,plans=None,timeout=None):
             else:
                 plan=workspace/'.product-v2/record-plan.json'
                 if not plan.is_file():plan=None
-            return drive(root,batch_id,pid,case_id,plan,timeout,retry_capture=False)
+            return drive(root,batch_id,pid,case_id,plan,timeout,retry_capture=False,_admission_complete=admitted.set)
+        except batch.BatchStateBusy as error:
+            return {'status':'waiting',**control_wait(error)}
         except (ValueError,OSError,KeyError,TypeError) as exc:
             return {'status':'failed','next_action':'repair_reported_case_only','reason':str(exc)}
+        finally:
+            admitted.set() # A failed head remains queued; following acquire cannot steal it.
     for _ in range(2*len(initial)+1):
         if not pending:break
-        state,pool,ready=snapshot()
+        try:state,pool,ready=snapshot()
+        except batch.BatchStateBusy as error:
+            # Earlier media outcomes are authoritative, including failures.
+            # Only the next unentered snapshot is waiting; never replace the
+            # whole result with main()'s initial-contention response.
+            continuation_wait=control_wait(error);selected=None
+            for case_id in pending:results.setdefault(case_id,{'status':'waiting',**continuation_wait})
+            break
         if state['drain']:break
         active=[q for q in pool if q['stage'] in {'record','evidence'} and q['status']=='active']
         # Only local progress can cause another attempt. Other batches changing
@@ -302,7 +333,8 @@ def drive_ready(root,batch_id,pid,plans=None,timeout=None):
         order=lambda q:(-q['priority'],q['submitted_ns'],q['token'])
         if not current:
             evidence=sorted((q for q in active+ready if q['stage']=='evidence'),key=lambda q:(q['status']!='active',*order(q)))
-            current=evidence[:1] if evidence else sorted((q for q in ready if q['stage']=='record'),key=order)[:batch.GLOBAL_RECORDING_LIMIT]
+            ceiling,_=batch.admission_limits(root,manifest,[q for q in pool if q['status']=='active'],'record')
+            current=evidence[:1] if evidence else sorted((q for q in ready if q['stage']=='record'),key=order)[:ceiling]
         wave=[]
         for ticket in current:
             selected={k:ticket[k] for k in ('token','batch_id','case_id','stage','owner')}
@@ -314,7 +346,9 @@ def drive_ready(root,batch_id,pid,plans=None,timeout=None):
         # Existing admission still enforces actual memory, global capture count,
         # evidence exclusion and FIFO. No additional model slot is acquired.
         with ThreadPoolExecutor(max_workers=len(wave)) as executor:
-            outcomes=list(executor.map(invoke,wave))
+            gates=[threading.Event() for _ in wave]
+            futures=[executor.submit(invoke,c,None if i==0 else gates[i-1],gates[i]) for i,c in enumerate(wave)]
+            outcomes=[future.result() for future in futures]
         for case_id,outcome in zip(wave,outcomes):
             results[case_id]=outcome
             if outcome.get('admission',{}).get('selected'):selected=outcome['admission']['selected']
@@ -326,10 +360,11 @@ def drive_ready(root,batch_id,pid,plans=None,timeout=None):
             'technical_evidence_ready' if initial and len(results)==len(initial) and
              all(v['status']=='technical_evidence_ready' for v in results.values()) else 'waiting' if initial else 'idle')
     return {'status':status,'batch_id':batch_id,'owner':identity,'case_ids':sorted(runs),
-            'cases':{c:dict({k:v[k] for k in ('status','next_action','phase','reason') if k in v},
+            'cases':{c:dict({k:v[k] for k in ('status','next_action','phase','reason','control_wait') if k in v},
                            **({'admission_reason':v['admission']['reason']} if v.get('admission',{}).get('reason') else {}))
                      for c,v in sorted(results.items())},
             'selected':selected if status in {'waiting','failed'} else None,
+            **({'continuation_wait':continuation_wait} if continuation_wait else {}),
             'progress_directory':str(target/'progress'),'visual_review_required':True,
             'scope':'Initially queued owned media only; no model dispatch, visual approval or publication.'}
 
@@ -352,6 +387,8 @@ def main():
             if args.plans:raise ValueError('--plans is only for --ready')
             result=drive(args.root,args.batch_id,args.pid,args.case_id,args.plan,args.timeout,args.retry_capture)
         print(json.dumps(result,ensure_ascii=False,indent=2));return 2 if result['status'] in {'failed','cleanup_pending'} else 0
+    except batch.BatchStateBusy as error:
+        print(json.dumps({'status':'waiting','batch_id':args.batch_id,'case_id':args.case_id,**control_wait(error)},ensure_ascii=False,indent=2));return 0
     except (ValueError,OSError,KeyError,TypeError) as error:print('ERROR: '+str(error),file=sys.stderr);return 2
 
 

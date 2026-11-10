@@ -23,7 +23,11 @@ class DependencyFixture(unittest.TestCase):
         with zipfile.ZipFile(self.source,'w') as package:package.writestr('word/document.xml','<document/>')
         self.run=prepare(self.work,self.out,'运行管理',self.source)
         # Frozen pre-r31 dependency fixture, independent of future prepare defaults.
+        self.run.pop('source_delivery_policy',None)
+        self.run.pop('system_diagram_policy',None)
+        self.run.pop('system_diagram_renderer_sha256',None)
         self.run.pop('web_experience_policy',None)
+        self.run.pop('web_outcome_policy',None)
         self.run.pop('web_module_policy',None)
         self.run.pop('delivery_requirements_version',None)
         self.run.pop('screenshot',None)
@@ -140,7 +144,7 @@ class ConstructionTests(DependencyFixture):
 
 class ProgressTests(DependencyFixture):
     def test_next_action_respects_media_cleanup_package_and_final_startup_order(self):
-        result=self.status();self.assertEqual(result['next_actions'],['check-build then capture'])
+        result=self.status();self.assertEqual(result['next_actions'],['capture'])
         self.assertIn('clean-data',result['remaining_stages'])
         self.recorded();self.assertEqual(self.status()['next_actions'],['cleanup-after-required-online-work'])
         write_json(self.control/'cleanup.json',{'status':'stopped','workspace':str(self.work),'remaining':[]})
@@ -173,12 +177,12 @@ class ProgressTests(DependencyFixture):
             'plan_sha256':digest(self.plan),'construction_checks':self.gate()})
         write_json(self.control/'capture-pending.json',{'path':str(capture_path),'sha256':digest(capture_path)})
         result=self.status();self.assertEqual(result['steps']['recording']['state'],'captured')
-        self.assertIn('evidence',result['next_actions']);self.assertNotIn('check-build then capture',result['next_actions'])
+        self.assertIn('evidence',result['next_actions']);self.assertNotIn('capture',result['next_actions'])
     def test_technical_ready_pending_first_independent_visual_is_not_recording_failure(self):
         self.recorded();before=file_map(self.work);result=self.status()
         self.assertEqual(result['steps']['recording']['state'],'technical_ready')
         self.assertEqual(result['independent_visual_review'],'pending')
-        self.assertNotIn('evidence',result['next_actions']);self.assertNotIn('check-build then capture',result['next_actions'])
+        self.assertNotIn('evidence',result['next_actions']);self.assertNotIn('capture',result['next_actions'])
         self.assertEqual(file_map(self.work),before)
         self.assertIn('frame files were not rechecked',result['steps']['recording']['verification_scope'])
     def test_word_license_and_new_test_log_do_not_invalidate_video(self):
@@ -190,32 +194,32 @@ class ProgressTests(DependencyFixture):
         self.recorded();self.file('app.py','changed shared engine')
         result=self.status();self.assertEqual(result['steps']['recording']['state'],'technical_ready')
         self.assertTrue(result['steps']['recording']['video_completed'])
-        self.assertNotIn('check-build then capture',result['next_actions'])
+        self.assertNotIn('capture',result['next_actions'])
     def test_only_missing_technical_timeline_recommends_evidence(self):
         self.recorded();(self.work/'evidence/timeline.json').unlink()
         result=self.status();self.assertEqual(result['steps']['recording']['state'],'captured')
-        self.assertIn('evidence',result['next_actions']);self.assertNotIn('check-build then capture',result['next_actions'])
+        self.assertIn('evidence',result['next_actions']);self.assertNotIn('capture',result['next_actions'])
     def test_only_missing_or_changed_mp4_reuses_original_capture_without_business_replay(self):
         self.recorded();video=Path(self.run['video']);video.unlink()
         result=self.status();self.assertEqual(result['steps']['recording']['state'],'captured')
-        self.assertIn('evidence',result['next_actions']);self.assertNotIn('check-build then capture',result['next_actions'])
+        self.assertIn('evidence',result['next_actions']);self.assertNotIn('capture',result['next_actions'])
         video.write_bytes(b'changed encoded artifact')
         result=self.status();self.assertEqual(result['steps']['recording']['next_action'],'preserve-video-draft then evidence')
-        self.assertNotIn('check-build then capture',result['next_actions'])
+        self.assertNotIn('capture',result['next_actions'])
         (self.work/'evidence/original.webm').unlink()
         result=self.status();self.assertEqual(result['steps']['recording']['state'],'unknown')
-        self.assertNotIn('check-build then capture',result['next_actions'])
+        self.assertNotIn('capture',result['next_actions'])
     def test_failed_and_unfinished_capture_are_not_reusable(self):
         write_json(self.control/'capture-pending.json',{'status':'capturing','sha256':None})
         result=self.status();self.assertEqual(result['steps']['recording']['state'],'unknown')
-        self.assertNotIn('check-build then capture',result['next_actions'])
+        self.assertNotIn('capture',result['next_actions'])
         self.recorded();value=read_json(self.control/'recording.json');value['passed']=False;write_json(self.control/'recording.json',value)
         self.assertEqual(self.status()['steps']['recording']['state'],'failed')
-        self.assertNotIn('check-build then capture',self.status()['next_actions'])
+        self.assertNotIn('capture',self.status()['next_actions'])
     def test_unreadable_receipts_report_unknown_without_stage_replay(self):
         (self.control/'recording.json').write_text('{broken',encoding='utf8')
         result=self.status();self.assertEqual(result['steps']['recording']['state'],'unknown')
-        self.assertNotIn('check-build then capture',result['next_actions'])
+        self.assertNotIn('capture',result['next_actions'])
     def test_data_and_package_hash_changes_are_local(self):
         self.recorded();system=self.out/'系统材料'
         exported=system/'数据/input.csv';exported.write_text('编号,值\n001,10\n',encoding='utf8')
@@ -258,7 +262,7 @@ class ProgressTests(DependencyFixture):
                 write_json(self.control/'controlled-video.json',{'timeline':str(timeline),'sha256':digest(timeline)})
                 before=file_map(self.work);result=self.status()
                 self.assertEqual(result['steps']['recording']['state'],'unknown')
-                self.assertNotIn('check-build then capture',result['next_actions'])
+                self.assertNotIn('capture',result['next_actions'])
                 self.assertEqual(file_map(self.work),before)
         self.recorded();capture_path=self.control/'capture.json';capture=read_json(capture_path)
         capture['construction_checks']['run_id']='foreign-case-run';write_json(capture_path,capture)

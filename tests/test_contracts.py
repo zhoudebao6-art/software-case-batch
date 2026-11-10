@@ -30,6 +30,10 @@ class ContractTests(unittest.TestCase):
         with zipfile.ZipFile(self.source,'w') as z:z.writestr('word/document.xml',doc(p('原实施例文本')))
         self.run=prepare(self.work,self.out,'设备运行控制',self.source)
         # This suite's two-chart/60-second fixtures represent frozen r9 runs.
+        self.run.pop('word_title_policy',None)
+        self.run.pop('source_delivery_policy',None)
+        self.run.pop('system_diagram_policy',None)
+        self.run.pop('system_diagram_renderer_sha256',None)
         # New r10 construction behavior has separate behavioral coverage.
         self.run.pop('delivery_layout_version',None)
         self.run.pop('delivery_requirements_version',None)
@@ -44,7 +48,9 @@ class ContractTests(unittest.TestCase):
         self.run.pop('source_integrity_policy',None)
         self.run.pop('review_coverage_policy',None)
         self.run.pop('web_experience_policy',None)
+        self.run.pop('web_outcome_policy',None)
         self.run.pop('web_module_policy',None)
+        self.run.pop('product_plan_policy',None)  # This fixture represents the frozen pre-form contract.
         write_json(self.work/'.product-v2/run.json',self.run)
         self.system=self.out/'模拟系统';(self.system/'数据').mkdir(parents=True)
         (self.system/'数据/记录.csv').write_text('编号,值\n1,3\n',encoding='utf-8-sig')
@@ -443,14 +449,18 @@ class ContractTests(unittest.TestCase):
             prepare(new,self.root/'unknown-output','设备运行控制',self.source,base,revision_scope='package')
     def test_new_prompt_has_new_chart_rules_and_internal_only_instructions(self):
         prompt=(self.work/'.product-v2/深化命令词.txt').read_text(encoding='utf8')
-        for text in ('chart_policy=analytical-v2','通常4—6张','总数无上限','1—2张黑白结果图','no_schematic_evidence','留内部工作区，排除源码ZIP'):
+        for text in ('chart_policy=analytical-v2','通常4—6张','总数无上限','1—2张黑白结果图','no_schematic_evidence','clean-source-cache-directory-v4','其余实际项目文件全部保留','README/操作说明','不压缩、不解包启动'):
             self.assertIn(text,prompt)
         for text in ('生成2–6张','使用运行说明放源码ZIP已有运行说明.txt'):
             self.assertNotIn(text,prompt)
     def test_new_case_prompt_keeps_full_construction_contract(self):
         prompt=(self.work/'.product-v2/深化命令词.txt').read_text(encoding='utf8')
-        self.assertIn('在原工作区对后端算法做尽可能深入的完善',prompt)
-        self.assertIn('再实际操作最终网页录制一分多钟',prompt)
+        self.assertIn('完成原材料和明确需求要求的后端算法',prompt)
+        for text in ('系统、数据和录制输入已稳定且满足原票据/建设自检/媒体准入时',
+                     '即可实际操作最终网页录制一分多钟','不改变这些绑定输入的Word排版或离线收尾',
+                     '不新增代理或阶段','最终首审仍须材料完整','连续真实浏览器录屏'):
+            self.assertIn(text,prompt)
+        self.assertNotIn('完成图文、系统与数据后，再',prompt)
         for text in ('首轮pass走finalize及publish','首轮revise后原修复者做定向修补与受影响自检',
                      '用close-simplified一次发布成品、整案ZIP和真实简化收据','不新增收费阶段'):
             self.assertIn(text,prompt)

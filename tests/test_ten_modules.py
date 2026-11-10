@@ -199,9 +199,20 @@ class PrepareModulePolicyTests(unittest.TestCase):
     def test_new_complete_prepare_freezes_policy_and_is_idempotent(self):
         work=self.f.root/'fresh-ten';work.mkdir();output=self.f.root/'fresh-ten-output'
         run=prepare(work,output,'设备运行管理',self.f.source)
-        self.assertEqual(run['web_module_policy'],WEB_MODULE_POLICY)
+        self.assertEqual(run['web_module_policy'],'source-form-v1')
+        self.assertEqual(run['product_plan_policy'],'product-realization-v2')
         self.assertEqual(run['delivery_requirements_version'],'rich-delivery-v1')
         self.assertEqual(run['recording_policy_version'],'flow-complete-v2')
+        prompt=(work/'.product-v2/深化命令词.txt').read_text('utf-8')
+        self.assertIn('references',prompt)
+        self.assertIn('product-forms.md',prompt)
+        self.assertIn('product_plan={subject,core_chain,target_runtime,validation_level,media_route}',prompt)
+        self.assertIn('本案若为桌面Web',prompt)
+        self.assertIn('其他形态按原技术完整覆盖',prompt)
+        self.assertIn('原生端必须绑定真实原生运行日志',prompt)
+        self.assertNotIn('web_module_policy=ten-modules-v1',prompt)
+        self.assertNotIn('本案Web按references/web-design.md至少建设10个',prompt)
+        self.assertNotIn('所有页面在原browser自检里运行',prompt)
         frozen=digest(work/'.product-v2/run.json')
         self.assertEqual(prepare(work,output,'设备运行管理',self.f.source),run)
         self.assertEqual(digest(work/'.product-v2/run.json'),frozen)
@@ -211,6 +222,7 @@ class PrepareModulePolicyTests(unittest.TestCase):
         frozen=digest(self.f.work/'.product-v2/run.json')
         result=prepare(self.f.work,self.f.out,'设备运行控制',self.f.source)
         self.assertNotIn('web_module_policy',result)
+        self.assertNotIn('product_plan_policy',result)
         self.assertEqual(digest(self.f.work/'.product-v2/run.json'),frozen)
 
     def test_both_revision_scopes_inherit_present_or_absent_parent_policy(self):
@@ -226,6 +238,19 @@ class PrepareModulePolicyTests(unittest.TestCase):
                 frozen=digest(work/'.product-v2/run.json')
                 prepare(work,output,'设备运行控制',self.f.source,base,revision_scope=scope)
                 self.assertEqual(digest(work/'.product-v2/run.json'),frozen)
+                self.assertEqual(digest(path),before)
+
+    def test_product_plan_revision_inherits_only_if_parent_has_it(self):
+        base,_,_=self.f.revision_fixture();path=base/'.product-v2/run.json';original=read_json(path)
+        for i,policy in enumerate((None,'product-realization-v1','product-realization-v2')):
+            parent=dict(original,web_module_policy='source-form-v1')
+            if policy:parent['product_plan_policy']=policy
+            else:parent.pop('product_plan_policy',None)
+            write_json(path,parent);before=digest(path)
+            for scope in ('document','package'):
+                work=self.f.root/f'plan-{i}-{scope}';work.mkdir();output=self.f.root/f'out-plan-{i}-{scope}'
+                run=prepare(work,output,'设备运行控制',self.f.source,base,revision_scope=scope)
+                self.assertEqual(run.get('product_plan_policy'),policy)
                 self.assertEqual(digest(path),before)
 
     def test_unknown_existing_and_parent_policy_fail_before_new_output(self):

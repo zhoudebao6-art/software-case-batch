@@ -25,7 +25,7 @@ class ReadyTests(unittest.TestCase):
     def tearDown(self):
         for p in reversed(self.patches):p.stop()
         self.temp.cleanup()
-    def register(self,name,ids):
+    def register(self,name,ids,limit=4):
         cases=[]
         for cid in ids:
             work=self.root/name/cid;work.mkdir(parents=True);source=work/'source.docx';source.write_bytes(b'fixture')
@@ -33,7 +33,7 @@ class ReadyTests(unittest.TestCase):
             write_json(work/'.product-v2/record-plan.json',{'fixture':True})
             cases.append({'case_id':cid,'workspace':str(work),'source_docx':str(source),'source_sha256':digest(source)})
         manifest=self.root/(name+'.json');write_json(manifest,{'cases':cases})
-        batch.register(self.pool,name,manifest,'isolated fixture',4,4);batch.claim(self.pool,name,101)
+        batch.register(self.pool,name,manifest,'isolated fixture',4,limit);batch.claim(self.pool,name,101)
         return {c['case_id']:Path(c['workspace']) for c in cases}
     def queue(self,cid='c1',stage='record',name='b'):
         return batch.mutate(self.pool,name,101,'queue',cid,stage=stage)
@@ -62,6 +62,42 @@ class ReadyTests(unittest.TestCase):
         return 0
     def ready(self,**kw):
         with patch('progress_driver.execute',side_effect=self.execute):return progress.drive_ready(self.pool,'b',101,**kw)
+    def test_shared_control_reads_use_existing_transaction(self):
+        self.queue()
+        original=progress.read_json;observed=[]
+        shared={self.pool/'queue.json',self.pool/'b/state.json'}
+        def guarded(path):
+            if Path(path) in shared:
+                self.assertTrue((self.pool/'mutation.lock').is_file(),str(path))
+                self.assertTrue(progress._CONTROL_LOCK._is_owned(),str(path))
+                observed.append(Path(path).name)
+            return original(path)
+        with patch('progress_driver.read_json',side_effect=guarded):
+            result=self.ready()
+        self.assertEqual(result['status'],'technical_evidence_ready')
+        self.assertIn('queue.json',observed);self.assertIn('state.json',observed)
+
+    def test_seven_enter_capture_concurrently_without_fifo_race(self):
+        ids=['x'+str(i) for i in range(7)]
+        with patch('batch_control.local_recording_limit',return_value=None):
+            self.register('wide',ids,'auto')
+        for cid in ids:self.queue(cid,name='wide')
+        gate=threading.Barrier(7,timeout=15);original=self.execute; admissions=[]
+        original_mutate=progress.mutate
+        def slow_first(*args,**kwargs):
+            if args[3]=='acquire':
+                if not admissions:time.sleep(.05)
+                admissions.append(kwargs['token'])
+            return original_mutate(*args,**kwargs)
+        def execute(work,phase,*args):
+            if phase=='capture':gate.wait()
+            return original(work,phase,*args)
+        with patch('progress_driver.execute',side_effect=execute),patch('progress_driver.mutate',side_effect=slow_first):
+            result=progress.drive_ready(self.pool,'wide',101)
+        self.assertEqual(result['status'],'technical_evidence_ready',result)
+        self.assertEqual(self.max_captures,7)
+        self.assertEqual(len([c for c,p in self.calls if p=='capture']),7)
+        self.assertTrue(all(q['status']=='released' for q in read_json(self.pool/'queue.json')))
     def test_queued_cases_finish_without_parent_handoffs_and_do_not_repeat(self):
         original=[self.queue(c)['token'] for c in self.cases]
         result=self.ready();self.assertEqual(result['status'],'technical_evidence_ready',result)

@@ -15,6 +15,79 @@ from common import read_json,write_json
 
 
 class CompactStatusTests(unittest.TestCase):
+    def review_handoff(self, decision='pass'):
+        proof={'decision':decision,'review_evidence':'original-proof.json','review_evidence_sha256':'a'*64}
+        item={'phase':{'pass':'waiting_review','revise':'repairing','blocked':'blocked'}[decision],
+              'pending':[], 'calls':[dict(proof,stage='review',status='completed_'+decision,call_id='call',token='review-token')],
+              'review_result':proof}
+        ticket={'batch_id':'b','case_id':'a','stage':'review','token':'review-token','status':'released',
+                'review_completion':dict(proof,call_id='call',authenticated_group='original-parent')}
+        return item,ticket
+
+    def test_completed_review_routes_to_finalize_without_rehashing_or_rewriting_legacy_phase(self):
+        item,ticket=self.review_handoff();self.state['drain']=False
+        self.state['cases']['a']=item;self.pool=[ticket];self.save()
+        code,result=self.run_read_only_status('--case-id','a')
+        self.assertEqual(code,0);row=result['cases'][0]
+        self.assertEqual(row['phase'],'waiting_review')
+        self.assertEqual(row['continuation']['action'],'finalize_existing_review')
+        self.assertEqual(row['review_result'],item['review_result'])
+
+    def test_only_matching_completed_review_routes_and_later_work_invalidates_hint(self):
+        from copy import deepcopy
+        item,ticket=self.review_handoff()
+        mutations=[lambda i,t:t['review_completion'].update(review_evidence_sha256='b'*64),
+                   lambda i,t:t['review_completion'].update(call_id='other'),
+                   lambda i,t:t['review_completion'].pop('authenticated_group'),
+                   lambda i,t:i['calls'].append({'stage':'build','status':'dispatched'}),
+                   lambda i,t:i.update(phase='building'),
+                   lambda i,t:i['review_result'].update(review_evidence_sha256='invalid')]
+        for change in mutations:
+            i,t=deepcopy(item),deepcopy(ticket);change(i,t)
+            self.assertIsNone(batch.recorded_continuation(i,[t],False))
+        self.assertIsNone(batch.recorded_continuation(item,[ticket,ticket],False))
+        self.assertIsNone(batch.recorded_continuation(item,[],False))
+
+    def test_pause_current_ticket_cancel_and_delivery_override_old_pass(self):
+        item,ticket=self.review_handoff()
+        self.assertEqual(batch.recorded_continuation(item,[ticket],True)['action'],'wait_for_authorized_continue')
+        self.assertEqual(batch.recorded_continuation(item,[ticket],None)['action'],'wait_for_authorized_continue')
+        live=dict(ticket,status='active',token='new-review')
+        self.assertEqual(batch.recorded_continuation(item,[ticket,live],False)['action'],'continue_original_ticket')
+        item['cancelled_by_user']=True
+        self.assertEqual(batch.recorded_continuation(item,[ticket],False)['action'],'keep_cancelled')
+        del item['cancelled_by_user'];item['phase']='delivered'
+        result=batch.recorded_continuation(item,[ticket],False)
+        self.assertEqual(result['action'],'keep_delivered');self.assertFalse(result['publication_verified'])
+
+    def test_revise_and_blocked_are_not_pass_or_automatic_new_review(self):
+        for decision,expected in [('revise','resolve_recorded_findings'),('blocked','resolve_recorded_blocker')]:
+            item,ticket=self.review_handoff(decision)
+            self.assertEqual(batch.recorded_continuation(item,[ticket],False)['action'],expected)
+
+    def test_missing_queue_pending_pause_and_cross_case_duplicate_cannot_route_to_finalize(self):
+        from copy import deepcopy
+        item,ticket=self.review_handoff();self.state['drain']=False
+        for name in ('pending','maintenance_pause','duplicate'):
+            value=deepcopy(item);self.pool=[deepcopy(ticket)]
+            if name=='pending':value['pending']=[{'token':'new','stage':'build','status':'active'}]
+            elif name=='maintenance_pause':value['maintenance_pause']={'reason':'original maintenance hold'}
+            else:self.pool.append(dict(ticket,case_id='z'))
+            self.state['cases']['a']=value;self.save()
+            code,result=self.run_read_only_status('--case-id','a');self.assertEqual(code,0)
+            self.assertNotEqual(result['cases'][0].get('continuation',{}).get('action'),'finalize_existing_review')
+
+    def test_malformed_handoff_fields_do_not_crash_compact_diagnostics(self):
+        from copy import deepcopy
+        item,ticket=self.review_handoff();self.state['drain']=False
+        for kind in ('status','stage','decision'):
+            value,t=deepcopy(item),deepcopy(ticket)
+            if kind=='decision':value['review_result']['decision']={'invalid':True}
+            else:t[kind]={'invalid':True}
+            self.state['cases']['a']=value;self.pool=[t];self.save()
+            code,result=self.run_read_only_status('--case-id','a');self.assertEqual(code,0)
+            self.assertNotEqual(result['cases'][0].get('continuation',{}).get('action'),'finalize_existing_review')
+
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name);self.target=self.root/'b'
         self.manifest={'batch_id':'b','cases':[{'case_id':'a','workspace':'do-not-scan'},

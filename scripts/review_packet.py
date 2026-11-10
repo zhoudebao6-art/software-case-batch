@@ -14,7 +14,8 @@ import zipfile
 from common import digest, inside, no_links, product_location, read_json
 from evidence_index import check, review_input, review_coverage_policy, review_coverage_snapshot
 
-EXECUTION_KINDS = ('algorithm', 'api', 'persistence', 'browser', 'build', 'package_startup')
+from source_delivery import execution_kinds, main_code_only, retain_all_source
+EXECUTION_KINDS = execution_kinds({})
 STAGES = ('build-start', 'build-complete', 'data-ready', 'pre-review')
 
 
@@ -115,8 +116,8 @@ def stage_check(workspace, stage, execution=None, index=None, manifest=None, pla
                        'No business commands, media decode, independent approval or fabricated evidence.'}
     if stage == 'pre-review':
         if not execution:
-            issue('execution', 'Six execution facts and final ZIP binding are due before review',
-                  'Supply --execution <existing six-check JSON>; package_probe.py can record actual final ZIP startup facts.')
+            issue('execution', 'Current execution facts and final ZIP binding are due before review',
+                  'Supply --execution with the frozen run required checks and current ZIP hash; main-code-v1 uses the five original business checks without package startup.')
         else:
             packet = inspect(workspace, execution, index, manifest)
             report['review_inputs'] = packet
@@ -131,7 +132,8 @@ def execution_checks(value, kinds=EXECUTION_KINDS):
             or not all(isinstance(item, dict) for item in value)
             or not all(isinstance(item.get('kind'), str) for item in value)
             or {item['kind'] for item in value} != set(kinds)):
-        raise ValueError('Six distinct execution checks required: checks must be a list of '
+        label = 'Six' if len(kinds) == 6 else 'Required'
+        raise ValueError(label + ' distinct execution checks required: checks must be a list of '
                          'objects with exact kinds ' + ', '.join(kinds))
     return value
 
@@ -194,7 +196,7 @@ def inspect(workspace, execution, index=None, manifest=None):
     proof = document(execution)
     checks = []
     try:
-        kinds = () if document_revision else (('package_startup',) if package_revision else EXECUTION_KINDS)
+        kinds = () if document_revision else execution_kinds(run,package_revision)
         checks = execution_checks(proof.get('checks', []), kinds)
     except ValueError as exc:
         issue('schema', 'checks', exc)
@@ -233,8 +235,12 @@ def inspect(workspace, execution, index=None, manifest=None):
     if not document_revision and (not isinstance(members, dict) or not members):
         issue('schema', 'source-package.files', 'Explicit current source hash map required')
     else:
+        from runtime_cache import evidence_path
         for rel, sha in members.items():
-            actual(rel, sha)
+            try:
+                actual(evidence_path(workspace,run,package,rel).relative_to(workspace).as_posix(), sha)
+            except ValueError as exc:
+                issue('source-package',rel,str(exc))
     controlled = {} if document_revision or package_revision else document('.product-v2/controlled-video.json')
     if controlled:
         timeline = document(controlled.get('timeline'), expected=controlled.get('sha256', ''))
@@ -274,6 +280,7 @@ def inspect(workspace, execution, index=None, manifest=None):
             for rel in extra:
                 actual(rel)
     output = None
+    from source_delivery import source_digest, directory_delivery
     source_zip_sha256 = proof.get('source_zip_sha256')
     try:
         output = product_location(workspace, run)
@@ -282,12 +289,16 @@ def inspect(workspace, execution, index=None, manifest=None):
         if not output.is_dir() or not any(p.is_file() for p in output.rglob('*')):
             issue('missing', output, 'Current product output is missing or empty')
         from common import delivery_paths
+        from system_diagrams import validate as validate_diagrams
+        validate_diagrams(workspace,output,run)
         archive = delivery_paths(run, output)['source_zip']
-        if not archive.is_file():
-            issue('missing', archive, 'Current final source ZIP required')
-        elif not document_revision and (cached_digest(archive) != proof.get('source_zip_sha256') or cached_digest(archive) != package.get('sha256')):
-            issue('stale', 'source_zip_sha256', 'Execution and package receipt must bind the final ZIP')
-        if document_revision and archive.is_file(): source_zip_sha256 = cached_digest(archive)
+        if not (archive.is_dir() if directory_delivery(run) else archive.is_file()):
+            issue('missing', archive, 'Current final source artifact required')
+        else:
+            artifact_sha=source_digest(archive)
+            if not document_revision and (artifact_sha != proof.get('source_zip_sha256') or artifact_sha != package.get('sha256')):
+                issue('stale', 'source_zip_sha256', 'Execution and package receipt must bind the final source artifact')
+            if document_revision: source_zip_sha256 = artifact_sha
         if controlled and proof.get('video_timeline_sha256') != controlled.get('sha256'):
             issue('stale', 'video_timeline_sha256', 'Execution facts must bind the current controlled timeline')
     except (ValueError, OSError, KeyError, TypeError) as exc:
@@ -347,14 +358,14 @@ def draft(workspace, execution, destination, index=None, manifest=None, root=Non
     # Keep real original member facts in the existing signed review, so a later
     # container-only repack need not repeat successful business execution.
     from common import delivery_paths
-    from contracts import zip_member_hashes
+    from source_delivery import source_members, source_digest, source_descriptor, directory_delivery
     run = read_json(inside(workspace, '.product-v2/run.json'))
     archive = delivery_paths(run, no_links(run['output']))['source_zip']
     try:
-        members = zip_member_hashes(archive)
+        members = source_members(archive)
         document_revision = bool(review_coverage_policy(run) and run.get('revision_of') and run.get('revision_scope', 'document') == 'document')
         package = {} if document_revision else read_json(inside(workspace, '.product-v2/source-package.json'))
-        if digest(archive) != report['source_zip_sha256'] or (not document_revision and package.get('files') != members):
+        if source_digest(archive) != report['source_zip_sha256'] or (not document_revision and package.get('files') != members):
             raise ValueError('Current ZIP members differ from the actual source package receipt')
     except (ValueError, OSError, zipfile.BadZipFile) as exc:
         report['status'] = 'blocked'
@@ -381,13 +392,24 @@ def draft(workspace, execution, destination, index=None, manifest=None, root=Non
         coverage_binding['inherited_evidence_chain'] = report['coverage_snapshot']['inherited_evidence_chain']
     save('review-draft.json', {**metadata, **coverage_binding, 'kind': 'non-authoritative-review-draft', 'run_id': report['run_id'],
          'checks': report['execution_checks'], 'source_zip_sha256': report['source_zip_sha256'],
-         'source_package': {'sha256': report['source_zip_sha256'], 'files': members},
+         'source_package': {**(source_descriptor(run) if directory_delivery(run) else {}), 'sha256': report['source_zip_sha256'], 'files': members},
          'video_timeline_sha256': report['video_timeline_sha256'],
           'reviewed_files': facts['current_artifacts'],
          'reviewed_evidence': [], 'chart_reviews': [], 'visual_notes': [], 'limitations': [],
          'instruction': 'Copied execution facts are unreviewed. Reviewer must actually inspect evidence, '
                         'write independent findings, actual coverage and identity, then attest the final proof hash. '
-                        'This draft has no decision or signature and cannot finalize.'})
+                         'Read facts.review_sequence for same-review core/nonblocking triage and truthful simplified closure; '
+                         'optional enhancements must not become delivery blockers. '
+                         'This draft has no decision or signature and cannot finalize.' + (
+                         ' Main-code delivery: inspect the actual ZIP members against the existing source_trace/coverage_matrix and working system. '
+                         'Verify complete main algorithm and backend business modules, real function/class/call relationships, validation, data processing, persistence and applicable queries/exports. '
+                         'Reject excerpt-only, missing core logic, empty or duplicated filler; do not impose a line-count quota or add a review round. '
+                         'Record the concrete coverage findings in the existing review findings. No unpack/install/startup test is required for this code package.'
+                         if main_code_only(run) and not retain_all_source(run) else '') + (
+                         ' Complete cleaned project delivery: compare all source_roots and loose files with actual directory members. Keep business modules, tests, configuration, assets, existing launch/build/deploy scripts and legal notices. Only identified production/private artifacts and the frozen policy exclusions are removed; v4 case-owned runtime cache and consistent database snapshots must be retained, inspected against source-package members/hashes and distinguished from code volume; no excerpt selection, startup test or added review round. Inspect real call relationships and source-specific algorithms, server-side validation, transaction consistency, bounded queries, frontend state ownership and failure recovery using existing algorithm/API/persistence/browser evidence. A file inventory or large code volume cannot establish implementation quality; reject dead/filler logic and misleading success paths. Keep all material findings in this same review.'
+                         if retain_all_source(run) and not document_revision else '') + (
+                         ' Inspect actual 系统代码/设计图.png and 时序图.png against original Word. Record source fidelity, arrow conditions and readability in existing visual_notes; no separate report or review round. No invented actors, infrastructure or conditions.'
+                         if run.get('system_diagram_policy') else '')})
     return {'status': 'draft_created', 'directory': str(destination), 'evidence_items': len(records),
             **({'review_index': facts['review_index']} if coverage_binding else {}),
             'facts_path': str(facts_path), 'facts_sha256': digest(facts_path),
@@ -500,7 +522,7 @@ def complete_handoff(root, target, manifest, state, pool, entry, request_path, a
     if duplicates and any(c.get('review_evidence_sha256') != completed['review_evidence_sha256'] or c.get('status') != completed['status'] for c in duplicates):
         raise ValueError('This actual dispatch already has a different completed result; preserve both records')
     if not duplicates: current.setdefault('calls', []).append(completed)
-    current['phase'] = {'revise': 'repairing', 'pass': 'waiting_review', 'blocked': 'blocked'}[decision]
+    current['phase'] = {'revise': 'repairing', 'pass': 'ready_finalize', 'blocked': 'blocked'}[decision]
     current['review_result'] = {'decision': decision, 'review_evidence': str(proof_path),
                                 'review_evidence_sha256': completed['review_evidence_sha256']}
     if decision == 'blocked': current['blocked_fingerprint'] = completed['review_evidence_sha256']

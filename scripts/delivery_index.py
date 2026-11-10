@@ -13,7 +13,7 @@ from common import no_links
 CENTER = '00_交付中心'
 PAGE = '打开交付总览.html'
 MARKER = '<!-- scb-delivery-index-v1 -->'
-LAYOUTS = [('系统材料', '源代码.zip', '操作视频.mp4'), ('模拟系统', '项目源码.zip', '演示视频.mp4')]
+LAYOUTS = [('系统代码', '源代码.zip', '操作视频.mp4'), ('系统材料', '源代码.zip', '操作视频.mp4'), ('模拟系统', '项目源码.zip', '演示视频.mp4')]
 
 
 def children(path):
@@ -49,9 +49,14 @@ def case_entry(path, group):
     links = {'folder': str(path), 'words': [str(p) for p in words], 'source': '', 'video': '', 'data': ''}
     if systems:
         system, source, video = systems[0]
+        # Shallow link only; this index never audits or reads source members.
+        directory=path/system/'主要代码'
+        try:
+            if no_links(directory).is_dir():links['source']=str(directory)
+        except (OSError,ValueError):pass
         for key, filename in [('source', source), ('video', video)]:
             candidate = path / system / filename
-            if present(candidate):
+            if not links[key] and present(candidate):
                 links[key] = str(candidate)
         data = path / system / '数据'
         try:

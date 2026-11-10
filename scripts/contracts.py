@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from common import digest, inside, no_links, read_json
 from source_intake import source_figure_numbers
+from word_title import POLICY as WORD_TITLE_POLICY, STORY as WORD_STORY, check_title, normalized_part, normalize_element
 
 SESSION_ROOT = Path.home()/'.codex/sessions'
 NS = {'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
@@ -20,7 +21,8 @@ ANALYTICAL_CHART_POLICY = 'analytical-v1'
 BUILD_CHART_POLICY = 'analytical-v2'
 EXPLANATION_CONTEXT_POLICY = 'source-context-v2'
 EXPLANATION_CONTEXT_POLICIES = {'source-context-v1', EXPLANATION_CONTEXT_POLICY}
-EXPLANATION_FACT_POLICY = 'key-facts-v1'
+EXPLANATION_FACT_POLICY = 'key-facts-v2'
+EXPLANATION_FACT_POLICIES = {'key-facts-v1', EXPLANATION_FACT_POLICY}
 ANALYTICAL_POLICIES = {ANALYTICAL_CHART_POLICY, BUILD_CHART_POLICY}
 CONSTRUCTION_POLICY = 'dependency-bound-v1'
 CONSTRUCTION_KINDS = {'algorithm','api','persistence','browser','build'}
@@ -41,13 +43,17 @@ def construction_checks(workspace, run, plan_path=None):
         return {'required':False,'status':'historical-contract'}
     if policy!=CONSTRUCTION_POLICY:raise ValueError('Unknown construction check policy')
     workspace=no_links(workspace)
-    spec_path=inside(workspace,'.product-v2/build-checks.json');spec=read_json(spec_path)
+    from check_io import CheckedHashes
+    current_hash = CheckedHashes(digest)
+    spec_path=inside(workspace,'.product-v2/build-checks.json');current_hash(spec_path);spec=read_json(spec_path)
     if spec.get('run_id')!=run.get('run_id') or spec.get('source_docx_sha256')!=run.get('source_docx_sha256'):
         raise ValueError('Construction checks belong to a different run or source')
-    if digest(no_links(run['source_docx']))!=run['source_docx_sha256']:
+    if current_hash(no_links(run['source_docx']))!=run['source_docx_sha256']:
         raise ValueError('Construction original Word source changed')
-    manifest_path=inside(workspace,'.product-v2/source-manifest.json');manifest=read_json(manifest_path)
+    manifest_path=inside(workspace,'.product-v2/source-manifest.json');current_hash(manifest_path);manifest=read_json(manifest_path)
     files=manifest.get('files',[])
+    from source_delivery import retain_all_source, selected_files
+    if retain_all_source(run):files=selected_files(manifest,run,workspace)
     if not isinstance(files,list) or not files or not all(isinstance(p,str) for p in files):
         raise ValueError('Construction requires the explicit source file manifest')
     from proflow import excluded_source
@@ -56,10 +62,17 @@ def construction_checks(workspace, run, plan_path=None):
     for relative in files:
         relative=relative.replace('\\','/')
         path=inside(workspace,relative)
+        if retain_all_source(run) and path == no_links(run['source_docx']):
+            continue
         if relative.casefold() in names:raise ValueError('Duplicate construction source member')
         names.add(relative.casefold())
-        if not excluded_source(relative,manifest.get('exclude',[])):
-            declared[relative]=digest(path)
+        from runtime_cache import enabled as cache_enabled, member as cache_member
+        if cache_enabled(run) and cache_member(relative, manifest):
+            # Mutable delivery state is frozen during export, not code. Actual
+            # algorithm inputs still bind to fixed input_files below.
+            continue
+        if not excluded_source(relative,manifest.get('exclude',[]),run,path.read_bytes() if retain_all_source(run) else None):
+            declared[relative]=current_hash(path)
     if not declared or spec.get('implementation_hashes')!=declared:
         raise ValueError('Construction implementation snapshot is incomplete or stale')
     if 'hashes' in manifest and any(manifest['hashes'].get(p)!=sha for p,sha in declared.items()):
@@ -67,12 +80,13 @@ def construction_checks(workspace, run, plan_path=None):
     plan_path=no_links(plan_path or workspace/'.product-v2/record-plan.json')
     if workspace not in plan_path.parents or not plan_path.is_file():
         raise ValueError('Construction recording plan must be an actual file inside its workspace')
+    current_hash(plan_path)
     plan=read_json(plan_path);recording_inputs=plan.get('input_files',[])
     if (not isinstance(recording_inputs,list) or not recording_inputs or
             not all(isinstance(p,str) for p in recording_inputs)):
         raise ValueError('Nonempty construction recording inputs required')
     required=dict(declared)
-    for relative in recording_inputs:required[relative.replace('\\','/')]=digest(inside(workspace,relative))
+    for relative in recording_inputs:required[relative.replace('\\','/')]=current_hash(inside(workspace,relative))
     checks=spec.get('checks',{})
     if not isinstance(checks,dict) or not CONSTRUCTION_KINDS.issubset(checks):
         raise ValueError('Five actual construction execution checks required')
@@ -82,7 +96,7 @@ def construction_checks(workspace, run, plan_path=None):
         if not isinstance(check,dict):raise ValueError('Invalid construction check: '+kind)
         log=inside(workspace,check.get('log',''))
         if (type(check.get('exit_code')) is not int or check['exit_code']!=0 or
-                not _nonempty_text(check.get('command')) or log.stat().st_size==0 or check.get('sha256')!=digest(log)):
+                not _nonempty_text(check.get('command')) or log.stat().st_size==0 or check.get('sha256')!=current_hash(log)):
             raise ValueError('Missing/failed/stale construction execution log: '+kind)
         inputs=check.get('input_files')
         test_files=check.get('test_files')
@@ -98,18 +112,20 @@ def construction_checks(workspace, run, plan_path=None):
             key=relative.replace('\\','/')
             if key.casefold() in canonical:raise ValueError('Duplicate construction dependency: '+kind)
             canonical.add(key.casefold())
-            if digest(inside(workspace,relative))!=sha:raise ValueError('Construction dependency changed: '+kind+' / '+relative)
+            if current_hash(inside(workspace,relative))!=sha:raise ValueError('Construction dependency changed: '+kind+' / '+relative)
             covered.add(key)
         bindings[kind]={'log':check['log'],'sha256':check['sha256'],'input_files':inputs,'test_files':test_files}
     if not set(required).issubset(covered):
         raise ValueError('Construction checks omit current source/recording dependencies: '+', '.join(sorted(set(required)-covered)))
     from web_contract import validate_web_experience
-    web=validate_web_experience(workspace,run,spec)
-    return {'web_experience':web,'required':True,'status':'ready','policy':policy,'run_id':run['run_id'],
-            'source_docx_sha256':run['source_docx_sha256'],'build_checks_sha256':digest(spec_path),
-            'source_manifest_sha256':digest(manifest_path),'plan_sha256':digest(plan_path),
+    web=validate_web_experience(workspace,run,spec,hasher=current_hash)
+    result = {'web_experience':web,'required':True,'status':'ready','policy':policy,'run_id':run['run_id'],
+            'source_docx_sha256':run['source_docx_sha256'],'build_checks_sha256':current_hash(spec_path),
+            'source_manifest_sha256':current_hash(manifest_path),'plan_sha256':current_hash(plan_path),
             'implementation_hashes':declared,'checks':bindings,
             'limitation':'Commands were not rerun; current logs and dependency hashes are bound, not independently approved.'}
+    current_hash.finish()
+    return result
 
 def chart_policy(run):
     """An absent policy keeps the historical gate; unknown policies fail closed."""
@@ -260,6 +276,9 @@ def chart_records(spec, run):
             raise ValueError('Four or more effective charts, one or two monochrome result charts and a professional-analysis majority required')
         if any(f.get('palette')!='monochrome' for f in baseline):
             raise ValueError('Baseline result charts must actually use a monochrome palette, checked visually independently')
+    if run.get('web_module_policy')=='source-form-v1':
+        from case_representation import validate_figure_intent, PLAN_POLICIES
+        for figure in figures:validate_figure_intent(figure,strict=run.get('product_plan_policy') in tuple(PLAN_POLICIES))
     return figures
 
 def delivery_layout(output, run):
@@ -275,12 +294,21 @@ def delivery_layout(output, run):
     system = paths['system']
     members = {paths['source_name'],paths['video_name'],'数据'}
     if 'screenshot' in paths: members.add('界面截图.png')
+    from system_diagrams import enabled as diagrams_enabled, validate as validate_diagrams
+    if diagrams_enabled(run):members.update({'设计图.png','时序图.png'})
     if not system.is_dir() or {p.name for p in system.iterdir()} != members:
         raise ValueError(paths['system_name']+' must contain exactly '+paths['source_name']+', '+paths['video_name']+' and 数据')
     if 'screenshot' in paths:
         from web_contract import native_delivery_png
-        native_delivery_png(inside(system, '界面截图.png'))
-    for name in (paths['source_name'],paths['video_name']):
+        native_delivery_png(inside(system, '界面截图.png'),allow_portrait=run.get('web_module_policy')=='source-form-v1')
+    if diagrams_enabled(run):validate_diagrams(run.get('workspace'),output,run)
+    from source_delivery import directory_delivery, source_members
+    if directory_delivery(run):
+        if not paths['source_zip'].is_dir():raise ValueError('Main source directory required')
+        source_members(paths['source_zip'])
+        names=(paths['video_name'],)
+    else:names=(paths['source_name'],paths['video_name'])
+    for name in names:
         if inside(system,name).stat().st_size == 0:
             raise ValueError('Empty deliverable: '+name)
     data=no_links(system/'数据')
@@ -455,7 +483,7 @@ def explanation_contexts(source_blocks, blocks, original_positions, figures):
     return contexts
 
 
-def explanation_key_facts(workspace, blocks, figures, contexts):
+def explanation_key_facts(workspace, blocks, figures, contexts, policy="key-facts-v1"):
     """Locate declared facts in their own added explanation, not anywhere in Word.
 
     These are exact textual/source bindings, not OCR, numeric equivalence or a
@@ -480,7 +508,9 @@ def explanation_key_facts(workspace, blocks, figures, contexts):
     workspace = no_links(workspace)
     result = {}
     kinds = {'value', 'time', 'unit', 'event', 'turning_point', 'extremum',
-             'threshold', 'start', 'end', 'condition'}
+             'threshold', 'start', 'end', 'condition', 'axis', 'series', 'region', 'symbol'}
+    if policy == EXPLANATION_FACT_POLICY:
+        kinds.add('spatial_relation')
     for figure in figures:
         number = str(figure['figure_id'])
         facts = figure.get('key_facts')
@@ -528,7 +558,59 @@ def explanation_key_facts(workspace, blocks, figures, contexts):
             if not matches:
                 raise ValueError('Chart '+number+' key fact '+identity+
                                  ' is absent from its declared contextual explanation')
-            bindings.append({'fact_id': identity, 'kind': fact['kind'],
+            symbol_binding = {}
+            if fact['kind'] == 'symbol':
+                # Only declared symbol facts opt in. Never infer typography from
+                # flattened Word text, or apply a new gate to old declarations.
+                symbol = fact.get('symbol_text')
+                if not _nonempty_text(symbol):
+                    raise ValueError('Symbol fact needs symbol_text from its inline OMML')
+                math_ns = '{http://schemas.openxmlformats.org/officeDocument/2006/math}'
+                def inline_math(node):
+                    if node.tag == math_ns+'oMathPara':
+                        return
+                    if node.tag == math_ns+'oMath':
+                        yield node
+                    else:
+                        for child in node:
+                            yield from inline_math(child)
+
+                def single_symbol(node):
+                    # Check the base only. Conditions such as i<j or i=1 in
+                    # a genuine subscript are not a whole defining equation.
+                    name = node.tag.removeprefix(math_ns)
+                    if name == 'r':
+                        value = unicodedata.normalize('NFKC', ''.join(
+                            n.text or '' for n in node if n.tag == math_ns+'t'))
+                        return bool(value.strip()) and all(
+                            c.isspace() or c.isalnum() for c in value)
+                    if name in {'sub', 'sup'} or name.endswith('Pr'):
+                        return True
+                    if name not in {'oMath', 'e', 'sSub', 'sSup', 'sSubSup', 'acc', 'bar', 'box'}:
+                        return False
+                    return len(node) > 0 and all(single_symbol(c) for c in node)
+
+                candidates = []
+                for math in inline_math(blocks[block_index]):
+                    actual = ''.join(n.text or '' for n in math.iter(math_ns+'t'))
+                    if normalized_text(actual) == normalized_text(symbol) and single_symbol(math):
+                        candidates.append(math)
+                if not candidates:
+                    raise ValueError('Symbol fact needs a standalone native inline symbol, not plain text or a full equation')
+                symbol_binding = {'symbol_text': symbol,
+                    'symbol_omml_sha256': sorted({hashlib.sha256(ET.tostring(m)).hexdigest() for m in candidates})}
+            depiction = {}
+            if policy == EXPLANATION_FACT_POLICY and fact['kind'] in {'symbol', 'spatial_relation'}:
+                mapping = fact.get('depiction')
+                required = ('panel', 'quantity_type', 'visible_objects', 'relationship')
+                if not isinstance(mapping, dict) or any(not _nonempty_text(mapping.get(k)) for k in required):
+                    raise ValueError('Figure correspondence needs panel, quantity_type, visible_objects and relationship')
+                if mapping['quantity_type'] not in {'point', 'vector', 'matrix', 'scalar', 'index', 'relation', 'other'}:
+                    raise ValueError('Unknown figure correspondence quantity_type')
+                # Bind descriptions for the SAME current PNG and contextual excerpt.
+                # This deliberately does not pretend to detect geometry or OCR.
+                depiction = {'depiction': {k: mapping[k] for k in required}}
+            bindings.append({'fact_id': identity, 'kind': fact['kind'], **symbol_binding, **depiction,
                              'chart_text': fact['chart_text'], 'after_source_block': anchor,
                              'explanation_block': block_index,
                              'explanation_excerpt': fact['explanation_excerpt'],
@@ -537,6 +619,33 @@ def explanation_key_facts(workspace, blocks, figures, contexts):
                                        'sha256': digest(path), 'locator': basis['locator']}})
         result[number] = bindings
     return result
+
+
+def validate_correspondence_review(charts, reviews):
+    """Require coverage inside the existing first review, never create a new round.
+
+    IDs are coverage evidence only. The reviewer must inspect actual pixels,
+    source definitions and surrounding prose; this check cannot sign semantics.
+    Frozen v1 and no-policy historical snapshots retain their old contract.
+    """
+    if charts.get('explanation_fact_policy') != EXPLANATION_FACT_POLICY:
+        return
+    expected = charts.get('explanation_key_facts', {})
+    for number in charts['figures']:
+        facts = expected.get(str(number), [])
+        if not facts:
+            raise ValueError('Current figure correspondence facts missing')
+        matching = [r for r in reviews if str(r.get('figure_id')) == str(number)]
+        if len(matching) != 1:
+            raise ValueError('Figure correspondence review missing or duplicated')
+        explanation = matching[0].get('explanation', {})
+        checked = explanation.get('checked_fact_ids')
+        ids = {f['fact_id'] for f in facts}
+        if (not isinstance(checked, list) or not all(isinstance(x, str) for x in checked)
+                or len(checked) != len(set(checked)) or set(checked) != ids):
+            raise ValueError('Existing explanation review must identify all actually checked fact IDs')
+        if not _nonempty_text(explanation.get('evidence')):
+            raise ValueError('Actual figure-to-prose comparison evidence required')
 
 
 def _relationship_records(package, member):
@@ -694,7 +803,7 @@ def chart_snapshot(workspace, word, run):
     if context_policy not in {None} | EXPLANATION_CONTEXT_POLICIES:
         raise ValueError('Unknown explanation context policy')
     fact_policy = run.get('explanation_fact_policy')
-    if fact_policy is not None and fact_policy != EXPLANATION_FACT_POLICY:
+    if fact_policy is not None and fact_policy not in EXPLANATION_FACT_POLICIES:
         raise ValueError('Unknown explanation fact policy')
     if fact_policy and not context_policy:
         raise ValueError('Explanation key facts require their frozen context policy')
@@ -704,6 +813,10 @@ def chart_snapshot(workspace, word, run):
     source=no_links(run['source_docx'])
     if digest(source)!=run['source_docx_sha256'] or source.name!=run['word_name']:
         raise ValueError('Frozen source Word identity changed')
+    title_policy = run.get('word_title_policy')
+    if title_policy not in {None, WORD_TITLE_POLICY}:
+        raise ValueError('Unknown Word title policy')
+    title_snapshot = check_title(word, source, run['title']) if title_policy else None
     manifest=inside(workspace,'.product-v2/chart-manifest.json')
     spec=read_json(manifest)
     figures=chart_records(spec,run)
@@ -768,7 +881,10 @@ def chart_snapshot(workspace, word, run):
                     raise ValueError('Retained statistical figure must bind original media bytes and original figure number')
             for member in original.namelist():
                 if member.startswith('word/') and member not in {'word/document.xml','word/_rels/document.xml.rels'}:
-                    if member not in z.namelist() or original.read(member)!=z.read(member):
+                    expected_part = original.read(member)
+                    if title_snapshot and WORD_STORY.fullmatch(member):
+                        expected_part = normalized_part(expected_part, title_snapshot['cover_title'])[0]
+                    if member not in z.namelist() or expected_part!=z.read(member):
                         raise ValueError('Original Word non-body parts, media, headers/footers or embedded objects must remain unchanged: '+member)
             old_media={hashlib.sha256(original.read(n)).hexdigest() for n in original.namelist() if n.startswith('word/media/')}
             if pngs & old_media:
@@ -776,6 +892,8 @@ def chart_snapshot(workspace, word, run):
             if not old_media.issubset(set(media.values())):
                 raise ValueError('Original Word images must remain unchanged')
             source_body=ET.fromstring(original.read('word/document.xml')).find('w:body',NS)
+            if title_snapshot:
+                normalize_element(source_body, title_snapshot['cover_title'])
             if source_policy:
                 protected_relationships = _preserve_source_relationships(original, z)
                 _preserve_final_section(source_body, body)
@@ -807,8 +925,9 @@ def chart_snapshot(workspace, word, run):
                     raise ValueError('Added complete formula repeats original source formula: '
                                      + json.dumps(repeats, ensure_ascii=False))
             contexts=explanation_contexts(source_blocks,blocks,original_positions,figures) if context_policy else None
-            key_facts=explanation_key_facts(workspace,blocks,figures,contexts) if fact_policy else None
+            key_facts=explanation_key_facts(workspace,blocks,figures,contexts,fact_policy) if fact_policy else None
     snapshot={'manifest_sha256':digest(manifest),'figures':{str(f['figure_id']):f['sha256'] for f in figures}}
+    if title_snapshot:snapshot['word_title']=title_snapshot
     if context_policy:
         snapshot.update(explanation_context_policy=context_policy,explanation_contexts=contexts)
     if fact_policy:
@@ -1152,7 +1271,8 @@ def first_review_binding(workspace, proof, evidence_path, dispatch_path):
     acceptance route and its successful chart checks remain unchanged.
     """
     execution_checks = __import__('review_packet').execution_checks
-    execution_checks(proof.get('checks'))
+    from source_delivery import execution_kinds
+    execution_checks(proof.get('checks'),execution_kinds(read_json(inside(workspace,'.product-v2/run.json'))))
     if not proof.get('reviewed_files') or not proof.get('visual_notes') or not proof.get('limitations'):
         raise ValueError('First review requires its actual artifact snapshot, visual notes and limitations')
     reject_unread_visual_evidence(proof, 'First necessary independent visual evidence was unread')
@@ -1166,6 +1286,8 @@ def _model_review(workspace, proof, files, charts, evidence_path, hash_file=dige
     if _recorded_dispatch is None and _first_dispatch is None:
         reject_unread_visual_evidence(proof)
     run=read_json(inside(workspace,'.product-v2/run.json'))
+    from system_diagrams import validate_first_notes
+    validate_first_notes(run,proof.get('visual_notes'))
     policy=chart_policy(run)
     analytical=policy in ANALYTICAL_POLICIES
     if analytical and charts.get('chart_policy')!=policy:
@@ -1329,6 +1451,7 @@ def _model_review(workspace, proof, files, charts, evidence_path, hash_file=dige
     if _first_dispatch is not None:return verified
     if _recorded_dispatch is not None:return verified
     reviews=proof.get('chart_reviews',[])
+    validate_correspondence_review(charts,reviews)
     if policy==BUILD_CHART_POLICY:
         retained_reviews=proof.get('retained_result_reviews',[])
         expected=charts.get('retained_results',{})

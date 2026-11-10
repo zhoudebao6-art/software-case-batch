@@ -22,6 +22,14 @@ class FlowTests(unittest.TestCase):
         with zipfile.ZipFile(self.source,'w') as z:
             z.writestr('word/document.xml','<document/>')
         self.run=prepare(self.work,self.out,'设备运行管理',self.source)
+        # Legacy packaging fixture; new default behavior has separate main-code tests.
+        self.run.pop('source_delivery_policy',None)
+        self.run['delivery_layout_version']='system-code-v4'
+        self.run['source_zip']=str(self.out/'系统代码/源代码.zip')
+        self.run.pop('system_diagram_policy',None)
+        self.run.pop('system_diagram_renderer_sha256',None)
+        from common import write_json
+        write_json(self.work/'.product-v2/run.json',self.run)
         self.system=delivery_paths(self.run)['system']
     def tearDown(self): self.tmp.cleanup()
     def manifest(self,name,value):
@@ -42,10 +50,10 @@ class FlowTests(unittest.TestCase):
     def test_overlapping_output_refused(self):
         with self.assertRaises(ValueError):prepare(self.work,self.work/'delivery','任务管理',self.source)
     def test_prompt_embeds_exact_paths_and_latest_layout(self):
-        self.assertEqual(self.run['delivery_layout_version'],'research-materials-v3')
-        self.assertEqual(self.system.name,'研发证明材料-设备运行管理')
+        self.assertEqual(self.run['delivery_layout_version'],'system-code-v4')
+        self.assertEqual(self.system.name,'系统代码')
         text=(self.work/'.product-v2/深化命令词.txt').read_text(encoding='utf8')
-        self.assertIn(str(self.system/'数据'),text);self.assertIn(str(self.system/'源代码.zip'),text)
+        self.assertIn(str(self.system/'数据'),text);self.assertIn(str(self.system/'主要代码'),text)
         for item in ['references/web-design.md','source_trace','calculation_trace_map','coverage_matrix','references/ui-policy.json']:
             self.assertIn(item,text)
     def test_clean_drops_whole_metadata_columns_preserves_other_cells(self):

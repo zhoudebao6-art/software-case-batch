@@ -19,9 +19,9 @@ class RecordingConcurrencyTests(unittest.TestCase):
         self.cpu=patch('batch_control.cpu_snapshot',return_value={'logical_processors':32,'cpu_load_percent':20,'sample_seconds':.2});self.cpu.start()
     def tearDown(self):
         self.cpu.stop();self.memory.stop();self.identity.stop();self.temp.cleanup()
-    def create(self,name,limit='auto',host_slots=4):
+    def create(self,name,limit='auto',host_slots=4,count=6):
         cases=[]
-        for i in range(6):
+        for i in range(count):
             work=self.root/f'{name}-{i}';work.mkdir();source=work/'source.docx';source.write_bytes(b'fixture')
             if limit is not None:write_json(work/'.product-v2/run.json',{'workspace':str(work),'run_id':f'fixture-{name}-{i}'})
             cases.append({'case_id':str(i),'workspace':str(work),'source_docx':str(source),'source_sha256':digest(source)})
@@ -31,15 +31,76 @@ class RecordingConcurrencyTests(unittest.TestCase):
         return manifest,lambda action,case_id=None,**kw:batch.mutate(self.pool,name,101,action,case_id,**kw)
     def capture(self,mutate,case_id):
         ticket=mutate('queue',case_id,stage='record');return ticket,mutate('acquire',token=ticket['token'])
+    def test_local_calibration_only_freezes_new_auto_profiles(self):
+        with patch('batch_control.local_recording_limit',return_value=4):
+            manifest,_=self.create('calibrated')
+        profile=manifest['execution_profile']
+        self.assertEqual(batch.recording_capacity(profile),4)
+        self.assertEqual(profile['recording_policy']['calibrated_recording_limit'],4)
+        with patch('batch_control.local_recording_limit',side_effect=AssertionError('explicit must not read calibration')):
+            explicit,_=self.create('explicit',3)
+        self.assertEqual(batch.recording_capacity(explicit['execution_profile']),3)
+        with patch('batch_control.local_recording_limit',return_value=12):
+            hardware,_=self.create('hardware')
+        self.assertEqual(batch.recording_capacity(hardware['execution_profile']),7)
+    def test_local_calibration_validation(self):
+        fake_script=self.root/'scripts/batch_control.py';fake_script.parent.mkdir()
+        with patch.object(batch,'__file__',str(fake_script)):
+            self.assertIsNone(batch.local_recording_limit())
+            for value in (True,0,-1,3.5,'4'):
+                write_json(self.root/'local.config.json',{'recording_auto_limit':value})
+                with self.assertRaises(ValueError):batch.local_recording_limit()
+            write_json(self.root/'local.config.json',{'recording_auto_limit':4})
+            self.assertEqual(batch.local_recording_limit(),4)
+    def test_new_hardware_budget_allows_seven_not_eight_across_batches(self):
+        manifest,first=self.create('seven',count=8);_,second=self.create('other')
+        self.assertEqual(manifest['execution_profile']['capacities']['record'],7)
+        self.assertEqual(manifest['execution_profile']['recording_policy']['version'],'hardware-adaptive-v2')
+        for i in range(6):self.assertEqual(self.capture(first,str(i))[1]['status'],'active')
+        self.assertEqual(self.capture(second,'0')[1]['status'],'active')
+        self.assertFalse(self.capture(second,'1')[1]['acquired'])
+        self.assertEqual(len([q for q in read_json(self.pool/'queue.json') if q['status']=='active']),7)
+    def test_active_old_auto_retains_four_then_new_can_fill_seven(self):
+        # Construct an authentic old frozen profile before creating its binding.
+        original=batch.memory_available_mb
+        _,old=self.create('old-four',4);_,new=self.create('new-seven',count=8)
+        old_hash=digest(self.pool/'old-four/manifest.json')
+        ticket,_=self.capture(old,'0')
+        for i in range(3):self.assertEqual(self.capture(new,str(i))[1]['status'],'active')
+        waiting,result=self.capture(new,'3');self.assertFalse(result['acquired'])
+        old('release-slot',token=ticket['token'])
+        self.assertEqual(new('acquire',token=waiting['token'])['status'],'active')
+        for i in range(4,7):self.assertEqual(self.capture(new,str(i))[1]['status'],'active')
+        self.assertEqual(digest(self.pool/'old-four/manifest.json'),old_hash)
+        profile={'capacities':{'record':7},'recording_policy':{'mode':'auto'}}
+        self.assertEqual(batch.recording_capacity(profile),4)
+        profile['recording_policy']['version']='future'
+        with self.assertRaises(ValueError):batch.recording_capacity(profile)
+        for cap in (True,0,-1,3.5):
+            with self.assertRaises(ValueError):batch.recording_capacity({'capacities':{'record':cap}})
+    def test_low_memory_and_busy_seven_preserve_tickets(self):
+        with patch('batch_control.memory_available_mb',return_value=3000):
+            manifest,m=self.create('low')
+            self.assertEqual(manifest['execution_profile']['capacities']['record'],1)
+            self.assertEqual(self.capture(m,'0')[1]['reason'],'memory_exhausted')
+        _,m=self.create('budget',count=8)
+        # No low-batch active lease exists, so the new budget is not restricted.
+        mlow=read_json(self.pool/'queue.json');mlow[0]['status']='released';write_json(self.pool/'queue.json',mlow)
+        for i in range(6):self.capture(m,str(i))
+        ticket=m('queue','6',stage='record')
+        for memory,cpu,reason in [(16383,32,'memory_exhausted'),(24000,29,'cpu_capacity')]:
+            with patch('batch_control.memory_available_mb',return_value=memory),patch('batch_control.cpu_snapshot',return_value={'logical_processors':cpu,'cpu_load_percent':20}):
+                self.assertEqual(m('acquire',token=ticket['token'])['reason'],reason)
+        self.assertEqual(m('acquire',token=ticket['token'])['status'],'active')
     def test_four_recordings_share_parent_but_do_not_consume_three_model_workers(self):
-        manifest,mutate=self.create('four')
+        manifest,mutate=self.create('four',4)
         self.assertEqual(manifest['execution_profile']['worker_capacity'],3)
         self.assertEqual(manifest['execution_profile']['capacities']['record'],4)
         for i in range(4):self.assertEqual(self.capture(mutate,str(i))[1]['status'],'active')
         self.assertFalse(self.capture(mutate,'4')[1]['acquired'])
         evidence=mutate('queue','5',stage='evidence');self.assertFalse(mutate('acquire',token=evidence['token'])['acquired'])
     def test_global_four_cap_applies_across_new_batches(self):
-        _,first=self.create('first');_,second=self.create('second')
+        _,first=self.create('first',4);_,second=self.create('second',4)
         for i in range(3):self.assertEqual(self.capture(first,str(i))[1]['status'],'active')
         self.assertEqual(self.capture(second,'0')[1]['status'],'active')
         self.assertFalse(self.capture(second,'1')[1]['acquired'])

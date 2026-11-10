@@ -2,6 +2,7 @@
 import ctypes
 import os
 from pathlib import Path
+import socket
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 import batch_control as batch
 from common import digest,read_json,write_json
 from media_job import Job,job_name,job_pids,launch_suspended
+from package_probe import stop_windows_job
 
 @unittest.skipUnless(os.name=='nt','Windows Job behavior')
 class WindowsMediaJobTests(unittest.TestCase):
@@ -81,6 +83,28 @@ ctypes.windll.kernel32.GetSystemTimes=cpu_sample
         self.assertIn(child['pid'],job.pids())
         self.assertEqual(batch.identity(child['pid']),child);job.close()
         self.wait_for(lambda:batch.identity(child['pid'])!=child)
+    def test_package_cleanup_waits_nested_job_listener_and_inherited_log_after_launcher_exit(self):
+        signal=self.root/'nested-listener.json';log=self.root/'nested-listener.log'
+        child=self.root/'nested-child.py';launcher=self.root/'nested-launcher.py'
+        child.write_text("import json,os,socket,sys,time\nfrom pathlib import Path\nprint('owned child inherited log handle',flush=True)\nserver=socket.socket();server.bind(('127.0.0.1',0));server.listen()\nPath(sys.argv[1]).write_text(json.dumps({'pid':os.getpid(),'port':server.getsockname()[1]}))\ntime.sleep(30)\n",encoding='utf-8')
+        launcher.write_text("import ctypes,msvcrt,os,sys\nfrom types import SimpleNamespace\nsys.path.insert(0,"+repr(str(Path(__file__).resolve().parents[1]/'scripts'))+")\nfrom media_job import kernel,launch_suspended\nk=kernel();inner=k.CreateJobObjectW(None,None)\nassert inner\nstream=open(sys.argv[3],'a')\nk.SetStdHandle.argtypes=[ctypes.c_uint32,ctypes.c_void_p]\nassert k.SetStdHandle((-11)&0xffffffff,msvcrt.get_osfhandle(stream.fileno()))\nassert k.SetStdHandle((-12)&0xffffffff,msvcrt.get_osfhandle(stream.fileno()))\ntry:\n info=launch_suspended(SimpleNamespace(k=k,handle=inner),[sys.executable,'-B',sys.argv[1],sys.argv[2]],dict(os.environ))\n assert k.ResumeThread(info.thread)==1\n k.CloseHandle(info.thread);k.CloseHandle(info.process)\nfinally:k.CloseHandle(inner)\n",encoding='utf-8')
+        job=self.job();info=self.launch(job,[sys.executable,'-B',str(launcher),str(child),str(signal),str(log)])
+        self.assertEqual(job.k.ResumeThread(info.thread),1);self.wait_for(signal.exists)
+        actual=read_json(signal)
+        self.assertEqual(job.k.WaitForSingleObject(info.process,5000),0)
+        self.assertIn(actual['pid'],job.pids())
+        with socket.create_connection(('127.0.0.1',actual['port']),timeout=1):pass
+        result=stop_windows_job(job)
+        self.assertEqual(result['status'],'stopped',result)
+        self.assertIn(actual['pid'],result['members_at_close'])
+        self.assertEqual(job.pids(),[])
+        with socket.socket() as client:
+            client.settimeout(.2);self.assertNotEqual(client.connect_ex(('127.0.0.1',actual['port'])),0)
+        # Exclusive OPEN_EXISTING succeeds immediately only after log handles exit.
+        k=job.k;k.CreateFileW.argtypes=[ctypes.c_wchar_p,ctypes.c_uint32,ctypes.c_uint32,ctypes.c_void_p,ctypes.c_uint32,ctypes.c_uint32,ctypes.c_void_p];k.CreateFileW.restype=ctypes.c_void_p
+        handle=k.CreateFileW(str(log),0x80000000,0,None,3,0,None)
+        self.assertNotEqual(handle,ctypes.c_void_p(-1).value)
+        self.assertTrue(handle);k.CloseHandle(handle)
     def test_owner_dies_but_media_stays_reserved_until_job_exit_and_recovery_release(self):
         owner=subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)'],creationflags=subprocess.CREATE_NO_WINDOW)
         self.processes.append(owner);work=self.root/'case';work.mkdir();source=work/'source.docx';source.write_bytes(b'fixture')

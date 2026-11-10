@@ -105,7 +105,10 @@ class ReviewHandoffTests(unittest.TestCase):
         original = facts['proof'].read_bytes(); result = self.complete(facts)
         self.assertEqual(result['status'], 'released'); self.assertIsNone(result['review_completion']['repair_binding'])
         item = read_json(state_path)['cases']['0']
-        self.assertEqual(item['phase'], 'waiting_review'); self.assertEqual(item['review_result']['decision'], 'pass')
+        self.assertEqual(item['phase'], 'ready_finalize'); self.assertEqual(item['review_result']['decision'], 'pass')
+        note=self.root/'note.json';write_json(note,{'phase':'ready_finalize','status_note':'continue original finalize'})
+        self.call('a','update','0',value=note)
+        self.assertEqual(read_json(state_path)['cases']['0']['review_result'],item['review_result'])
         self.assertFalse((facts['proof'].parents[0] / 'final-receipt.json').exists())
         self.assertEqual(facts['proof'].read_bytes(), original)
 

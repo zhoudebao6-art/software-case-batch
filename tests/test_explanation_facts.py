@@ -58,6 +58,86 @@ class ExplanationFactTests(unittest.TestCase):
         self.assertEqual(fact['basis']['sha256'], digest(self.basis))
         self.assertNotIn('decision', result)
 
+    def symbol(self, inner=None, symbol='Hbn'):
+        if inner is None:
+            inner = ('<m:sSubSup><m:e><m:r><m:t>H</m:t></m:r></m:e>'
+                     '<m:sub><m:r><m:t>b</m:t></m:r></m:sub>'
+                     '<m:sup><m:r><m:t>n</m:t></m:r></m:sup></m:sSubSup>')
+        math = ('<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">'
+                + inner + '</m:oMath>')
+        self.context.references[0] = ('<w:p><w:r><w:t>请参考图1。</w:t></w:r>' + math
+            + '<w:r><w:t>对应蓝色区域的存量，随转出减小。</w:t></w:r></w:p>')
+        self.first()['depiction'] = {'panel':'whole', 'quantity_type':'scalar', 'visible_objects':'蓝色区域', 'relationship':'区域面积表示存量，随转出减小'}
+        self.first().update(kind='symbol', symbol_text=symbol,
+            chart_text='蓝色区域', explanation_excerpt=symbol+'对应蓝色区域的存量，随转出减小')
+
+    def test_native_symbol_binds_format_and_context_without_full_formula(self):
+        self.symbol()
+        original = self.snapshot()['explanation_key_facts']['1'][0]
+        self.assertEqual(original['symbol_text'], 'Hbn')
+        self.assertEqual(len(original['symbol_omml_sha256']), 1)
+        # Same flattened text, different native sub/sup arrangement must not
+        # retain the same recorded structure. Semantics remain a visual check.
+        self.context.references[0] = self.context.references[0].replace('m:sub', 'm:xxx').replace('m:sup', 'm:sub').replace('m:xxx', 'm:sup')
+        changed = self.snapshot()['explanation_key_facts']['1'][0]
+        self.assertNotEqual(original['symbol_omml_sha256'], changed['symbol_omml_sha256'])
+
+    def test_symbol_plain_text_full_equation_and_other_figure_do_not_satisfy(self):
+        for variant in ('plain', 'equation', 'other', 'missing'):
+            with self.subTest(variant=variant):
+                self.symbol()
+                if variant == 'plain':
+                    self.context.references[0] = fixtures.p('请参考图1。Hbn对应蓝色区域的存量，随转出减小')
+                elif variant == 'equation':
+                    self.symbol('<m:r><m:t>H=Q</m:t></m:r>', 'H=Q')
+                elif variant == 'other':
+                    self.context.references[1] = self.context.references[0].replace('图1', '图2')
+                    self.context.references[0] = fixtures.p('请参考图1。Hbn对应蓝色区域的存量，随转出减小')
+                else:
+                    self.first().pop('symbol_text')
+                with self.assertRaisesRegex(ValueError, 'Symbol fact'):
+                    self.snapshot()
+
+    def test_semantic_figure_elements_use_existing_fact_bindings(self):
+        for kind in ('axis', 'series', 'region'):
+            self.first()['kind'] = kind
+            self.assertEqual(self.snapshot()['explanation_key_facts']['1'][0]['kind'], kind)
+            self.first()['explanation_excerpt'] = '图内有但说明没有的条件'
+            with self.assertRaisesRegex(ValueError, 'absent'):
+                self.snapshot()
+            self.first()['explanation_excerpt'] = '12 s时温度达到80 ℃并触发阀门开启'
+
+    def test_display_math_is_not_inline_symbol(self):
+        self.symbol()
+        self.context.references[0] = self.context.references[0].replace(
+            '<m:oMath xmlns:m=', '<m:oMathPara xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><m:oMath xmlns:m=').replace(
+            '</m:oMath>', '</m:oMath></m:oMathPara>')
+        with self.assertRaisesRegex(ValueError, 'Symbol fact'):
+            self.snapshot()
+
+    def test_relations_and_calculation_expressions_are_not_single_symbols(self):
+        for text in ('H≡Q', 'H∝Q', 'H＝Q', 'H≤Q', 'x+y', 'x−y', r'H_b', r'\\alpha'):
+            with self.subTest(text=text):
+                self.symbol('<m:r><m:t>'+text+'</m:t></m:r>', text)
+                with self.assertRaisesRegex(ValueError, 'Symbol fact'):
+                    self.snapshot()
+        for structure in (
+            '<m:f><m:num><m:r><m:t>H</m:t></m:r></m:num><m:den><m:r><m:t>Q</m:t></m:r></m:den></m:f>',
+            '<m:nary><m:naryPr/><m:sub/><m:sup/><m:e><m:r><m:t>HQ</m:t></m:r></m:e></m:nary>'):
+            self.symbol(structure, 'HQ')
+            with self.assertRaisesRegex(ValueError, 'Symbol fact'):
+                self.snapshot()
+
+    def test_native_conditions_in_subscripts_and_accents_remain_supported(self):
+        for condition in ('i&lt;j', 'i=1', 'n−1'):
+            text=condition.replace('&lt;', '<')
+            math=('<m:sSub><m:e><m:acc><m:accPr/><m:e><m:r><m:t>α</m:t></m:r>'
+                  '</m:e></m:acc></m:e><m:sub><m:r><m:t>'+condition+'</m:t></m:r></m:sub></m:sSub>')
+            self.symbol(math, 'α'+text)
+            # XML fixture text needs escaping; fact text stays decoded.
+            self.context.references[0] = self.context.references[0].replace('αi<j对应', 'αi&lt;j对应')
+            self.assertEqual(self.snapshot()['explanation_key_facts']['1'][0]['symbol_text'], 'α'+text)
+
     def test_wrong_value_time_unit_or_event_cannot_match(self):
         original = self.context.references[0]
         for value in ('312 s', '12 min', '80 kPa', '阀门关闭'):
@@ -193,6 +273,11 @@ class ExplanationFactTests(unittest.TestCase):
         self.assertEqual(result['explanation_fact_policy'], EXPLANATION_FACT_POLICY)
         prompt = (work/'.product-v2/深化命令词.txt').read_text(encoding='utf-8')
         self.assertIn('key_facts', prompt)
+        self.assertIn('实施例图解与公式符号', prompt)
+        self.assertIn('原生行内 OMML', prompt)
+        self.assertIn('不留给用户手删', prompt)
+        self.assertIn('批次ZIP中的Word须与清理后的交付Word逐字节一致', prompt)
+        self.assertIn('不是机械删除每段最后一句', prompt)
 
     def test_document_revision_adopts_new_policy_package_inherits_original(self):
         base, _, _ = self.f.revision_fixture()
@@ -228,6 +313,9 @@ class ExplanationFactTests(unittest.TestCase):
         self.assertEqual(facts['current_charts']['explanation_key_facts']['1'][0]['matches'][0]['block'], 1)
         self.assertIn('do not prove completeness', facts['chart_review_requirements']['key_fact_instruction'])
         self.assertNotIn('decision', facts)
+        self.assertEqual(len(facts['chart_review_requirements']['explanation_reading_order']), 5)
+        self.assertIn('not manual user cleanup', facts['chart_review_requirements']['explanation_reading_order'][3])
+        self.assertIn('each actual PNG first', facts['chart_review_requirements']['explanation_reading_order'][0])
 
 
 if __name__ == '__main__':
