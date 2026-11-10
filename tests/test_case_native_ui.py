@@ -30,7 +30,9 @@ class CaseNativePromptTests(unittest.TestCase):
         self.assertIn('不新增表单、审批或审美审核轮次',text)
         for name in ('frontend-design-playbook.md','frontend-motion.md'):
             path=Path(__file__).resolve().parents[1]/'references'/name
-            self.assertTrue(path.is_file());self.assertIn(str(path),text)
+            self.assertIn(str(path),text)
+            if not (path.parents[1]/'public-source-policy.json').is_file():
+                self.assertTrue(path.is_file())
 
     def test_existing_run_and_prompt_not_rewritten_by_prepare(self):
         prompt=self.work/'.product-v2/深化命令词.txt'
@@ -40,6 +42,7 @@ class CaseNativePromptTests(unittest.TestCase):
         self.assertEqual(run.read_bytes(),before)
         self.assertEqual(prompt.read_bytes(),b'Frozen older instructions')
 
+    @unittest.skipIf((Path(__file__).resolve().parents[1] / 'public-source-policy.json').is_file(), 'Private operating documentation is tested in the complete distribution')
     def test_reference_is_task_choices_not_required_upstream_install(self):
         root=Path(__file__).resolve().parents[1]
         guide=(root/'references/frontend-design-playbook.md').read_text(encoding='utf-8')

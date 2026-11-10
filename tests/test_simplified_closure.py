@@ -373,6 +373,7 @@ class SimplifiedClosureTests(unittest.TestCase):
         self.proof['authorization']['user_message_sha256']=hashlib.sha256(message.encode()).hexdigest();self.save()
         self.assertEqual(self.close()['status'],'delivered')
 
+    @unittest.skipIf((Path(__file__).resolve().parents[1] / 'public-source-policy.json').is_file(), 'Private operating documentation is tested in the complete distribution')
     def test_whole_actual_readme_new_chat_command_authorizes_general_small_fix_policy(self):
         readme=Path(__file__).resolve().parents[1]/'README.md'
         command=next(line for line in readme.read_text(encoding='utf8').splitlines() if line.startswith('使用 $software-case-batch-pro，批次材料目录：'))

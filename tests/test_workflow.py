@@ -310,6 +310,7 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(digest(run_path),prior)
             self.assertFalse(fixture.source.exists())
         finally:fixture.tearDown()
+    @unittest.skipIf((Path(__file__).resolve().parents[1] / 'public-source-policy.json').is_file(), 'Private operating documentation is tested in the complete distribution')
     def test_full_source_index_and_effective_requirements_are_present(self):
         result=validate_audit();self.assertEqual(result['sources'],26);self.assertGreater(result['clauses'],900)
         self.assertGreater(len(DECISIONS),70)

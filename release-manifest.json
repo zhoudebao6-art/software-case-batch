@@ -9,13 +9,13 @@
     },
     {
       "relative_path": ".github/workflows/tests.yml",
-      "sha256": "e2f889a6fe9b9963857793294b6a52897eb513eb0bf44f5fb22e15a9f9ea918c",
-      "size": 3652
+      "sha256": "7932e7e6fc101eb6461826523a4ade45f42f8c934a0c7b699a37875003ab8a67",
+      "size": 3380
     },
     {
       "relative_path": ".gitignore",
-      "sha256": "6cd4ec292c6861643bf5937fa4d2949dee8dcedce40661acc17ba7c960de5443",
-      "size": 89
+      "sha256": "7862c097403b67ec75373aea20f237d9ef6ebba9537347238ea8b1e220ab7f85",
+      "size": 2113
     },
     {
       "relative_path": "agents/openai.yaml",
@@ -123,6 +123,11 @@
       "size": 1595
     },
     {
+      "relative_path": "Enter-Environment.ps1",
+      "sha256": "b02e087df9e6d3548fc9765ec02a20da8dc4ecccebd4037fd03898753cb95cb8",
+      "size": 2715
+    },
+    {
       "relative_path": "local.config.example.json",
       "sha256": "9a2c5a3923362c24d3100db6812b7034a7f49906580750264e0e6d88edbc9020",
       "size": 668
@@ -141,6 +146,11 @@
       "relative_path": "README.md",
       "sha256": "6cf7060a460a4ec53674b51f018676f32419ce8fd817d7e63a4b18807d16eb46",
       "size": 193
+    },
+    {
+      "relative_path": "references/ui-policy.json",
+      "sha256": "2cb0bad3aeaf535cb744284ed0058ce4a45beda29f4f16ac8c135532ff29ee26",
+      "size": 1288
     },
     {
       "relative_path": "requirements-ci.txt",
@@ -399,8 +409,8 @@
     },
     {
       "relative_path": "tests/test_case_native_ui.py",
-      "sha256": "cdc62d23351d1d6849460360934baa96f1b2c33cf580eebf50675503d5d9b67d",
-      "size": 5657
+      "sha256": "09526c4a2fbe3f751f3cfcabbf426be8f66c2569a99bfdd2da3d48de69e8acda",
+      "size": 5926
     },
     {
       "relative_path": "tests/test_case_representation.py",
@@ -454,8 +464,8 @@
     },
     {
       "relative_path": "tests/test_defaults.py",
-      "sha256": "63d6a849146cdbad2f53aae541d0dd512853179ea787a51283a2faafe13b2f28",
-      "size": 8387
+      "sha256": "199822aba329e95b1d80f94fd6314c0ac4230f4692c4f59dfaec16a8a8123e2a",
+      "size": 8562
     },
     {
       "relative_path": "tests/test_delivery_index.py",
@@ -684,8 +694,8 @@
     },
     {
       "relative_path": "tests/test_simplified_closure.py",
-      "sha256": "7d2a9f569046ffba2ba9fa2f473a06ed79a746ee79181a6b4c154ce257f1b6b9",
-      "size": 51068
+      "sha256": "5dfc426822d35d61b310ffba690da1559a957c459566e9e104477df3dfbe0dc9",
+      "size": 51243
     },
     {
       "relative_path": "tests/test_source_directory.py",
@@ -739,8 +749,8 @@
     },
     {
       "relative_path": "tests/test_workflow.py",
-      "sha256": "6e87b8e534eff4979c0ad0328c2056d2d0e87e7c72d7dba0c88fbd445c7be22a",
-      "size": 29299
+      "sha256": "4ec39eb80b4d9e42dbe2eba9f7fa2e1be40dc564432f8117439643869c3e8b5a",
+      "size": 29474
     }
   ],
   "source_only": true

@@ -86,6 +86,7 @@ class DefaultPolicyTests(unittest.TestCase):
             self.assertEqual(observed['pro'],settings['output_root']);self.assertEqual(observed['legacy'],observed['pro'])
             self.assertEqual(observed['temp'],str(root/'cache/temp'));self.assertEqual(observed['tmp'],observed['temp']);self.assertEqual(observed['cache'],str(root/'cache/cache/pip'))
             self.assertEqual(config.read_bytes(),before);self.assertEqual(os.environ.get('TEMP'),parent_temp)
+    @unittest.skipIf((Path(__file__).resolve().parents[1] / 'public-source-policy.json').is_file(), 'Private operating documentation is tested in the complete distribution')
     def test_original_snapshot_and_r1_record_stay_unchanged(self):
         result=validate_audit();self.assertEqual(result['sources'],26)
         prior=read_json(ROOT/'tests/fixtures/original-snapshot-baseline.json')
